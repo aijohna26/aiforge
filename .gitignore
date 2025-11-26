@@ -39,3 +39,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# preview cache
+.preview-cache
+
+# expo workspaces for dev servers
+.expo-workspaces
+
+# expo node_modules cache
+.expo-cache
