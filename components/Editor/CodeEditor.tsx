@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useMemo, useState } from "react";
 import Editor from "@monaco-editor/react";
+import type * as Monaco from "monaco-editor";
 import { Check, Copy, Download } from "lucide-react";
 import type { GeneratedFile } from "@/lib/types";
+import { MONACO_TYPE_STUBS } from "@/lib/monaco/type-stubs";
 
 interface CodeEditorProps {
   file: GeneratedFile;
@@ -12,7 +14,7 @@ interface CodeEditorProps {
   isPending?: boolean;
 }
 
-export function CodeEditor({
+function CodeEditorComponent({
   file,
   readOnly = true,
   onChange,
@@ -20,6 +22,47 @@ export function CodeEditor({
 }: CodeEditorProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const editorPath = useMemo(() => {
+    if (file.path.startsWith("file:///")) return file.path;
+    const normalized = file.path.startsWith("/")
+      ? file.path.slice(1)
+      : file.path;
+    return `file:///${normalized}`;
+  }, [file.path]);
+
+  const handleChange = (value: string | undefined) => {
+    onChange?.(value);
+  };
+
+  const handleBeforeMount = (monaco: typeof Monaco) => {
+    // Shared compiler options to mimic Expo/React Native projects
+    monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+      target: monaco.languages.typescript.ScriptTarget.ESNext,
+      allowJs: true,
+      jsx: monaco.languages.typescript.JsxEmit.ReactJSX,
+      allowSyntheticDefaultImports: true,
+      esModuleInterop: true,
+      moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+      module: monaco.languages.typescript.ModuleKind.ESNext,
+      typeRoots: ["node_modules/@types"],
+      types: ["node", "react", "react-dom"],
+      noEmit: true,
+      allowNonTsExtensions: true,
+      jsxImportSource: "react",
+      reactNamespace: "React",
+      noLib: false,
+    });
+
+    if (!(window as any).__appforge_monaco_types_loaded) {
+      MONACO_TYPE_STUBS.forEach((stub) => {
+        monaco.languages.typescript.typescriptDefaults.addExtraLib(
+          stub.content,
+          stub.path,
+        );
+      });
+      (window as any).__appforge_monaco_types_loaded = true;
+    }
+  };
 
   const handleCopy = () => {
     navigator.clipboard.writeText(file.content);
@@ -90,11 +133,14 @@ export function CodeEditor({
           </div>
         )}
         <Editor
+          key={file.path}
           height="100%"
           language={file.language ?? "typescript"}
           value={file.content}
+          path={editorPath}
           theme="vs-dark"
-          onChange={onChange}
+          onChange={handleChange}
+          beforeMount={handleBeforeMount}
           onMount={() => setIsLoading(false)}
           options={{
             readOnly,
@@ -115,3 +161,12 @@ export function CodeEditor({
     </div>
   );
 }
+
+export const CodeEditor = memo(
+  CodeEditorComponent,
+  (prev, next) =>
+    prev.file.path === next.file.path &&
+    prev.file.content === next.file.content &&
+    prev.readOnly === next.readOnly &&
+    prev.isPending === next.isPending,
+);

@@ -24,6 +24,8 @@ interface UseProjectReturn {
   refreshFiles: () => Promise<void>;
   getFile: (path: string) => GeneratedFile | undefined;
   isPending: (path: string) => boolean;
+  hasSnapshot: () => boolean;
+  rollbackChanges: (snapshotId: string) => Promise<boolean>;
 }
 
 export function useProject(): UseProjectReturn {
@@ -148,10 +150,10 @@ export function useProject(): UseProjectReturn {
       // Update cache with debounced database sync
       fileCache.setFile(project.id, updatedFile, async (file) => {
         // Background sync to database
-        const res = await fetch(`/api/projects/${project.id}/files/${path}`, {
+        const res = await fetch(`/api/projects/${project.id}/files`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content }),
+          body: JSON.stringify({ path, content }),
         });
 
         if (!res.ok) {
@@ -176,26 +178,23 @@ export function useProject(): UseProjectReturn {
   );
 
   const refreshFiles = useCallback(async () => {
-    if (!project) return;
-
-    try {
-      const filesRes = await fetch(`/api/projects/${project.id}/files`);
-      const { files } = await filesRes.json();
-
-      // Files now come with content already included
-      const filesWithContent: GeneratedFile[] = (files || []).map((file: any) => ({
-        path: file.path,
-        content: file.content || "",
-        language: file.language,
-      }));
-
-      // Update cache
-      fileCache.loadProject(project.id, filesWithContent);
-
-      setProject((prev) => (prev ? { ...prev, files: filesWithContent } : prev));
-    } catch (err) {
-      console.error("Failed to refresh files:", err);
+    if (!project) {
+      console.log('[useProject] refreshFiles: No project');
+      return;
     }
+
+    console.log('[useProject] refreshFiles: Getting files from cache for project:', project.id);
+    // Get latest files from cache (not database - cache is source of truth!)
+    const cachedFiles = fileCache.getFiles(project.id);
+    console.log('[useProject] refreshFiles: Got', cachedFiles.length, 'files from cache');
+
+    // Create new array reference to trigger React re-renders
+    const freshFiles = cachedFiles.map(f => ({ ...f }));
+
+    setProject((prev) => {
+      console.log('[useProject] refreshFiles: Updating project state with fresh files');
+      return prev ? { ...prev, files: freshFiles } : prev;
+    });
   }, [project]);
 
   // Get file from cache (instant read!)
@@ -215,6 +214,35 @@ export function useProject(): UseProjectReturn {
     },
     [project]
   );
+
+  // Check if snapshot exists (for rollback button)
+  const hasSnapshot = useCallback((): boolean => {
+    if (!project) return false;
+    return fileCache.hasSnapshot(project.id);
+  }, [project]);
+
+  // Rollback to snapshot (undo AI changes)
+  const rollbackChanges = useCallback(async (snapshotId: string): Promise<boolean> => {
+    if (!project) return false;
+
+    const success = fileCache.rollback(project.id, snapshotId, async (files) => {
+      // Batch sync all restored files to database
+      for (const file of files) {
+        await fetch(`/api/projects/${project.id}/files/${file.path}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: file.content }),
+        });
+      }
+    });
+
+    if (success) {
+      // Refresh project state to reflect rollback
+      await refreshFiles();
+    }
+
+    return success;
+  }, [project, refreshFiles]);
 
   // Cleanup cache when component unmounts
   useEffect(() => {
@@ -237,5 +265,7 @@ export function useProject(): UseProjectReturn {
     refreshFiles,
     getFile,
     isPending,
+    hasSnapshot,
+    rollbackChanges,
   };
 }

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { walletManager } from "@/lib/wallet";
+import { fileCache } from "@/lib/file-cache";
 import Anthropic from "@anthropic-ai/sdk";
 
 const anthropicClient = process.env.ANTHROPIC_API_KEY
@@ -147,20 +148,33 @@ Rules:
             ],
           });
 
-          // Stream thinking progress to user (INSTANT feedback!)
+          // Stream thinking progress to user (Claude Code style!)
           let responseText = '';
+          let lastProgressUpdate = 0;
+          const progressMessages = [
+            "Reading project files...",
+            "Understanding your request...",
+            "Planning modifications...",
+            "Generating code changes...",
+            "Finalizing updates..."
+          ];
+          let progressIndex = 0;
+
           for await (const chunk of stream) {
             if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
               responseText += chunk.delta.text;
 
-              // Send progress update every 100 chars (gives feeling of activity)
-              if (responseText.length % 100 === 0) {
+              // Send varied progress updates (Claude Code style)
+              const charsProcessed = responseText.length;
+              if (charsProcessed - lastProgressUpdate > 500) {
+                progressIndex = Math.min(progressIndex + 1, progressMessages.length - 1);
                 controller.enqueue(
                   encoder.encode(`data: ${JSON.stringify({
                     type: "status",
-                    message: "AI is analyzing..."
+                    message: progressMessages[progressIndex]
                   })}\n\n`)
                 );
+                lastProgressUpdate = charsProcessed;
               }
             }
           }
@@ -192,13 +206,56 @@ Rules:
             throw new Error("AI response missing 'modifications' array");
           }
 
+          // Create snapshot BEFORE applying changes (for rollback)
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ type: "status", message: "Creating backup..." })}\n\n`)
+          );
+
+          // Load files into cache and create snapshot
+          fileCache.loadProject(projectId, files.map((f: any) => ({
+            path: f.path,
+            content: f.content,
+            language: f.language,
+          })));
+          const snapshotId = fileCache.createSnapshot(projectId, result.summary || "AI edit");
+
+          // Notify frontend that snapshot was created (for rollback button)
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ type: "snapshot_created", snapshotId, description: result.summary || "AI edit" })}\n\n`)
+          );
+
           controller.enqueue(
             encoder.encode(`data: ${JSON.stringify({ type: "status", message: "Applying changes..." })}\n\n`)
           );
 
           // Apply modifications to database
           const modifiedFiles: string[] = [];
+          const totalFiles = result.modifications?.length || 0;
+          let filesProcessed = 0;
+
           for (const mod of result.modifications || []) {
+            filesProcessed++;
+
+            // Send file-specific progress (Claude Code style)
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({
+                type: "status",
+                message: `Updating ${mod.path}... (${filesProcessed}/${totalFiles})`
+              })}\n\n`)
+            );
+
+            const originalFile = files.find((f: any) => f.path === mod.path);
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({
+                  type: "diff",
+                  path: mod.path,
+                  before: originalFile?.content ?? "",
+                  after: mod.content ?? "",
+                })}\n\n`
+              )
+            );
+
             const { error: updateError } = await supabase
               .from("project_files")
               .update({ content: mod.content, updated_at: new Date().toISOString() })
@@ -207,7 +264,18 @@ Rules:
 
             if (!updateError) {
               modifiedFiles.push(mod.path);
-              // Send progress for each file (without content to avoid JSON issues)
+
+              // CRITICAL: Update file cache immediately (Bolt.diy optimistic updates!)
+              // This ensures refreshFiles() sees the new content
+              fileCache.setFile(projectId, {
+                path: mod.path,
+                content: mod.content,
+                language: mod.path.split('.').pop() || 'typescript',
+              }, async () => {
+                // No additional DB sync needed - already done above
+              });
+
+              // Send success for this file
               const progressData = JSON.stringify({
                 type: "file_modified",
                 path: mod.path,

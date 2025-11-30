@@ -5,6 +5,7 @@ export interface GeneratedFile {
 }
 
 export interface GeneratedProject {
+  id?: string;
   projectName: string;
   description?: string;
   files: GeneratedFile[];
@@ -22,6 +23,7 @@ export interface ChatMessage {
     filesCreated?: string[];
     tokens?: { input: number; output: number };
     cost?: number;
+    snapshotId?: string; // ID for rollback functionality
   };
 }
 
@@ -39,8 +41,10 @@ export interface ExpoServer {
   expUrl: string;
   localUrl: string;
   tunnelUrl: string | null;
+  webUrl: string; // URL for React Native Web preview
   qrCodeUrl: string;
   createdAt: number;
   lastAccessedAt?: number;
   error?: string;
+  connectedDevices: number;
 }

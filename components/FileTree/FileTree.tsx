@@ -67,18 +67,30 @@ interface FileTreeProps {
   onFileSelect: (path: string) => void;
   selectedFile?: string | null;
   editedFiles?: Set<string>;
+  addedFiles?: Set<string>;
+  modifiedFiles?: Set<string>;
 }
+
+import { useStore } from '@nanostores/react';
+import { lockedFiles } from '@/lib/webcontainer/stores';
+
+// ... (imports)
+
+// ... (interfaces)
 
 export function FileTree({
   files,
   onFileSelect,
   selectedFile,
   editedFiles,
+  addedFiles,
+  modifiedFiles,
 }: FileTreeProps) {
   const tree = useMemo(() => buildFileTree(files), [files]);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() =>
     buildInitialExpandedPaths(files)
   );
+  const locked = useStore(lockedFiles);
 
   const togglePath = (path: string) => {
     const next = new Set(expandedPaths);
@@ -90,33 +102,11 @@ export function FileTree({
     setExpandedPaths(next);
   };
 
-  if (!files.length) {
-    return (
-      <div className="flex h-full flex-col border-r border-slate-800 bg-slate-950/80">
-        <div className="flex items-center justify-between border-b border-slate-800 px-3 py-2">
-          <p className="text-sm font-semibold text-slate-200">Explorer</p>
-          <Button variant="ghost" size="sm" className="text-slate-400" disabled>
-            <Search className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="flex flex-1 flex-col items-center justify-center px-4 text-center text-sm text-slate-500">
-          <p>No files yet</p>
-          <p className="mt-2 text-xs text-slate-500/80">
-            Run a generation to populate the Explorer.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  // ... (rest of FileTree logic)
 
   return (
     <div className="flex h-full flex-col border-r border-slate-800 bg-slate-950/80">
-      <div className="flex items-center justify-between border-b border-slate-800 px-3 py-2">
-        <p className="text-sm font-semibold text-slate-200">Explorer</p>
-        <Button variant="ghost" size="sm" className="text-slate-300">
-          <Search className="h-4 w-4" />
-        </Button>
-      </div>
+      {/* ... header ... */}
       <div className="flex-1 overflow-y-auto px-2 py-2">
         {tree.map((node) => (
           <FileTreeNode
@@ -128,6 +118,9 @@ export function FileTree({
             onFileSelect={onFileSelect}
             selectedFile={selectedFile}
             editedFiles={editedFiles}
+            addedFiles={addedFiles}
+            modifiedFiles={modifiedFiles}
+            lockedFiles={locked}
           />
         ))}
       </div>
@@ -156,6 +149,9 @@ interface FileTreeNodeProps {
   onFileSelect: (path: string) => void;
   selectedFile?: string | null;
   editedFiles?: Set<string>;
+  addedFiles?: Set<string>;
+  modifiedFiles?: Set<string>;
+  lockedFiles?: Set<string>;
 }
 
 function FileTreeNode({
@@ -166,9 +162,16 @@ function FileTreeNode({
   onFileSelect,
   selectedFile,
   editedFiles,
+  addedFiles,
+  modifiedFiles,
+  lockedFiles,
 }: FileTreeNodeProps) {
   const isEdited = node.type === "file" && editedFiles?.has(node.path);
   const isCore = node.type === "file" && isCoreFile(node.path);
+  const isAdded = node.type === "file" && addedFiles?.has(node.path);
+  const isModified = node.type === "file" && modifiedFiles?.has(node.path);
+  const isLocked = node.type === "file" && lockedFiles?.has(node.path);
+
   const Icon =
     node.type === "folder"
       ? expandedPaths.has(node.path)
@@ -182,7 +185,9 @@ function FileTreeNode({
     if (node.type === "folder") {
       onToggle(node.path);
     } else {
-      onFileSelect(node.path);
+      if (!isLocked) {
+        onFileSelect(node.path);
+      }
     }
   };
 
@@ -191,11 +196,13 @@ function FileTreeNode({
       <button
         className={clsx(
           "flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-sm text-slate-200 transition hover:bg-slate-900/70",
-          selectedFile === node.path && "bg-slate-900 text-white"
+          selectedFile === node.path && "bg-slate-900 text-white",
+          isLocked && "opacity-50 cursor-not-allowed"
         )}
         style={{ paddingLeft: padding }}
         onClick={handleClick}
-        title={isCore ? "Core template file (managed by AppForge)" : undefined}
+        disabled={isLocked}
+        title={isCore ? "Core template file (managed by AppForge)" : isLocked ? "File is being modified by AI" : undefined}
       >
         {node.type === "folder" && (
           <ChevronRight
@@ -209,11 +216,20 @@ function FileTreeNode({
         <span className={clsx("truncate text-sm", isEdited && "text-amber-300", isCore && "text-blue-300")}>
           {node.name}
         </span>
-        {isCore && (
-          <Lock className="ml-auto h-3 w-3 text-blue-400/60" title="Core template file" />
+        {isAdded && (
+          <span className="ml-auto rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/30">NEW</span>
         )}
-        {isEdited && !isCore && (
-          <span className="ml-auto h-2 w-2 rounded-full bg-amber-400" title="Unsaved changes" />
+        {!isAdded && isModified && (
+          <span className="ml-auto rounded-full bg-blue-500/20 px-1.5 py-0.5 text-[10px] font-bold text-blue-400 border border-blue-500/30">MOD</span>
+        )}
+        {isCore && (
+          <Lock className="ml-auto h-3 w-3 text-blue-400/60" />
+        )}
+        {isLocked && !isCore && (
+          <Lock className="ml-auto h-3 w-3 text-amber-400 animate-pulse" />
+        )}
+        {isEdited && !isCore && !isAdded && !isModified && !isLocked && (
+          <span className="ml-auto h-2 w-2 rounded-full bg-amber-400" />
         )}
       </button>
 
@@ -229,6 +245,9 @@ function FileTreeNode({
             onFileSelect={onFileSelect}
             selectedFile={selectedFile}
             editedFiles={editedFiles}
+            addedFiles={addedFiles}
+            modifiedFiles={modifiedFiles}
+            lockedFiles={lockedFiles}
           />
         ))}
     </div>

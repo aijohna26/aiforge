@@ -11,7 +11,10 @@ export class FileCache {
   private syncCallbacks = new Map<string, NodeJS.Timeout>();
 
   // Snapshot history for rollback (stores state before AI changes)
+  // Key format: `${projectId}:${snapshotId}`
   private snapshots = new Map<string, {
+    id: string;
+    projectId: string;
     files: Map<string, GeneratedFile>;
     timestamp: number;
     description: string;
@@ -63,6 +66,7 @@ export class FileCache {
     file: GeneratedFile,
     syncFn?: (file: GeneratedFile) => Promise<void>
   ): void {
+    console.log(`[FileCache] setFile: ${projectId}/${file.path}, length: ${file.content.length}`);
     const projectCache = this.getProjectCache(projectId);
     projectCache.set(file.path, { ...file });
 
@@ -193,9 +197,11 @@ export class FileCache {
 
   /**
    * Create snapshot before AI makes changes (for rollback)
+   * Returns the snapshot ID
    */
-  createSnapshot(projectId: string, description: string): void {
+  createSnapshot(projectId: string, description: string): string {
     const projectCache = this.getProjectCache(projectId);
+    const snapshotId = crypto.randomUUID();
 
     // Deep copy current state
     const snapshotFiles = new Map<string, GeneratedFile>();
@@ -203,13 +209,17 @@ export class FileCache {
       snapshotFiles.set(path, { ...file });
     }
 
-    this.snapshots.set(projectId, {
+    const key = `${projectId}:${snapshotId}`;
+    this.snapshots.set(key, {
+      id: snapshotId,
+      projectId,
       files: snapshotFiles,
       timestamp: Date.now(),
       description,
     });
 
-    console.log(`[FileCache] Created snapshot for ${projectId}: ${description}`);
+    console.log(`[FileCache] Created snapshot ${snapshotId} for ${projectId}: ${description}`);
+    return snapshotId;
   }
 
   /**
@@ -226,15 +236,17 @@ export class FileCache {
   }
 
   /**
-   * Rollback to snapshot (undo AI changes)
+   * Rollback to a specific snapshot (undo AI changes)
    */
   rollback(
     projectId: string,
+    snapshotId: string,
     syncFn?: (files: GeneratedFile[]) => Promise<void>
   ): boolean {
-    const snapshot = this.snapshots.get(projectId);
+    const key = `${projectId}:${snapshotId}`;
+    const snapshot = this.snapshots.get(key);
     if (!snapshot) {
-      console.warn(`[FileCache] No snapshot found for ${projectId}`);
+      console.warn(`[FileCache] No snapshot found for ${projectId}:${snapshotId}`);
       return false;
     }
 
@@ -254,9 +266,9 @@ export class FileCache {
     }
 
     // Clear snapshot after rollback
-    this.snapshots.delete(projectId);
+    this.snapshots.delete(key);
 
-    console.log(`[FileCache] Rolled back ${restoredFiles.length} files for ${projectId}`);
+    console.log(`[FileCache] Rolled back ${restoredFiles.length} files to snapshot ${snapshotId}`);
     return true;
   }
 
@@ -282,20 +294,19 @@ export class FileCache {
     projectCount: number;
     fileCount: number;
     pendingWrites: number;
-    stagedChanges: number;
+    snapshots: number;
   } {
     if (projectId) {
       return {
         projectCount: 1,
         fileCount: this.getProjectCache(projectId).size,
         pendingWrites: this.pendingWrites.get(projectId)?.size ?? 0,
-        stagedChanges: this.stagedChanges.get(projectId)?.size ?? 0,
+        snapshots: this.snapshots.has(projectId) ? 1 : 0,
       };
     }
 
     let totalFiles = 0;
     let totalPending = 0;
-    let totalStaged = 0;
 
     for (const projectCache of this.cache.values()) {
       totalFiles += projectCache.size;
@@ -305,15 +316,11 @@ export class FileCache {
       totalPending += pending.size;
     }
 
-    for (const staged of this.stagedChanges.values()) {
-      totalStaged += staged.size;
-    }
-
     return {
       projectCount: this.cache.size,
       fileCount: totalFiles,
       pendingWrites: totalPending,
-      stagedChanges: totalStaged,
+      snapshots: this.snapshots.size,
     };
   }
 }

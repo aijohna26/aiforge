@@ -24,11 +24,11 @@ const SYSTEM_PROMPT = `You are an elite React Native and Expo architect. You bui
 # TECHNICAL REQUIREMENTS
 
 ## Stack (EXACT versions - do not deviate)
-- expo: ~53.0.0
-- expo-router: ~5.0.0
-- expo-status-bar: ~2.2.0
-- react: 19.0.0
-- react-native: 0.79.3
+- expo: ~54.0.0
+- expo-router: ~6.0.0
+- expo-status-bar: ~3.0.0
+- react: 19.1.0
+- react-native: 0.81.4
 - typescript: ~5.8.3
 
 ## Architecture Rules
@@ -80,11 +80,11 @@ const SYSTEM_PROMPT = `You are an elite React Native and Expo architect. You bui
     "web": "expo start --web"
   },
   "dependencies": {
-    "expo": "~53.0.0",
-    "expo-router": "~5.0.0",
-    "expo-status-bar": "~2.2.0",
-    "react": "19.0.0",
-    "react-native": "0.79.3"
+    "expo": "~54.0.0",
+    "expo-router": "~6.0.0",
+    "expo-status-bar": "~3.0.0",
+    "react": "19.1.0",
+    "react-native": "0.81.4"
   },
   "devDependencies": {
     "@types/react": "~19.0.10",

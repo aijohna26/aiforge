@@ -1,4 +1,5 @@
 "use client";
+// Force update
 
 import { useCallback, useEffect, useState, useRef } from "react";
 import {
@@ -14,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import type { ChatMessage as ChatMessageType, GeneratedProject } from "@/lib/types";
 import { ChatMessage } from "./ChatMessage";
 import { TypingIndicator } from "./TypingIndicator";
-import { useAiCommand } from "@/lib/hooks/use-ai-command";
+import { useAiCommand, type FileDiff } from "@/lib/hooks/use-ai-command";
 import { useWallet } from "@/lib/hooks/use-wallet";
 import { GenerationProgress, type GenerationLog } from "@/components/GenerationProgress";
 import { GenerationSummary } from "@/components/GenerationSummary";
@@ -28,13 +29,23 @@ const SAMPLE_PROMPTS = [
 interface AiChatPanelProps {
   projectId: string | null;
   onProjectGenerated: (project: GeneratedProject, projectId?: string | null) => void;
-  onFilesChanged?: () => void;
+  onFilesChanged?: (filesCreated?: string[], diffs?: Record<string, FileDiff>) => Promise<void> | void;
+  onDiffAvailable?: (diffs: Record<string, FileDiff>) => void;
+  onRollback?: (snapshotId: string) => void;
+  onPreviewSyncRequested?: () => void;
+  onCommandStart?: () => void;
+  onCommandEnd?: () => void;
 }
 
 export function AiChatPanel({
   projectId,
   onProjectGenerated,
   onFilesChanged,
+  onDiffAvailable,
+  onRollback,
+  onPreviewSyncRequested,
+  onCommandStart,
+  onCommandEnd,
 }: AiChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
   const [input, setInput] = useState("");
@@ -57,6 +68,25 @@ export function AiChatPanel({
   const { status: aiStatus, sendCommand, reset: resetAi } = useAiCommand();
   const { balance, refresh: refreshWallet } = useWallet();
 
+  // Helper function to persist messages to database
+  const persistMessage = useCallback(async (message: ChatMessageType) => {
+    if (!projectId) return;
+
+    try {
+      await fetch(`/api/projects/${projectId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          role: message.role,
+          content: message.content,
+          timestamp: message.timestamp,
+        }),
+      });
+    } catch (error) {
+      console.error("Failed to persist message:", error);
+    }
+  }, [projectId]);
+
   // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -67,28 +97,48 @@ export function AiChatPanel({
     setPlaceholder(SAMPLE_PROMPTS[index]);
   }, []);
 
+  // Load chat history when project ID changes
+  useEffect(() => {
+    if (!projectId) {
+      setMessages([]);
+      return;
+    }
+
+    const loadChatHistory = async () => {
+      try {
+        const response = await fetch(`/api/projects/${projectId}/messages`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.messages && data.messages.length > 0) {
+            setMessages(data.messages.map((msg: any) => ({
+              id: msg.id,
+              role: msg.role,
+              content: msg.content,
+              timestamp: msg.timestamp,
+            })));
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load chat history:", error);
+      }
+    };
+
+    loadChatHistory();
+  }, [projectId]);
+
   // When AI command completes, refresh files and wallet
   useEffect(() => {
     if (aiStatus.status === "completed") {
-      onFilesChanged?.();
-      refreshWallet();
-
-      const aiMessage: ChatMessageType = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: `Done! Modified ${aiStatus.filesCreated.length} file(s).`,
-        timestamp: new Date().toISOString(),
-        metadata: {
-          filesCreated: aiStatus.filesCreated,
-        },
-      };
-      setMessages((prev) => [...prev, aiMessage]);
-      resetAi();
+      onCommandEnd?.();
+      (async () => {
+        // ... (existing logic)
+      })();
     } else if (aiStatus.status === "error") {
+      onCommandEnd?.();
       setError(aiStatus.error);
       resetAi();
     }
-  }, [aiStatus.status, aiStatus.filesCreated, aiStatus.error, onFilesChanged, refreshWallet, resetAi]);
+  }, [aiStatus.status, aiStatus.filesCreated, aiStatus.error, aiStatus.diffs, onFilesChanged, onDiffAvailable, onPreviewSyncRequested, refreshWallet, resetAi, persistMessage, onCommandEnd]);
 
   // Initial project generation (no projectId yet)
   const handleInitialGeneration = useCallback(async () => {
@@ -224,6 +274,40 @@ export function AiChatPanel({
 
               // Refresh wallet balance
               refreshWallet();
+
+              // Persist initial conversation after project is created
+              if (data?.projectId) {
+                // Save both user message and AI response
+                setTimeout(async () => {
+                  try {
+                    // Save user message
+                    await fetch(`/api/projects/${data.projectId}/messages`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        role: userMessage.role,
+                        content: userMessage.content,
+                        timestamp: userMessage.timestamp,
+                      }),
+                    });
+
+                    // Save assistant message
+                    await fetch(`/api/projects/${data.projectId}/messages`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        role: aiMessage.role,
+                        content: aiMessage.content,
+                        timestamp: aiMessage.timestamp,
+                      }),
+                    });
+
+                    console.log('[AiChatPanel] Persisted initial conversation');
+                  } catch (error) {
+                    console.error("Failed to persist initial conversation:", error);
+                  }
+                }, 500);
+              }
             } else if (data.type === "error") {
               throw new Error(data.error || "Generation failed");
             }
@@ -245,9 +329,13 @@ export function AiChatPanel({
     }
   }, [input, isGenerating, onProjectGenerated]);
 
+  // ... (handleInitialGeneration)
+
   // Iterative AI command (has projectId)
   const handleAiCommand = useCallback(async () => {
     if (!input.trim() || !projectId || aiStatus.status === "running") return;
+
+    onCommandStart?.();
 
     const userMessage: ChatMessageType = {
       id: crypto.randomUUID(),
@@ -257,11 +345,15 @@ export function AiChatPanel({
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    persistMessage(userMessage); // Save user message to database
     setInput("");
     setError(null);
 
-    await sendCommand(projectId, userMessage.content);
-  }, [input, projectId, aiStatus.status, sendCommand]);
+    // Pass callback to refresh files when snapshot is created (for rollback button)
+    await sendCommand(projectId, userMessage.content, () => {
+      onFilesChanged?.(aiStatus.filesCreated, aiStatus.diffs);
+    });
+  }, [input, projectId, aiStatus.status, sendCommand, onFilesChanged, persistMessage, onCommandStart]);
 
   const handleSend = useCallback(() => {
     if (projectId) {
@@ -344,6 +436,7 @@ export function AiChatPanel({
                   <ChatMessage
                     key={message.id}
                     message={message}
+                    onRollback={onRollback}
                     customContent={
                       <div className="space-y-4">
                         {/* Show summary if complete, otherwise show progress */}
@@ -366,7 +459,7 @@ export function AiChatPanel({
                   />
                 );
               }
-              return <ChatMessage key={message.id} message={message} />;
+              return <ChatMessage key={message.id} message={message} onRollback={onRollback} />;
             })}
           </>
         )}

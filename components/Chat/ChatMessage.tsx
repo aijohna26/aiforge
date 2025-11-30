@@ -1,18 +1,21 @@
 "use client";
 
 import { memo, ReactNode } from "react";
-import { Bot, User2 } from "lucide-react";
+import { Bot, User2, RotateCcw } from "lucide-react";
 import { type ChatMessage as ChatMessageType } from "@/lib/types";
+import { Button } from "@/components/ui/button";
 import clsx from "clsx";
 
 interface ChatMessageProps {
   message: ChatMessageType;
   customContent?: ReactNode;
+  onRollback?: (snapshotId: string) => void;
 }
 
 export const ChatMessage = memo(function ChatMessage({
   message,
   customContent,
+  onRollback,
 }: ChatMessageProps) {
   const isUser = message.role === "user";
 
@@ -50,9 +53,22 @@ export const ChatMessage = memo(function ChatMessage({
         )}
         {message.metadata?.filesCreated && (
           <div className="mt-3 rounded-lg bg-slate-950/50 p-3 text-xs text-slate-400">
-            <p className="font-semibold uppercase tracking-wide text-slate-300">
-              Files Created
-            </p>
+            <div className="flex items-center justify-between">
+              <p className="font-semibold uppercase tracking-wide text-slate-300">
+                Files Created
+              </p>
+              {message.metadata.snapshotId && onRollback && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onRollback(message.metadata.snapshotId!)}
+                  className="gap-1.5 border-amber-700/50 bg-amber-950/30 text-amber-400 hover:bg-amber-950/50 text-[11px] h-7 px-2"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  Rollback
+                </Button>
+              )}
+            </div>
             <ul className="mt-2 space-y-1">
               {message.metadata.filesCreated.map((file) => (
                 <li key={file} className="font-mono text-[11px] text-slate-400">

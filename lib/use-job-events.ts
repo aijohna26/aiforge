@@ -20,6 +20,7 @@ export function useJobEvents(options: UseJobEventsOptions = {}) {
   const [events, setEvents] = useState<JobEvent[]>([]);
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const connectRef = useRef<() => void>(() => {});
 
   const connect = useCallback(() => {
     // Clean up existing connection
@@ -52,11 +53,17 @@ export function useJobEvents(options: UseJobEventsOptions = {}) {
       // Auto-reconnect after 3 seconds
       if (autoReconnect) {
         reconnectTimeoutRef.current = setTimeout(() => {
-          connect();
+          connectRef.current();
         }, 3000);
       }
     };
   }, [jobId, onEvent, autoReconnect]);
+
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
+
+  // no-op: reconnect is handled via connectRef
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {

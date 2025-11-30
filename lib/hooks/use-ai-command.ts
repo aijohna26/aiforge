@@ -2,16 +2,24 @@
 
 import { useState, useCallback } from "react";
 
+export interface FileDiff {
+  path: string;
+  before: string;
+  after: string;
+}
+
 export interface AiCommandStatus {
   status: "idle" | "running" | "completed" | "error";
   logs: string[];
   filesCreated: string[];
   error: string | null;
+  diffs: Record<string, FileDiff>;
+  snapshotId?: string; // ID for rollback functionality
 }
 
 interface UseAiCommandReturn {
   status: AiCommandStatus;
-  sendCommand: (projectId: string, prompt: string) => Promise<void>;
+  sendCommand: (projectId: string, prompt: string, onSnapshotCreated?: () => void) => Promise<void>;
   reset: () => void;
 }
 
@@ -21,15 +29,17 @@ export function useAiCommand(): UseAiCommandReturn {
     logs: [],
     filesCreated: [],
     error: null,
+    diffs: {},
   });
 
   const sendCommand = useCallback(
-    async (projectId: string, prompt: string): Promise<void> => {
+    async (projectId: string, prompt: string, onSnapshotCreated?: () => void): Promise<void> => {
       setStatus({
         status: "running",
         logs: ["Starting AI edit..."],
         filesCreated: [],
         error: null,
+        diffs: {},
       });
 
       try {
@@ -77,11 +87,35 @@ export function useAiCommand(): UseAiCommandReturn {
                   }));
                   break;
 
+                case "snapshot_created":
+                  setStatus((prev) => ({
+                    ...prev,
+                    logs: [...prev.logs, `Created backup: ${data.description || "AI edit"}`],
+                    snapshotId: data.snapshotId,
+                  }));
+                  // Notify parent immediately when snapshot is created
+                  onSnapshotCreated?.();
+                  break;
+
                 case "file_modified":
                   setStatus((prev) => ({
                     ...prev,
                     filesCreated: [...prev.filesCreated, data.path],
                     logs: [...prev.logs, `Modified: ${data.path}`],
+                  }));
+                  break;
+
+                case "diff":
+                  setStatus((prev) => ({
+                    ...prev,
+                    diffs: {
+                      ...prev.diffs,
+                      [data.path]: {
+                        path: data.path,
+                        before: data.before ?? "",
+                        after: data.after ?? "",
+                      },
+                    },
                   }));
                   break;
 
@@ -121,6 +155,7 @@ export function useAiCommand(): UseAiCommandReturn {
       logs: [],
       filesCreated: [],
       error: null,
+      diffs: {},
     });
   }, []);
 
