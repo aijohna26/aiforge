@@ -2,18 +2,64 @@ import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { walletManager } from "@/lib/wallet";
 import { fileCache } from "@/lib/file-cache";
-import Anthropic from "@anthropic-ai/sdk";
+import { getAIProvider } from "@/lib/ai/factory";
 
-const anthropicClient = process.env.ANTHROPIC_API_KEY
-  ? new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-      timeout: 120000, // 2 minutes
-      maxRetries: 2,
-    })
-  : null;
+const MAX_CONTEXT_CHARS = 20000;
+const PRIORITY_FILES = [
+  "app/index.tsx",
+  "app/_layout.tsx",
+  "package.json",
+  "app.json",
+];
 
 // Credit costs for AI operations
-const AI_COMMAND_COST = 2; // Credits per iterative AI edit/command
+const AI_COMMAND_COST = 1; // Credits per iterative AI edit/command (API cost: ~$0.02, Revenue: $0.25, Profit: 11.5x)
+
+// Smart file selection (Bolt.diy style) - only send relevant files
+function buildFileContext(files: any[]): { context: string; filesIncluded: string[] } {
+  const filesIncluded: string[] = [];
+  let totalChars = 0;
+  const contextParts: string[] = [];
+
+  // 1. Always include priority files first
+  for (const priorityPath of PRIORITY_FILES) {
+    const file = files.find((f) => f.path === priorityPath);
+    if (file && totalChars + file.content.length < MAX_CONTEXT_CHARS) {
+      contextParts.push(`File: ${file.path}\\n\`\`\`\\n${file.content}\\n\`\`\``);
+      filesIncluded.push(file.path);
+      totalChars += file.content.length;
+    }
+  }
+
+  // 2. Include other files until we hit the limit (prioritize smaller files)
+  const remainingFiles = files
+    .filter((f) => !PRIORITY_FILES.includes(f.path))
+    .sort((a, b) => a.content.length - b.content.length); // Smaller files first
+
+  for (const file of remainingFiles) {
+    if (totalChars + file.content.length < MAX_CONTEXT_CHARS) {
+      contextParts.push(`File: ${file.path}\\n\`\`\`\\n${file.content}\\n\`\`\``);
+      filesIncluded.push(file.path);
+      totalChars += file.content.length;
+    } else {
+      break; // Stop when we hit the limit
+    }
+  }
+
+  console.log(`[Context] Included ${filesIncluded.length}/${files.length} files (${totalChars} chars)`);
+
+  const truncatedNote = filesIncluded.length < files.length
+    ? `\\n[Context truncated after ${filesIncluded.length} files. Remaining files (not sent): ${files
+        .filter((f) => !filesIncluded.includes(f.path))
+        .map((f) => f.path)
+        .join(", ")}]`
+    : "";
+
+  return {
+    context: contextParts.join("\\n\\n") + truncatedNote,
+    filesIncluded,
+  };
+}
 
 export const runtime = "nodejs";
 
@@ -98,110 +144,33 @@ export async function POST(
             encoder.encode(`data: ${JSON.stringify({ type: "status", message: "Reading project files..." })}\n\n`)
           );
 
-          if (!anthropicClient) {
-            throw new Error("AI service not configured");
-          }
+          const provider = getAIProvider();
+          console.log(`[AI Command] Using provider: ${provider.name}`);
 
-          // Build context from existing files
-          const fileContext = files
-            .map((f) => `File: ${f.path}\n\`\`\`\n${f.content}\n\`\`\``)
-            .join("\n\n");
+          const { context: fileContext, filesIncluded } = buildFileContext(files);
+          console.log(`[AI Command] Sending ${filesIncluded.length} files to ${provider.name}`);
 
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ type: "status", message: "Processing your request..." })}\n\n`)
-          );
-
-          // Call Claude with STREAMING for instant feedback (Bolt.diy style!)
-          const stream = await anthropicClient.messages.stream({
-            model: "claude-sonnet-4-5-20250929",
-            max_tokens: 16384, // Increased to handle large file responses
-            system: `You are an expert React Native developer. The user wants to modify their existing app.
-
-Current project files:
-${fileContext}
-
-CRITICAL: You MUST respond with ONLY a valid JSON object. No explanations, no markdown, no code fences.
-
-Required JSON structure:
-{
-  "modifications": [
-    {
-      "path": "app/index.tsx",
-      "content": "...complete file content...",
-      "action": "edit"
-    }
-  ],
-  "summary": "Changed button colors from blue to green"
-}
-
-Rules:
-1. Modify ONLY files that need changes
-2. Include COMPLETE file content in each modification
-3. Keep summary under 100 characters
-4. Start your response with { and end with }
-5. NO markdown formatting, NO \`\`\`json blocks`,
-            messages: [
-              {
-                role: "user",
-                content: prompt,
-              },
-            ],
-          });
-
-          // Stream thinking progress to user (Claude Code style!)
-          let responseText = '';
-          let lastProgressUpdate = 0;
-          const progressMessages = [
-            "Reading project files...",
-            "Understanding your request...",
-            "Planning modifications...",
-            "Generating code changes...",
-            "Finalizing updates..."
-          ];
-          let progressIndex = 0;
-
-          for await (const chunk of stream) {
-            if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-              responseText += chunk.delta.text;
-
-              // Send varied progress updates (Claude Code style)
-              const charsProcessed = responseText.length;
-              if (charsProcessed - lastProgressUpdate > 500) {
-                progressIndex = Math.min(progressIndex + 1, progressMessages.length - 1);
+          let result;
+          try {
+            result = await provider.editCode({
+              prompt,
+              context: fileContext,
+              maxTokens: 16384,
+              onProgress: (chunk) => {
+                if (!chunk?.content) return;
                 controller.enqueue(
                   encoder.encode(`data: ${JSON.stringify({
                     type: "status",
-                    message: progressMessages[progressIndex]
+                    message: chunk.content,
                   })}\n\n`)
                 );
-                lastProgressUpdate = charsProcessed;
-              }
-            }
+              },
+            });
+          } catch (providerError) {
+            console.error(`[AI Command] ${provider.name} error:`, providerError);
+            throw providerError;
           }
 
-          await stream.finalMessage();
-
-          // Parse AI response from streamed text - try to extract valid JSON
-          let result;
-          try {
-            // First, try to find JSON between triple backticks (if AI wrapped it)
-            const codeBlockMatch = responseText.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
-            if (codeBlockMatch) {
-              result = JSON.parse(codeBlockMatch[1]);
-            } else {
-              // Otherwise, find the JSON object
-              const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-              if (!jsonMatch) {
-                throw new Error("No JSON found in AI response");
-              }
-              result = JSON.parse(jsonMatch[0]);
-            }
-          } catch (parseError) {
-            console.error("Failed to parse AI response:", responseText);
-            throw new Error(`Invalid AI response format: ${parseError instanceof Error ? parseError.message : 'Parse error'}`);
-          }
-
-          // Validate result structure
           if (!result.modifications || !Array.isArray(result.modifications)) {
             throw new Error("AI response missing 'modifications' array");
           }

@@ -18,6 +18,10 @@ export const metadata: Metadata = {
     "AI-powered mobile app builder with Monaco editor, Expo, and Supabase.",
 };
 
+import { Toaster } from "sonner";
+
+// ... existing imports
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -29,6 +33,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-slate-950 text-white antialiased`}
       >
         {children}
+        <Toaster position="top-center" theme="dark" />
       </body>
     </html>
   );

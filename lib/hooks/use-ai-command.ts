@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { toast } from "sonner";
 
 export interface FileDiff {
   path: string;
@@ -23,7 +24,11 @@ interface UseAiCommandReturn {
   reset: () => void;
 }
 
-export function useAiCommand(): UseAiCommandReturn {
+export interface UseAiCommandOptions {
+  onSuccess?: (files: string[]) => void;
+}
+
+export function useAiCommand({ onSuccess }: UseAiCommandOptions = {}): UseAiCommandReturn {
   const [status, setStatus] = useState<AiCommandStatus>({
     status: "idle",
     logs: [],
@@ -126,10 +131,32 @@ export function useAiCommand(): UseAiCommandReturn {
                     logs: [...prev.logs, data.message || "Completed!"],
                     filesCreated: data.filesModified || prev.filesCreated,
                   }));
+                  onSuccess?.(data.filesModified || []);
                   break;
 
                 case "error":
-                  throw new Error(data.error || "Unknown error");
+                  const errorMessage = data.error || "Unknown error";
+                  const aiProvider = process.env.NEXT_PUBLIC_AI_PROVIDER || "Anthropic";
+
+                  // Handle specific API errors with toast
+                  if (errorMessage.includes("credit balance") || errorMessage.includes("400")) {
+                    toast.error("AI Service Unavailable", {
+                      description: `Your ${aiProvider} credit balance is too low. Please upgrade your plan or check your API key.`,
+                      duration: 8000,
+                    });
+                  } else {
+                    toast.error("AI Command Failed", {
+                      description: `${aiProvider} Error: ${errorMessage}`,
+                    });
+                  }
+
+                  setStatus((prev) => ({
+                    ...prev,
+                    status: "error",
+                    error: errorMessage,
+                    logs: [...prev.logs, `Error: ${errorMessage}`],
+                  }));
+                  return; // Stop processing stream
               }
             } catch (parseError) {
               console.error("Error parsing SSE data:", parseError);
@@ -138,6 +165,19 @@ export function useAiCommand(): UseAiCommandReturn {
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unknown error";
+
+        // Show toast for API errors
+        if (message.includes("credit balance") || message.includes("400")) {
+          toast.error("AI Service Unavailable", {
+            description: "Your Anthropic credit balance is too low. Please upgrade your plan.",
+            duration: 8000,
+          });
+        } else {
+          toast.error("AI Command Failed", {
+            description: message,
+          });
+        }
+
         setStatus((prev) => ({
           ...prev,
           status: "error",
@@ -146,7 +186,7 @@ export function useAiCommand(): UseAiCommandReturn {
         }));
       }
     },
-    []
+    [onSuccess]
   );
 
   const reset = useCallback(() => {

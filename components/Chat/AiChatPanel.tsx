@@ -66,6 +66,8 @@ export function AiChatPanel({
   } | null>(null);
 
   const { status: aiStatus, sendCommand, reset: resetAi } = useAiCommand();
+  const lastLogIndexRef = useRef(0);
+  const streamingStatusIdRef = useRef<string | null>(null);
   const { balance, refresh: refreshWallet } = useWallet();
 
   // Helper function to persist messages to database
@@ -126,19 +128,78 @@ export function AiChatPanel({
     loadChatHistory();
   }, [projectId]);
 
+  // Surface streaming logs while command runs
+  const upsertStreamingMessage = useCallback((content: string, state: ChatMessageType["status"] = "thinking") => {
+    setMessages((prev) => {
+      const id = streamingStatusIdRef.current ?? crypto.randomUUID();
+      streamingStatusIdRef.current = id;
+      const existingIndex = prev.findIndex((msg) => msg.id === id);
+      const updatedMsg: ChatMessageType = {
+        id,
+        role: "assistant",
+        content,
+        status: state,
+        timestamp: new Date().toISOString(),
+      };
+      if (existingIndex !== -1) {
+        const clone = [...prev];
+        clone[existingIndex] = updatedMsg;
+        return clone;
+      }
+      return [...prev, updatedMsg];
+    });
+  }, []);
+
+  const removeStreamingMessage = useCallback((delay = 0) => {
+    if (!streamingStatusIdRef.current) return;
+    const idToRemove = streamingStatusIdRef.current;
+    streamingStatusIdRef.current = null;
+    const perform = () => {
+      setMessages((prev) => prev.filter((msg) => msg.id !== idToRemove));
+    };
+    if (delay > 0) {
+      setTimeout(perform, delay);
+    } else {
+      perform();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (aiStatus.logs.length > lastLogIndexRef.current) {
+      const latest = aiStatus.logs[aiStatus.logs.length - 1];
+      lastLogIndexRef.current = aiStatus.logs.length;
+      upsertStreamingMessage(latest || "Working...");
+    }
+  }, [aiStatus.logs, upsertStreamingMessage]);
+
   // When AI command completes, refresh files and wallet
   useEffect(() => {
     if (aiStatus.status === "completed") {
+      console.log('[AiChatPanel] AI command completed, filesCreated:', aiStatus.filesCreated);
       onCommandEnd?.();
+      lastLogIndexRef.current = 0;
       (async () => {
-        // ... (existing logic)
+        try {
+          console.log('[AiChatPanel] Calling onFilesChanged with:', aiStatus.filesCreated, aiStatus.diffs);
+          await onFilesChanged?.(aiStatus.filesCreated, aiStatus.diffs);
+          onDiffAvailable?.(aiStatus.diffs);
+          await refreshWallet();
+          onPreviewSyncRequested?.();
+          upsertStreamingMessage(aiStatus.logs.at(-1) || "All changes applied!", "done");
+          removeStreamingMessage(2000);
+        } finally {
+          resetAi();
+        }
       })();
     } else if (aiStatus.status === "error") {
       onCommandEnd?.();
+      lastLogIndexRef.current = 0;
       setError(aiStatus.error);
+      upsertStreamingMessage(aiStatus.error || "Something went wrong", "error");
+      removeStreamingMessage(4000);
       resetAi();
     }
-  }, [aiStatus.status, aiStatus.filesCreated, aiStatus.error, aiStatus.diffs, onFilesChanged, onDiffAvailable, onPreviewSyncRequested, refreshWallet, resetAi, persistMessage, onCommandEnd]);
+  }, [aiStatus.status, aiStatus.filesCreated, aiStatus.error, aiStatus.diffs, aiStatus.logs, onFilesChanged, onDiffAvailable, onPreviewSyncRequested, refreshWallet, resetAi, persistMessage, onCommandEnd, upsertStreamingMessage, removeStreamingMessage]);
 
   // Initial project generation (no projectId yet)
   const handleInitialGeneration = useCallback(async () => {
@@ -261,6 +322,11 @@ export function AiChatPanel({
                 timestamp: new Date().toISOString(),
                 metadata: {
                   filesCreated: data?.filesCreated,
+                  projectDetails: data?.project ? {
+                    name: data.project.projectName,
+                    description: data.project.description,
+                    userPrompt: userMessage.content
+                  } : undefined
                 },
               };
 
@@ -349,6 +415,11 @@ export function AiChatPanel({
     setInput("");
     setError(null);
 
+    // Clear generation state to prevent summary from appearing on new messages
+    setIsGenerationComplete(false);
+    setGenerationLogs([]);
+    setCompletedProject(null);
+
     // Pass callback to refresh files when snapshot is created (for rollback button)
     await sendCommand(projectId, userMessage.content, () => {
       onFilesChanged?.(aiStatus.filesCreated, aiStatus.diffs);
@@ -431,6 +502,24 @@ export function AiChatPanel({
               const isLastAssistant = message.role === "assistant" &&
                 index === messages.findLastIndex(m => m.role === "assistant");
 
+              if (message.metadata?.projectDetails) {
+                return (
+                  <ChatMessage
+                    key={message.id}
+                    message={message}
+                    onRollback={onRollback}
+                    customContent={
+                      <GenerationSummary
+                        projectName={message.metadata.projectDetails.name}
+                        description={message.metadata.projectDetails.description}
+                        filesCreated={message.metadata.filesCreated || []}
+                        userPrompt={message.metadata.projectDetails.userPrompt}
+                      />
+                    }
+                  />
+                );
+              }
+
               if (isLastAssistant && (isGenerating || isGenerationComplete) && generationLogs.length > 0) {
                 return (
                   <ChatMessage
@@ -439,21 +528,11 @@ export function AiChatPanel({
                     onRollback={onRollback}
                     customContent={
                       <div className="space-y-4">
-                        {/* Show summary if complete, otherwise show progress */}
-                        {isGenerationComplete && completedProject ? (
-                          <GenerationSummary
-                            projectName={completedProject.name}
-                            description={completedProject.description}
-                            filesCreated={completedProject.files}
-                            userPrompt={completedProject.userPrompt}
-                          />
-                        ) : (
-                          <GenerationProgress
-                            logs={generationLogs}
-                            currentStatus={currentStatus}
-                            isComplete={isGenerationComplete}
-                          />
-                        )}
+                        <GenerationProgress
+                          logs={generationLogs}
+                          currentStatus={currentStatus}
+                          isComplete={isGenerationComplete}
+                        />
                       </div>
                     }
                   />

@@ -1,16 +1,8 @@
-import Anthropic from "@anthropic-ai/sdk";
 import type { GeneratedProject, GeneratedFile } from "@/lib/types";
 import { createClient } from "@/lib/supabase/server";
 import { getBaseTemplate, TEMPLATE_VERSION, isCoreFile } from "@/lib/templates/react-native-base";
 import { walletManager } from "@/lib/wallet";
-
-const anthropicClient = process.env.ANTHROPIC_API_KEY
-  ? new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-      timeout: 300000, // 5 minutes
-      maxRetries: 2,
-    })
-  : null;
+import { getAIProvider } from "@/lib/ai/factory";
 
 const SYSTEM_PROMPT = `You are an elite React Native and Expo architect. You build production-ready mobile apps that work perfectly on first run.
 
@@ -248,7 +240,7 @@ Remember: The app must work PERFECTLY on first run. Users should be impressed by
 export const runtime = "nodejs";
 
 // Credit costs for different operations
-const GENERATION_COST = 5; // Credits per full app generation
+const GENERATION_COST = 6; // Credits per full app generation (API cost: ~$0.50, Revenue: $1.50, Profit: 2x)
 
 export async function POST(req: Request) {
   try {
@@ -365,46 +357,36 @@ export async function POST(req: Request) {
           let project: GeneratedProject;
 
           // Generate with progress updates
-          if (!anthropicClient) {
-            console.log("[Generate] No API key, using mock project");
-            project = buildMockProject(prompt);
+          try {
+            console.log("[Generate] Calling AI provider with streaming...");
 
-            // Send progress for mock
+            // Send status: Reading prompt
             controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ type: "progress", chunk: "Generating mock project..." })}\n\n`)
+              encoder.encode(`data: ${JSON.stringify({ type: "status", message: "Reading your prompt..." })}\n\n`)
             );
-          } else {
-            try {
-              console.log("[Generate] Calling Claude API with streaming...");
 
-              // Send status: Reading prompt
+            project = await generateWithClaude(prompt, (chunk: string) => {
+              // Send each chunk as it arrives
               controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ type: "status", message: "Reading your prompt..." })}\n\n`)
+                encoder.encode(`data: ${JSON.stringify({ type: "progress", chunk })}\n\n`)
               );
+            });
 
-              project = await generateWithClaude(prompt, (chunk: string) => {
-                // Send each chunk as it arrives
-                controller.enqueue(
-                  encoder.encode(`data: ${JSON.stringify({ type: "progress", chunk })}\n\n`)
-                );
-              });
+            console.log("[Generate] Successfully generated project:", project.projectName);
 
-              console.log("[Generate] Successfully generated project:", project.projectName);
+            // Send status: Code generated
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ type: "status", message: "Code generation complete" })}\n\n`)
+            );
+          } catch (error) {
+            console.error("[Generate] AI provider failed:", error);
+            console.log("[Generate] Falling back to mock project");
 
-              // Send status: Code generated
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ type: "status", message: "Code generation complete" })}\n\n`)
-              );
-            } catch (error) {
-              console.error("[Generate] Claude API failed:", error);
-              console.log("[Generate] Falling back to mock project");
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ type: "status", message: "API failed, using fallback..." })}\n\n`)
+            );
 
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ type: "status", message: "API failed, using fallback..." })}\n\n`)
-              );
-
-              project = buildMockProject(prompt);
-            }
+            project = buildMockProject(prompt);
           }
 
           // Validate project structure
@@ -528,18 +510,16 @@ export async function POST(req: Request) {
 }
 
 async function resolveProject(prompt: string): Promise<GeneratedProject> {
-  if (!anthropicClient) {
-    console.log("[Generate] No API key, using mock project");
-    return buildMockProject(prompt);
-  }
-
   try {
-    console.log("[Generate] Calling Claude API...");
-    const project = await generateWithClaude(prompt);
+    console.log("[Generate] Getting AI provider...");
+    const provider = getAIProvider();
+    console.log(`[Generate] Using provider: ${provider.name}`);
+
+    const project = await provider.generateProject({ prompt });
     console.log("[Generate] Successfully generated project:", project.projectName);
     return project;
   } catch (error) {
-    console.error("[Generate] Claude API failed:", error);
+    console.error("[Generate] AI provider failed:", error);
     console.log("[Generate] Falling back to mock project");
     return buildMockProject(prompt);
   }
@@ -549,140 +529,19 @@ async function generateWithClaude(
   prompt: string,
   onProgress?: (chunk: string) => void
 ): Promise<GeneratedProject> {
-  if (!anthropicClient) {
-    throw new Error("Anthropic client not configured");
-  }
-
   console.log("[Generate] Starting streaming generation...");
 
-  // Use streaming API with prompt caching and extended thinking
-  const stream = await anthropicClient.messages.stream({
-    model: "claude-sonnet-4-5-20250929",
-    max_tokens: 32768,
-    thinking: {
-      type: "enabled",
-      budget_tokens: 10000, // Allow Claude to think deeply about the code
-    },
-    system: [
-      {
-        type: "text",
-        text: SYSTEM_PROMPT,
-        cache_control: { type: "ephemeral" }, // Cache the system prompt
-      },
-    ],
-    messages: [
-      {
-        role: "user",
-        content: `Create a mobile app for: ${prompt}
+  const provider = getAIProvider();
 
-IMPORTANT REQUIREMENTS:
-1. Generate COMPLETE, FULLY FUNCTIONAL code
-2. Include ALL UI components with professional styling
-3. Implement FULL state management (useState, useReducer)
-4. Include ALL CRUD operations where applicable
-5. Add proper loading states, error handling, and empty states
-6. Use TypeScript interfaces for all data structures
-7. Create polished, production-ready user experience
-
-QUALITY CHECKLIST:
-✓ Every button must work
-✓ Every feature must be complete
-✓ Professional styling throughout
-✓ Proper error handling
-✓ Loading indicators for async operations
-✓ Empty state messaging
-✓ TypeScript types for everything
-✓ No TODOs, no placeholders
-
-Think through the implementation carefully, then return ONLY valid JSON (no markdown, no code fences).`,
-      },
-    ],
-  });
-
-  let fullText = "";
-  let lastProgressUpdate = Date.now();
-  let charCount = 0;
-
-  // Stream the response with better progress updates
-  for await (const chunk of stream) {
-    if (
-      chunk.type === "content_block_delta" &&
-      chunk.delta.type === "text_delta"
-    ) {
-      const text = chunk.delta.text;
-      fullText += text;
-      charCount += text.length;
-
-      // Send periodic status updates (every 500ms or 500 chars)
-      const now = Date.now();
-      if (onProgress && (now - lastProgressUpdate > 500 || charCount > 500)) {
-        // Send a progress ping to keep the UI active
-        // Empty string triggers the frontend to show "Generating code..."
-        onProgress("generating");
-        lastProgressUpdate = now;
-        charCount = 0;
+  return await provider.generateProject({
+    prompt,
+    maxTokens: 32768,
+    onProgress: onProgress ? (chunk) => {
+      if (chunk.type === "progress") {
+        onProgress(chunk.content || "generating");
       }
-    }
-  }
-
-  const message = await stream.finalMessage();
-
-  console.log("[Generate] Claude response length:", fullText.length);
-  console.log("[Generate] Stop reason:", message.stop_reason);
-  console.log("[Generate] Usage:", message.usage);
-
-  // Check if response was truncated
-  if (message.stop_reason === "max_tokens") {
-    console.warn("[Generate] Response was truncated due to max_tokens!");
-  }
-
-  // Parse the response
-  const jsonText = extractJSON(fullText);
-  let parsed: GeneratedProject;
-
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch (parseError) {
-    console.error("[Generate] JSON parse error:", parseError);
-    console.error("[Generate] Raw response (first 1000 chars):", fullText.substring(0, 1000));
-    console.error("[Generate] Raw response (last 500 chars):", fullText.substring(fullText.length - 500));
-    throw new Error("Failed to parse Claude response as JSON - response may be truncated");
-  }
-
-  // Validate required fields
-  if (!parsed.projectName || !parsed.files || !Array.isArray(parsed.files)) {
-    throw new Error("Invalid project structure from Claude");
-  }
-
-  // Ensure all files have required fields
-  parsed.files = parsed.files.map((file): GeneratedFile => ({
-    path: file.path,
-    language: file.language || inferLanguage(file.path),
-    content: file.content || "",
-  }));
-
-  // Add default layout if missing
-  const hasLayout = parsed.files.some((f) => f.path === "app/_layout.tsx");
-  if (!hasLayout) {
-    parsed.files.unshift({
-      path: "app/_layout.tsx",
-      language: "typescript",
-      content: `import { Stack } from "expo-router";
-import { StatusBar } from "expo-status-bar";
-
-export default function RootLayout() {
-  return (
-    <>
-      <Stack screenOptions={{ headerShown: false }} />
-      <StatusBar style="light" />
-    </>
-  );
-}
-`,
-    });
-  }
-
-  return parsed;
+    } : undefined,
+  });
 }
 
 function extractJSON(text: string): string {

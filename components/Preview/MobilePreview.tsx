@@ -5,7 +5,8 @@ import { useStore } from '@nanostores/react';
 import {
   serverStatus,
   previewUrl,
-  qrCodeUrl
+  qrCodeUrl,
+  connectedDevices
 } from '@/lib/webcontainer/stores';
 import {
   mountProject,
@@ -71,6 +72,7 @@ export function MobilePreview({ project, previewVersion }: MobilePreviewProps) {
   const status = useStore(serverStatus);
   const url = useStore(previewUrl);
   const qr = useStore(qrCodeUrl);
+  const deviceCount = useStore(connectedDevices);
 
   // Initialize WebContainer when project loads
   useEffect(() => {
@@ -79,7 +81,11 @@ export function MobilePreview({ project, previewVersion }: MobilePreviewProps) {
         try {
           setErrorMessage(null);
           await mountProject(project.files);
+
+          // installDependencies will check if it needs to run
+          // It will skip if node_modules already exists and package.json hasn't changed
           await installDependencies();
+
           await startDevServer();
         } catch (err) {
           console.error('Failed to start WebContainer:', err);
@@ -166,10 +172,24 @@ export function MobilePreview({ project, previewVersion }: MobilePreviewProps) {
               </div>
             )}
             {status === 'ready' && (
-              <div className="flex items-center gap-2 text-xs text-emerald-400">
-                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span>Running</span>
-              </div>
+              <>
+                <div className="flex items-center gap-2 text-xs text-emerald-400">
+                  <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Server Running</span>
+                </div>
+                <div className="h-4 w-px bg-slate-700 mx-1" />
+                {deviceCount > 0 ? (
+                  <div className="flex items-center gap-2 text-xs text-blue-400">
+                    <span className="h-2 w-2 rounded-full bg-blue-400 animate-pulse" />
+                    <span>{deviceCount} Device{deviceCount > 1 ? 's' : ''} Connected</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                    <span className="h-2 w-2 rounded-full bg-gray-600" />
+                    <span>No Devices</span>
+                  </div>
+                )}
+              </>
             )}
             <Button
               variant="ghost"

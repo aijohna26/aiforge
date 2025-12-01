@@ -2,7 +2,8 @@
 
 import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Download, Share, Save, RotateCcw, Eye } from "lucide-react";
+import { Download, Share, Save, RotateCcw, Eye, Settings } from "lucide-react";
+import { SettingsModal } from "@/components/Settings/SettingsModal";
 import { AiChatPanel } from "@/components/Chat/AiChatPanel";
 import { FileTree } from "@/components/FileTree/FileTree";
 import { CodeEditor } from "@/components/Editor/CodeEditor";
@@ -74,6 +75,7 @@ export default function EditorPage() {
   const previewSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [addedFiles, setAddedFiles] = useState<Set<string>>(new Set());
   const [modifiedFiles, setModifiedFiles] = useState<Set<string>>(new Set());
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const schedulePreviewSync = useCallback(() => {
     if (previewSyncTimer.current) {
@@ -134,9 +136,14 @@ export default function EditorPage() {
     if (backendProject && projectId) {
       console.log('[EditorPage] Code changed for:', currentSelectedPath);
       // Update file cache instantly + debounced DB sync
-      // This also updates the project state which triggers MobilePreview sync
       updateFile(currentSelectedPath, value);
-      schedulePreviewSync();
+
+      // Write directly to WebContainer for HMR (sub-20s updates)
+      writeFile(currentSelectedPath, value).catch(err =>
+        console.error('[EditorPage] Failed to write to WebContainer:', err)
+      );
+
+      // No need to schedulePreviewSync() as HMR handles it
       // No need to track unsaved changes - instant sync!
     } else {
       // For local projects, use old manual save flow
@@ -369,19 +376,38 @@ export default function EditorPage() {
 
   // Handle files changed by AI command
   const handleFilesChanged = useCallback(async (filesCreated?: string[], diffs?: Record<string, FileDiff>) => {
-    if (!project) return;
+    console.log('[EditorPage] handleFilesChanged called with:', filesCreated);
+    if (!project) {
+      console.log('[EditorPage] No project, skipping file sync');
+      return;
+    }
 
-    // Fetch latest project data to get new content
-    const updatedProjectData = await fetch(`/api/projects/${project.id}`).then(res => res.json());
+    try {
+      // Fetch latest project data to get new content
+      const [projectResponse, filesResponse] = await Promise.all([
+        fetch(`/api/projects/${project.id}`, { cache: 'no-store' }).then(res => res.json()),
+        fetch(`/api/projects/${project.id}/files`, { cache: 'no-store' }).then(res => res.json()),
+      ]);
+      const updatedProjectData = projectResponse.project ?? projectResponse;
+      const latestFiles: GeneratedFile[] = filesResponse.files ?? [];
 
-    // Write changes to WebContainer
-    if (filesCreated && filesCreated.length > 0) {
-      for (const path of filesCreated) {
-        const file = updatedProjectData.files.find((f: any) => f.path === path);
-        if (file) {
-          await writeFile(path, file.content);
-        }
+      console.log('[EditorPage] Fetched', latestFiles.length, 'files from backend');
+
+      // Get FilesStore instance
+      const { getFilesStore } = await import('@/lib/webcontainer');
+      const filesStore = getFilesStore();
+
+      // Write ALL files to WebContainer via FilesStore
+      // This ensures complete sync and is more reliable than tracking individual changes
+      console.log('[EditorPage] Syncing all files to WebContainer via FilesStore');
+
+      for (const file of latestFiles) {
+        await filesStore.saveFile(file.path, file.content);
       }
+
+      console.log('[EditorPage] All files synced to WebContainer');
+    } catch (error) {
+      console.error('[EditorPage] Failed to sync files:', error);
     }
 
     // Update UI state
@@ -390,8 +416,6 @@ export default function EditorPage() {
     } else {
       setLocalProject(updatedProjectData);
     }
-
-    schedulePreviewSync();
 
     if (backendProject) {
       const snapshotExists = hasSnapshot();
@@ -437,6 +461,14 @@ export default function EditorPage() {
     }
   }, [backendProject?.id, hasSnapshot, backendProject]);
 
+  // Ensure preview reloads after initial project load (e.g., page refresh)
+  useEffect(() => {
+    if (project) {
+      console.log('[EditorPage] Project changed, scheduling preview sync');
+      schedulePreviewSync();
+    }
+  }, [project?.id, schedulePreviewSync]);
+
   const handleCommandStart = useCallback(() => {
     if (!project) return;
     const allPaths = new Set(project.files.map(f => f.path));
@@ -449,6 +481,12 @@ export default function EditorPage() {
 
   return (
     <>
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        project={project}
+        onUpdateFile={updateFile}
+      />
       {/* Diff Viewer Modal */}
       {showDiff && diffFile && (
         <DiffViewer
@@ -533,6 +571,14 @@ export default function EditorPage() {
                 Undo AI Changes
               </Button>
             )}
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => setIsSettingsOpen(true)}
+            >
+              <Settings className="h-4 w-4" />
+              Settings
+            </Button>
             <Button
               variant="outline"
               className="gap-2"

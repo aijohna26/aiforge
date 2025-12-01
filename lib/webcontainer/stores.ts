@@ -20,6 +20,9 @@ export const serverStatus = atom<ServerStatus>('idle');
 // Locked files (prevent edits during AI generation)
 export const lockedFiles = atom<Set<string>>(new Set());
 
+// Connected devices count
+export const connectedDevices = atom<number>(0);
+
 // Helper to append to terminal output
 export function appendTerminalOutput(data: string) {
     const current = terminalOutput.get();

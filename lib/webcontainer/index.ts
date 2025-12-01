@@ -1,10 +1,21 @@
 import { WebContainer, type FileSystemTree } from '@webcontainer/api';
-import { webcontainerContext, serverStatus, appendTerminalOutput, previewUrl, qrCodeUrl } from './stores';
+import { webcontainerContext, serverStatus, appendTerminalOutput, previewUrl, qrCodeUrl, connectedDevices } from './stores';
 import type { GeneratedFile } from '@/lib/types';
+import { FilesStore } from '@/lib/stores/files';
 
 let webContainerInstance: WebContainer | null = null;
+let filesStoreInstance: FilesStore | null = null;
 
 const decoder = new TextDecoder();
+const ANSI_REGEX = /\x1B\[[0-9;]*[A-Za-z]/g;
+
+function stripAnsi(text: string) {
+    return text.replace(ANSI_REGEX, '');
+}
+
+function sanitizeUrl(url: string) {
+    return url.replace(/[),]+$/, '');
+}
 
 const PREVIEW_DEPENDENCIES = {
     expo: '^54.0.0',
@@ -85,6 +96,19 @@ function preparePackageJson(original: string): string {
 function appendOutput(data: string | Uint8Array) {
     const text = typeof data === 'string' ? data : decoder.decode(data);
     appendTerminalOutput(text);
+    const clean = stripAnsi(text);
+
+    const expMatch = clean.match(/exp:\/\/[^\s]+/);
+    if (expMatch) {
+        qrCodeUrl.set(sanitizeUrl(expMatch[0]));
+    }
+
+    if (!previewUrl.get()) {
+        const webMatch = clean.match(/https?:\/\/[^\s]+/);
+        if (webMatch && webMatch[0].includes('19006')) {
+            previewUrl.set(sanitizeUrl(webMatch[0]));
+        }
+    }
 }
 
 function ensureWebPlatform(original: string): string {
@@ -117,6 +141,34 @@ export async function bootWebContainer() {
             forwardPreviewErrors: true,
         });
         webcontainerContext.set(webContainerInstance);
+
+        // Initialize FilesStore with the WebContainer instance
+        if (!filesStoreInstance) {
+            filesStoreInstance = new FilesStore(Promise.resolve(webContainerInstance));
+            console.log('[WebContainer] FilesStore initialized');
+        }
+
+        // Try to restore from snapshot if available
+        const snapshotKey = 'wc_filesystem_snapshot';
+        const savedSnapshot = localStorage.getItem(snapshotKey);
+
+        if (savedSnapshot) {
+            try {
+                console.log('[WebContainer] Restoring filesystem from snapshot...');
+                const snapshotData = JSON.parse(savedSnapshot);
+
+                // Restore node_modules if it exists in snapshot
+                if (snapshotData.nodeModules) {
+                    console.log('[WebContainer] Restoring node_modules from snapshot...');
+                    // Note: WebContainer doesn't support direct snapshot restore yet
+                    // We'll need to use a different approach
+                }
+            } catch (e) {
+                console.warn('[WebContainer] Failed to restore snapshot:', e);
+                localStorage.removeItem(snapshotKey);
+            }
+        }
+
         serverStatus.set('ready');
         return webContainerInstance;
     } catch (error) {
@@ -182,17 +234,70 @@ export async function mountProject(files: GeneratedFile[]) {
     serverStatus.set('ready');
 }
 
+// Helper to generate hash of package.json for cache invalidation
+async function getPackageJsonHash(instance: WebContainer): Promise<string> {
+    try {
+        const content = await instance.fs.readFile('package.json', 'utf-8');
+        // Simple hash function
+        let hash = 0;
+        for (let i = 0; i < content.length; i++) {
+            const char = content.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32bit integer
+        }
+        return hash.toString(36);
+    } catch {
+        return '';
+    }
+}
+
+// Check if node_modules exists and is valid
+async function hasValidNodeModules(instance: WebContainer): Promise<boolean> {
+    try {
+        const stat = await instance.fs.readdir('node_modules');
+        return stat.length > 0;
+    } catch {
+        return false;
+    }
+}
+
 export async function installDependencies() {
     console.log('[WebContainer] installDependencies called');
     const instance = await bootWebContainer();
+
+    // Get current package.json hash
+    const currentHash = await getPackageJsonHash(instance);
+    const cachedHash = localStorage.getItem('wc_pkg_hash');
+    const hasModules = await hasValidNodeModules(instance);
+
+    console.log('[WebContainer] Package hash:', currentHash, 'Cached:', cachedHash, 'Has modules:', hasModules);
+
+    // Skip installation ONLY if:
+    // 1. node_modules exists
+    // 2. We have a cached hash (not a new project)
+    // 3. The hashes match (same dependencies)
+    if (hasModules && cachedHash && currentHash === cachedHash) {
+        console.log('[WebContainer] ✅ Using existing dependencies (already installed in this session)');
+        appendTerminalOutput('\n✅ Using existing dependencies (already installed)\n');
+        serverStatus.set('ready');
+        return;
+    }
+
     serverStatus.set('installing');
 
-    // Force clean install to fix corrupted dependencies
-    console.log('[WebContainer] Removing node_modules...');
-    await instance.spawn('rm', ['-rf', 'node_modules', 'package-lock.json']);
+    // Always clean node_modules if:
+    // - Package.json changed (different hash)
+    // - No cached hash (new project or first install)
+    if (hasModules) {
+        console.log('[WebContainer] Cleaning node_modules for fresh install...');
+        appendTerminalOutput('\n🔄 Installing dependencies...\n');
+        await instance.spawn('rm', ['-rf', 'node_modules', 'package-lock.json']);
+    } else {
+        console.log('[WebContainer] No node_modules found, installing...');
+        appendTerminalOutput('\n📦 Installing dependencies...\n');
+    }
 
     console.log('[WebContainer] Running npm install...');
-    appendTerminalOutput('\n📦 Installing dependencies...\n');
 
     const process = await instance.spawn('npm', ['install', '--legacy-peer-deps', '--no-audit', '--no-fund'], {
         env: {
@@ -215,6 +320,31 @@ export async function installDependencies() {
         serverStatus.set('error');
         appendTerminalOutput(`\n❌ npm install failed with exit code ${exitCode}\n`);
         throw new Error('Installation failed');
+    }
+
+    // Ensure react-native-web is installed for Expo web support
+    appendTerminalOutput('\n🔧 Verifying react-native-web dependency...\n');
+    const webCheck = await instance.spawn('node', ['-e', "try{require.resolve('react-native-web')}catch(e){process.exit(1)}"]).exit;
+    if (webCheck !== 0) {
+        appendTerminalOutput('\n⬇️ Installing react-native-web via Expo...\n');
+        const expoInstall = await instance.spawn('npx', ['expo', 'install', 'react-native-web']);
+        expoInstall.output.pipeTo(new WritableStream({
+            write(data) {
+                appendOutput(data);
+            }
+        }));
+        const expoExit = await expoInstall.exit;
+        if (expoExit !== 0) {
+            serverStatus.set('error');
+            appendTerminalOutput('\n❌ Failed to install react-native-web\n');
+            throw new Error('Failed to install react-native-web');
+        }
+    }
+
+    // Cache the package.json hash after successful install
+    if (currentHash) {
+        localStorage.setItem('wc_pkg_hash', currentHash);
+        console.log('[WebContainer] Cached package.json hash:', currentHash);
     }
 
     console.log('[WebContainer] installDependencies completed successfully');
@@ -259,11 +389,13 @@ export async function startDevServer() {
     // We use localhost as 0.0.0.0 is not allowed by Expo CLI
     try {
         console.log('[WebContainer] Running npx expo start...');
-        appendTerminalOutput('\n🚀 Starting development server...\n');
+        appendTerminalOutput('\n🚀 Starting Expo development server...\n');
 
-        const process = await instance.spawn('npx', ['expo', 'start', '--web'], {
+        const process = await instance.spawn('npx', ['expo', 'start', '--lan'], {
             env: {
                 EXPO_NO_TELEMETRY: '1',
+                EXPO_CLI_NON_INTERACTIVE: 'true',
+                CI: '0',
                 BROWSER: 'none',
             },
         });
@@ -273,25 +405,45 @@ export async function startDevServer() {
                 const text = typeof data === 'string' ? data : decoder.decode(data);
                 appendOutput(text);
 
-                // Capture the exp:// URL from Expo output for QR code
-                // Format: "› Metro waiting on exp://xxxxx.local-credentialless.webcontainer-api.io"
-                const expMatch = text.match(/Metro waiting on (exp:\/\/[^\s]+)/);
+                // Track device connections from Metro output
+                if (text.includes('Opening on Android') || text.includes('Opening on iOS')) {
+                    const currentCount = connectedDevices.get();
+                    connectedDevices.set(currentCount + 1);
+                    console.log('[WebContainer] Device connected, total:', currentCount + 1);
+                }
+
+                // Capture Metro waiting URL (tunnel URL)
+                // Format: "› Metro waiting on http://xxxxx.boltexpo.dev"
+                const metroMatch = text.match(/Metro waiting on\s+(https?:\/\/[^\s]+)/);
+                if (metroMatch) {
+                    const tunnelUrl = metroMatch[1];
+                    console.log('[WebContainer] Tunnel URL captured:', tunnelUrl);
+
+                    // Set both preview URL and QR code URL to the tunnel URL
+                    previewUrl.set(tunnelUrl);
+                    qrCodeUrl.set(tunnelUrl);
+                    serverStatus.set('ready');
+                    appendTerminalOutput(`\n✅ Tunnel ready: ${tunnelUrl}\n`);
+                    appendTerminalOutput(`\n📱 Scan QR code above to connect your device\n`);
+                }
+
+                // Capture "Web preview ready" confirmation
+                if (text.includes('Web preview ready')) {
+                    const urlMatch = text.match(/(https?:\/\/[^\s]+)/);
+                    if (urlMatch) {
+                        const webUrl = urlMatch[1];
+                        console.log('[WebContainer] Web preview URL:', webUrl);
+                        previewUrl.set(webUrl);
+                        serverStatus.set('ready');
+                    }
+                }
+
+                // Also capture any exp:// URLs if present
+                const expMatch = text.match(/(exp:\/\/[^\s)]+)/);
                 if (expMatch) {
                     const expUrl = expMatch[1];
                     console.log('[WebContainer] Expo URL captured:', expUrl);
                     qrCodeUrl.set(expUrl);
-                    appendTerminalOutput(`\n📱 Scan QR code with Expo Go: ${expUrl}\n`);
-                }
-
-                // Capture the web URL from Expo output
-                // Format: "› Web is waiting on http://xxxxx.local-credentialless.webcontainer-api.io"
-                const webMatch = text.match(/Web is waiting on (https?:\/\/[^\s]+)/);
-                if (webMatch) {
-                    const webUrl = webMatch[1];
-                    console.log('[WebContainer] Web URL captured:', webUrl);
-                    previewUrl.set(webUrl);
-                    serverStatus.set('ready');
-                    appendTerminalOutput(`\n✅ Web preview ready: ${webUrl}\n`);
                 }
             }
         }));
@@ -315,7 +467,53 @@ export async function startDevServer() {
     }
 }
 
+export function getFilesStore(): FilesStore {
+    if (!filesStoreInstance) {
+        throw new Error('[WebContainer] FilesStore not initialized. Call bootWebContainer first.');
+    }
+    return filesStoreInstance;
+}
+
 export async function writeFile(path: string, content: string) {
-    const instance = await bootWebContainer();
-    await instance.fs.writeFile(path, content);
+    console.log('[WebContainer] writeFile called for:', path);
+    const store = getFilesStore();
+    await store.saveFile(path, content);
+    console.log('[WebContainer] File written via FilesStore:', path);
+}
+
+// Trigger Metro bundler reload via HTTP endpoint
+async function triggerMetroReload() {
+    try {
+        const url = previewUrl.get();
+        if (!url) {
+            console.log('[WebContainer] No preview URL available for reload');
+            return;
+        }
+
+        // Extract base URL (remove path)
+        const baseUrl = new URL(url);
+        const metroUrl = `${baseUrl.protocol}//${baseUrl.host}`;
+
+        // Metro's reload endpoint
+        const reloadEndpoint = `${metroUrl}/reload`;
+
+        console.log('[WebContainer] Triggering Metro reload:', reloadEndpoint);
+
+        // Use fetch with a short timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+        await fetch(reloadEndpoint, {
+            method: 'POST',
+            signal: controller.signal,
+        }).catch(() => {
+            // Ignore fetch errors - Metro might not have this endpoint
+        });
+
+        clearTimeout(timeoutId);
+        console.log('[WebContainer] Metro reload triggered');
+    } catch (e) {
+        // Silently fail - this is a best-effort optimization
+        console.log('[WebContainer] Metro reload not available:', e);
+    }
 }

@@ -51,7 +51,7 @@ export const ChatMessage = memo(function ChatMessage({
         {customContent || (
           <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
         )}
-        {message.metadata?.filesCreated && (
+        {message.metadata?.filesCreated && !customContent && (
           <div className="mt-3 rounded-lg bg-slate-950/50 p-3 text-xs text-slate-400">
             <div className="flex items-center justify-between">
               <p className="font-semibold uppercase tracking-wide text-slate-300">

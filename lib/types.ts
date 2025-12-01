@@ -24,7 +24,13 @@ export interface ChatMessage {
     tokens?: { input: number; output: number };
     cost?: number;
     snapshotId?: string; // ID for rollback functionality
+    projectDetails?: {
+      name: string;
+      description?: string;
+      userPrompt?: string;
+    };
   };
+  status?: 'thinking' | 'done' | 'error';
 }
 
 export interface SnackPreview {
