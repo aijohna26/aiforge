@@ -112,7 +112,7 @@ export function useProject(): UseProjectReturn {
         createdAt: projectData.created_at,
         updatedAt: projectData.updated_at,
       };
-
+      console.log('xxx [useProject] loadProject: Loaded project:', loadedProject);
       // Load into cache for instant access
       fileCache.loadProject(projectId, filesWithContent);
 

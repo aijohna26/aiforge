@@ -7,10 +7,9 @@ import { SettingsModal } from "@/components/Settings/SettingsModal";
 import { AiChatPanel } from "@/components/Chat/AiChatPanel";
 import { FileTree } from "@/components/FileTree/FileTree";
 import { CodeEditor } from "@/components/Editor/CodeEditor";
-import { MobilePreview } from "@/components/Preview/MobilePreview";
+import { WebDevicePreview } from "@/components/Preview/WebDevicePreview";
 import { DiffViewer } from "@/components/DiffViewer/DiffViewer";
-import { writeFile } from "@/lib/webcontainer";
-import { lockedFiles } from "@/lib/webcontainer/stores";
+import { lockedFiles } from "@/lib/stores/editor";
 import type { GeneratedProject, GeneratedFile } from "@/lib/types";
 import type { FileDiff } from "@/lib/hooks/use-ai-command";
 import { Button } from "@/components/ui/button";
@@ -71,7 +70,7 @@ export default function EditorPage() {
     path: string | null;
   }>({ projectKey: undefined, path: null });
   const [recentDiffs, setRecentDiffs] = useState<Record<string, FileDiff>>({});
-  const [previewVersion, setPreviewVersion] = useState(0);
+  const [previewNonce, setPreviewNonce] = useState(0);
   const previewSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [addedFiles, setAddedFiles] = useState<Set<string>>(new Set());
   const [modifiedFiles, setModifiedFiles] = useState<Set<string>>(new Set());
@@ -82,7 +81,7 @@ export default function EditorPage() {
       clearTimeout(previewSyncTimer.current);
     }
     previewSyncTimer.current = setTimeout(() => {
-      setPreviewVersion((v) => v + 1);
+      setPreviewNonce((v) => v + 1);
       previewSyncTimer.current = null;
     }, 400);
   }, []);
@@ -138,10 +137,8 @@ export default function EditorPage() {
       // Update file cache instantly + debounced DB sync
       updateFile(currentSelectedPath, value);
 
-      // Write directly to WebContainer for HMR (sub-20s updates)
-      writeFile(currentSelectedPath, value).catch(err =>
-        console.error('[EditorPage] Failed to write to WebContainer:', err)
-      );
+      // TODO: Implement debounced Snack update for real-time preview
+      // For now, changes are saved to DB but preview updates on AI generation or manual trigger
 
       // No need to schedulePreviewSync() as HMR handles it
       // No need to track unsaved changes - instant sync!
@@ -189,7 +186,7 @@ export default function EditorPage() {
   }, []);
 
   const forcePreviewSync = useCallback(() => {
-    setPreviewVersion((v) => v + 1);
+    setPreviewNonce((v) => v + 1);
   }, []);
 
   const handleShowManualDiff = useCallback(() => {
@@ -376,54 +373,31 @@ export default function EditorPage() {
 
   // Handle files changed by AI command
   const handleFilesChanged = useCallback(async (filesCreated?: string[], diffs?: Record<string, FileDiff>) => {
-    console.log('[EditorPage] handleFilesChanged called with:', filesCreated);
-    if (!project) {
-      console.log('[EditorPage] No project, skipping file sync');
-      return;
+    if (!project) return;
+
+    // Fetch latest project files to reflect server state
+    const [projectResponse, filesResponse] = await Promise.all([
+      fetch(`/api/projects/${project.id}`, { cache: 'no-store' }).then(res => res.json()),
+      fetch(`/api/projects/${project.id}/files`, { cache: 'no-store' }).then(res => res.json()),
+    ]);
+    const updatedProjectData = projectResponse.project ?? projectResponse;
+    const latestFiles: GeneratedFile[] = filesResponse.files ?? [];
+
+    if (filesCreated && filesCreated.length > 0 && project.id) {
+      // Update cache with latest files from server
+      fileCache.loadProject(project.id, latestFiles);
     }
 
-    try {
-      // Fetch latest project data to get new content
-      const [projectResponse, filesResponse] = await Promise.all([
-        fetch(`/api/projects/${project.id}`, { cache: 'no-store' }).then(res => res.json()),
-        fetch(`/api/projects/${project.id}/files`, { cache: 'no-store' }).then(res => res.json()),
-      ]);
-      const updatedProjectData = projectResponse.project ?? projectResponse;
-      const latestFiles: GeneratedFile[] = filesResponse.files ?? [];
+    schedulePreviewSync();
 
-      console.log('[EditorPage] Fetched', latestFiles.length, 'files from backend');
-
-      // Get FilesStore instance
-      const { getFilesStore } = await import('@/lib/webcontainer');
-      const filesStore = getFilesStore();
-
-      // Write ALL files to WebContainer via FilesStore
-      // This ensures complete sync and is more reliable than tracking individual changes
-      console.log('[EditorPage] Syncing all files to WebContainer via FilesStore');
-
-      for (const file of latestFiles) {
-        await filesStore.saveFile(file.path, file.content);
-      }
-
-      console.log('[EditorPage] All files synced to WebContainer');
-    } catch (error) {
-      console.error('[EditorPage] Failed to sync files:', error);
-    }
-
-    // Update UI state
     if (backendProject) {
       await refreshFiles();
+      const snapshotExists = hasSnapshot();
+      setSnapshotAvailable(snapshotExists);
     } else {
       setLocalProject(updatedProjectData);
     }
 
-    if (backendProject) {
-      const snapshotExists = hasSnapshot();
-      console.log('[EditorPage] Checking for snapshot:', snapshotExists);
-      setSnapshotAvailable(snapshotExists);
-    }
-
-    // Track added and modified files
     if (filesCreated && filesCreated.length > 0) {
       const currentFiles = new Set(project.files.map(f => f.path) || []);
       const added = new Set<string>();
@@ -440,13 +414,12 @@ export default function EditorPage() {
       setAddedFiles(added);
       setModifiedFiles(modified);
 
-      // Clear badges after 10 seconds
       setTimeout(() => {
         setAddedFiles(new Set());
         setModifiedFiles(new Set());
       }, 10000);
     }
-  }, [project, backendProject, refreshFiles, schedulePreviewSync, hasSnapshot, setSnapshotAvailable, setAddedFiles, setModifiedFiles]);
+  }, [project, backendProject, refreshFiles, hasSnapshot, setSnapshotAvailable, setAddedFiles, setModifiedFiles, schedulePreviewSync]);
 
   // Reset edited files when project changes and check for snapshots
   useEffect(() => {
@@ -599,6 +572,7 @@ export default function EditorPage() {
           <div className="overflow-hidden">
             <AiChatPanel
               projectId={projectId}
+              initialPrompt={searchParams.get('prompt') || undefined}
               onProjectGenerated={handleProjectGenerated}
               onFilesChanged={handleFilesChanged}
               onDiffAvailable={(diffs) => setRecentDiffs(diffs)}
@@ -638,7 +612,12 @@ export default function EditorPage() {
             </div>
           </div>
           <div className="overflow-hidden">
-            <MobilePreview project={project} previewVersion={previewVersion} />
+            <WebDevicePreview
+              files={project?.files ?? []}
+              projectId={projectId}
+              projectName={project?.projectName ?? "AppForge Project"}
+              refreshToken={previewNonce}
+            />
           </div>
         </div>
       </div>

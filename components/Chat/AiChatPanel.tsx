@@ -28,6 +28,7 @@ const SAMPLE_PROMPTS = [
 
 interface AiChatPanelProps {
   projectId: string | null;
+  initialPrompt?: string;
   onProjectGenerated: (project: GeneratedProject, projectId?: string | null) => void;
   onFilesChanged?: (filesCreated?: string[], diffs?: Record<string, FileDiff>) => Promise<void> | void;
   onDiffAvailable?: (diffs: Record<string, FileDiff>) => void;
@@ -39,6 +40,7 @@ interface AiChatPanelProps {
 
 export function AiChatPanel({
   projectId,
+  initialPrompt,
   onProjectGenerated,
   onFilesChanged,
   onDiffAvailable,
@@ -48,11 +50,12 @@ export function AiChatPanel({
   onCommandEnd,
 }: AiChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(initialPrompt || "");
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [placeholder, setPlaceholder] = useState(SAMPLE_PROMPTS[0]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const hasInitializedRef = useRef(false);
 
   // Generation progress tracking - Rork style activity log
   const [generationLogs, setGenerationLogs] = useState<GenerationLog[]>([]);
@@ -68,7 +71,7 @@ export function AiChatPanel({
   const { status: aiStatus, sendCommand, reset: resetAi } = useAiCommand();
   const lastLogIndexRef = useRef(0);
   const streamingStatusIdRef = useRef<string | null>(null);
-  const { balance, refresh: refreshWallet } = useWallet();
+  const { balance, isLoading, refresh: refreshWallet } = useWallet();
 
   // Helper function to persist messages to database
   const persistMessage = useCallback(async (message: ChatMessageType) => {
@@ -93,6 +96,18 @@ export function AiChatPanel({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, aiStatus.logs]);
+
+  // Auto-start generation if initialPrompt is provided and we haven't started yet
+  useEffect(() => {
+    if (initialPrompt && !projectId && !isGenerating && !hasInitializedRef.current) {
+      hasInitializedRef.current = true;
+      setInput(initialPrompt);
+      // Small timeout to ensure state is ready
+      setTimeout(() => {
+        handleInitialGeneration();
+      }, 100);
+    }
+  }, [initialPrompt, projectId, isGenerating]);
 
   useEffect(() => {
     const index = Math.floor(Math.random() * SAMPLE_PROMPTS.length);
@@ -457,14 +472,24 @@ export function AiChatPanel({
             {projectId ? "Edit your app with AI" : "Describe your app idea"}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          {balance !== null && (
-            <div className="flex items-center gap-1.5 rounded-full bg-slate-800 px-3 py-1 text-xs">
-              <Coins className="h-3.5 w-3.5 text-amber-400" />
-              <span className="text-slate-200">{balance}</span>
-            </div>
-          )}
-          <Sparkles className="h-5 w-5 text-blue-400" />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={refreshWallet}
+            className="flex items-center gap-2 rounded-lg bg-slate-800/80 px-3 py-2 text-sm font-medium transition-all hover:bg-slate-700 active:scale-95 border border-slate-700/50"
+            title="Click to refresh balance"
+            disabled={isLoading}
+          >
+            <Coins className="h-4 w-4 text-amber-400" />
+            <span className="text-slate-100">
+              {balance !== null ? balance : <RefreshCw className="h-3 w-3 animate-spin" />}
+            </span>
+          </button>
+          <button
+            className="flex items-center justify-center rounded-lg bg-blue-500/10 p-2 transition-all hover:bg-blue-500/20 active:scale-95 border border-blue-500/20"
+            title="AI Assistant"
+          >
+            <Sparkles className="h-5 w-5 text-blue-400" />
+          </button>
         </div>
       </div>
 

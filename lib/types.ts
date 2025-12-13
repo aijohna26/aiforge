@@ -33,14 +33,6 @@ export interface ChatMessage {
   status?: 'thinking' | 'done' | 'error';
 }
 
-export interface SnackPreview {
-  snackId: string;
-  snackUrl: string;
-  embedUrl: string;
-  qrCodeData: string;
-  qrCodeUrl: string;
-}
-
 export interface ExpoServer {
   id: string;
   status: "starting" | "running" | "stopped" | "error";

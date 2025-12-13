@@ -144,6 +144,19 @@ class WalletManager {
     return entry.balance;
   }
 
+  async resetReserved(userId: string): Promise<void> {
+    if (supabase) {
+      await supabase
+        .from("wallets")
+        .update({ reserved: 0 })
+        .eq("user_id", userId);
+      return;
+    }
+
+    const entry = this.ensureMemory(userId);
+    entry.reserved = 0;
+  }
+
   private async ensureWallet(userId: string): Promise<void> {
     if (!supabase) return;
 

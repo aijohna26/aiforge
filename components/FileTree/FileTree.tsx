@@ -72,7 +72,7 @@ interface FileTreeProps {
 }
 
 import { useStore } from '@nanostores/react';
-import { lockedFiles } from '@/lib/webcontainer/stores';
+import { lockedFiles } from '@/lib/stores/editor';
 
 // ... (imports)
 

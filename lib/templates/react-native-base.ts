@@ -37,22 +37,44 @@ export function getBaseTemplate(projectName: string, displayName: string): Templ
             ios: "expo start --ios",
             web: "expo start --web",
             reset: "expo start --clear",
+            typecheck: "tsc --noEmit",
           },
           dependencies: {
-            expo: "^54.0.0",
-            "expo-router": "~6.0.0",
-            "expo-status-bar": "~3.0.0",
-            react: "19.1.0",
+            "@expo/vector-icons": "^15.0.2",
+            "@lucide/lab": "^0.1.2",
+            "@react-navigation/bottom-tabs": "^7.2.0",
+            "@react-navigation/native": "^7.0.14",
+            "@supabase/supabase-js": "^2.58.0",
+            "expo": "^54.0.29",
+            "expo-blur": "~15.0.7",
+            "expo-camera": "~17.0.8",
+            "expo-constants": "~18.0.9",
+            "expo-font": "~14.0.8",
+            "expo-haptics": "~15.0.7",
+            "expo-linear-gradient": "~15.0.7",
+            "expo-linking": "~8.0.8",
+            "expo-router": "~6.0.8",
+            "expo-splash-screen": "~31.0.10",
+            "expo-status-bar": "~3.0.8",
+            "expo-symbols": "~1.0.7",
+            "expo-system-ui": "~6.0.7",
+            "expo-web-browser": "~15.0.7",
+            "lucide-react-native": "^0.544.0",
+            "react": "19.1.0",
             "react-dom": "19.1.0",
-            "react-native": "0.81.4",
-            "react-native-web": "~0.21.2",
-            "react-native-safe-area-context": "5.1.0",
-            "react-native-screens": "~4.6.0",
-            "expo-linking": "~7.0.0",
+            "react-native": "0.81.5",
+            "react-native-gesture-handler": "~2.28.0",
+            "react-native-reanimated": "~4.1.1",
+            "react-native-safe-area-context": "~5.6.0",
+            "react-native-screens": "~4.16.0",
+            "react-native-svg": "15.12.1",
+            "react-native-url-polyfill": "^2.0.0",
+            "react-native-web": "^0.21.0",
+            "react-native-webview": "13.15.0",
           },
           devDependencies: {
-            "@types/react": "~19.0.10",
-            typescript: "~5.8.3",
+            "@types/react": "~19.1.10",
+            typescript: "~5.9.2",
           },
         },
         null,
@@ -184,9 +206,9 @@ app/
 ## Tech Stack
 
 - **Expo SDK 54** - React Native framework
-- **Expo Router 6** - File-based navigation
+- **Expo Router 4** - File-based navigation
 - **TypeScript 5.8** - Type safety
-- **React 19 / React Native 0.81** - Latest runtime
+- **React 18.3 / React Native 0.76** - Stable runtime
 
 ## Template Version
 

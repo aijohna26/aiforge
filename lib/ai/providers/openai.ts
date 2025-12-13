@@ -43,19 +43,16 @@ export class OpenAIProvider implements AIProvider {
         });
 
         let fullText = "";
-        let lastProgressUpdate = Date.now();
-        let charCount = 0;
 
         for await (const chunk of stream) {
             const content = chunk.choices[0]?.delta?.content || "";
-            fullText += content;
-            charCount += content.length;
+            if (content) {
+                fullText += content;
 
-            const now = Date.now();
-            if (options.onProgress && (now - lastProgressUpdate > 500 || charCount > 500)) {
-                options.onProgress({ type: "progress", content: "generating" });
-                lastProgressUpdate = now;
-                charCount = 0;
+                // Send each chunk immediately for real-time streaming
+                if (options.onProgress) {
+                    options.onProgress({ type: "progress", content });
+                }
             }
         }
 

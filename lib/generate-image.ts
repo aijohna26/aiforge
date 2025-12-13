@@ -1,0 +1,823 @@
+// Image Generation Service
+// Supports multiple providers: OpenAI, Kie.ai, Gemini, Recraft V3, and others
+
+export type ImageProvider = 'openai' | 'gpt-image-1' | 'kie' | 'gemini' | 'recraft' | 'replicate' | 'qwen-image-edit' | 'seedream-4.5-edit';
+export type OpenAIModel = 'gpt-image-1' | 'dall-e-2' | 'dall-e-3';
+export type GoogleModel = 'nano-banana' | 'nano-banana-pro' | 'nano-banana-edit';
+export type QwenModel = 'qwen/image-edit';
+export type SeedreamModel = 'seedream/4.5-edit';
+export type OutputFormat = 'png' | 'jpeg';
+export type AspectRatio = '1:1' | '9:16' | '16:9' | '3:4' | '4:3' | '3:2' | '2:3' | '512';
+
+export interface ImageGenerationOptions {
+    prompt: string;
+    name?: string;
+    provider?: ImageProvider;
+
+    // Model selection
+    openaiModel?: OpenAIModel;
+    googleModel?: GoogleModel;
+    qwenModel?: QwenModel;
+    seedreamModel?: SeedreamModel;
+
+    // Output options
+    outputFormat?: OutputFormat;
+    aspectRatio?: AspectRatio;
+    referenceImages?: string[]; // Reference images for design consistency (Clip Tray)
+
+    // Legacy size option (for backward compatibility)
+    size?: '1024x1024' | '1792x1024' | '1024x1792';
+    quality?: 'standard' | 'hd';
+    style?: 'vivid' | 'natural';
+}
+
+export interface ImageGenerationResult {
+    url: string;
+    provider: ImageProvider;
+    revisedPrompt?: string;
+}
+
+class ImageGenerationService {
+    private defaultProvider: ImageProvider;
+
+    constructor() {
+        // Get provider from env or default to Gemini 3 (via Kie.ai)
+        this.defaultProvider = (process.env.IMAGE_GENERATION_PROVIDER as ImageProvider) || 'gemini';
+    }
+
+    async generateImage(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
+        const provider = options.provider || this.defaultProvider;
+
+        // Special routing for GPT-Image-1 (Kie.ai 4o)
+        // If provider is 'gpt-image-1' OR if provider is 'openai' but model is 'gpt-image-1'
+        if (provider === 'gpt-image-1' || (provider === 'openai' && options.openaiModel === 'gpt-image-1')) {
+            return this.generateWithKie4o(options);
+        }
+
+        switch (provider) {
+            case 'openai':
+                return this.generateWithKie(options);
+            // return this.generateWithOpenAI(options, 'dall-e-3');
+
+            case 'kie':
+                return this.generateWithKie(options);
+
+            case 'gemini':
+                // Use Kie.ai for Gemini (Google models via Kie.ai)
+                return this.generateWithKie(options);
+
+            case 'qwen-image-edit':
+                // Use Kie.ai for Qwen models
+                return this.generateWithQwen(options);
+
+            case 'seedream-4.5-edit':
+                // Use Kie.ai for Seedream models
+                return this.generateWithSeedream(options);
+
+            case 'recraft':
+                return this.generateWithRecraft(options);
+
+            case 'replicate':
+                return this.generateWithReplicate(options);
+
+            default:
+                throw new Error(`Unsupported image provider: ${provider}`);
+        }
+    }
+
+    private async generateWithKie4o(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
+        const apiKey = process.env.KIE_API_KEY;
+
+        if (!apiKey) {
+            throw new Error('KIE_API_KEY environment variable is required');
+        }
+
+        // Map aspect ratio to supported sizes: 1:1, 3:2, 2:3
+        let size = '1:1';
+        if (options.aspectRatio) {
+            switch (options.aspectRatio) {
+                case '16:9':
+                case '4:3':
+                case '3:2':
+                    size = '3:2';
+                    break;
+                case '9:16':
+                case '3:4':
+                case '2:3':
+                    size = '2:3';
+                    break;
+                default:
+                    size = '1:1';
+            }
+        }
+
+        // Enhance prompt for UI/screen generation
+        const enhancedPrompt = this.enhancePromptForUI(options.prompt);
+
+        // Step 1: Create task
+        const createResponse = await fetch('https://api.kie.ai/api/v1/gpt4o-image/generate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+                prompt: enhancedPrompt,
+                size: size,
+                nVariants: 1,
+                isEnhance: true, // Enable enhancement for better quality
+                enableFallback: true // Enable fallback for reliability
+            }),
+        });
+
+        if (!createResponse.ok) {
+            const errorText = await createResponse.text();
+            let errorMessage = createResponse.statusText;
+            try {
+                const error = JSON.parse(errorText);
+                errorMessage = error.msg || error.message || errorText;
+            } catch (e) {
+                errorMessage = errorText;
+            }
+            throw new Error(`Kie.ai 4o task creation failed: ${errorMessage}`);
+        }
+
+        const createData = await createResponse.json();
+
+        if (createData.code !== 200) {
+            throw new Error(`Kie.ai 4o task creation failed: ${createData.msg}`);
+        }
+
+        const taskId = createData.data?.taskId;
+        if (!taskId) {
+            throw new Error('Kie.ai 4o did not return a taskId');
+        }
+
+        // Step 2: Poll for task completion
+        const maxAttempts = 60; // 5 minutes (5s interval)
+        const pollInterval = 5000; // 5 seconds
+
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, pollInterval));
+
+            const queryResponse = await fetch(
+                `https://api.kie.ai/api/v1/gpt4o-image/record-info?taskId=${taskId}`,
+                {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`,
+                    },
+                }
+            );
+
+            if (!queryResponse.ok) {
+                console.error('[Kie.ai 4o] Query failed:', queryResponse.statusText);
+                continue;
+            }
+
+            const queryData = await queryResponse.json();
+
+            if (queryData.code !== 200) {
+                console.error('[Kie.ai 4o] Query returned error code:', queryData.msg);
+                continue;
+            }
+
+            const status = queryData.data?.successFlag; // 0: Generating, 1: Success, 2: Failed
+
+            // Success
+            if (status === 1) {
+                let resultUrls = queryData.data?.response?.result_urls || queryData.data?.response?.resultUrls;
+
+                // Fallback: Check resultJson if response.result_urls is missing
+                if ((!resultUrls || resultUrls.length === 0) && queryData.data?.resultJson) {
+                    try {
+                        const resultObj = JSON.parse(queryData.data.resultJson);
+                        if (resultObj.result_urls && resultObj.result_urls.length > 0) {
+                            resultUrls = resultObj.result_urls;
+                        } else if (resultObj.resultUrls && resultObj.resultUrls.length > 0) {
+                            resultUrls = resultObj.resultUrls;
+                        }
+                    } catch (e) {
+                        console.error('[Kie.ai 4o] Failed to parse resultJson:', e);
+                    }
+                }
+
+                if (resultUrls && resultUrls.length > 0) {
+                    return {
+                        url: resultUrls[0],
+                        provider: 'gpt-image-1', // Identify as GPT-Image-1
+                    };
+                }
+
+                console.error('[Kie.ai 4o] No image URLs found in response:', JSON.stringify(queryData, null, 2));
+                throw new Error('Kie.ai 4o completed but returned no image URLs');
+            }
+
+            // Failed
+            if (status === 2) {
+                throw new Error(`Kie.ai 4o task failed: ${queryData.data?.errorMessage || 'Unknown error'}`);
+            }
+
+            // Still generating (status === 0), continue polling
+        }
+
+        throw new Error('Kie.ai 4o task timed out after 5 minutes');
+    }
+
+    private async generateWithOpenAI(
+        options: ImageGenerationOptions,
+        model: 'dall-e-3' | 'gpt-image-1' | 'dall-e-2' = 'dall-e-3'
+    ): Promise<ImageGenerationResult> {
+        const apiKey = process.env.OPENAI_API_KEY;
+
+        if (!apiKey) {
+            throw new Error('OPENAI_API_KEY environment variable is required');
+        }
+
+        // Use specified model or default
+        const selectedModel = options.openaiModel || model;
+
+        const response = await fetch('https://api.openai.com/v1/images/generations', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+                model: selectedModel,
+                prompt: options.prompt,
+                n: 1,
+                size: options.size || '1024x1024',
+                ...(selectedModel === 'dall-e-3' && {
+                    quality: options.quality || 'standard',
+                    style: options.style || 'vivid',
+                }),
+            }),
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(`OpenAI image generation failed: ${error.error?.message || response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        return {
+            url: data.data[0].url,
+            provider: selectedModel === 'gpt-image-1' ? 'gpt-image-1' : 'openai',
+            revisedPrompt: data.data[0].revised_prompt,
+        };
+    }
+
+    private async generateWithKie(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
+        const apiKey = process.env.KIE_API_KEY;
+
+        if (!apiKey) {
+            throw new Error('KIE_API_KEY environment variable is required');
+        }
+
+        // Default to nano-banana for Gemini 3
+        const model = options.googleModel || 'nano-banana';
+        const outputFormat = options.outputFormat || 'png';
+        const aspectRatio = options.aspectRatio || '1:1';
+
+        // Enhance prompt for UI/screen generation
+        // Skip enhancement for edit model to allow specific instructions
+        const enhancedPrompt = model === 'nano-banana-edit' ? options.prompt : this.enhancePromptForUI(options.prompt);
+
+        // Validate reference images usage
+        if (options.referenceImages && options.referenceImages.length > 0) {
+            if (model === 'nano-banana') {
+                throw new Error('Reference images are not supported by nano-banana. Please use nano-banana-pro (for style references) or nano-banana-edit (for image editing).');
+            }
+        }
+
+        // Format model name - nano-banana-pro doesn't need google/ prefix
+        const modelName = model === 'nano-banana-pro' ? model : `google/${model}`;
+
+        const requestBody = {
+            model: modelName,
+            input: {
+                prompt: enhancedPrompt,
+                output_format: outputFormat,
+                image_size: aspectRatio,
+                // Use image_urls for edit, image_input for others
+                ...(options.referenceImages && options.referenceImages.length > 0 && {
+                    [model === 'nano-banana-edit' ? 'image_urls' : 'image_input']: options.referenceImages
+                }),
+            }
+        };
+
+        console.log(':', JSON.stringify(requestBody, null, 2));
+
+        // Step 1: Create task
+        const createResponse = await fetch('https://api.kie.ai/api/v1/jobs/createTask', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify(requestBody),
+        });
+
+        if (!createResponse.ok) {
+            const errorText = await createResponse.text();
+            console.error('[Kie.ai] Create task error:', errorText);
+            let errorMessage = createResponse.statusText;
+            try {
+                const error = JSON.parse(errorText);
+                errorMessage = error.message || error.error || errorText;
+            } catch (e) {
+                errorMessage = errorText;
+            }
+            throw new Error(`Kie.ai task creation failed: ${errorMessage}`);
+        }
+
+        const createData = await createResponse.json();
+        console.log('[Kie.ai] Create response:', JSON.stringify(createData, null, 2));
+
+        const taskId = createData.data?.taskId;
+        if (!taskId) {
+            throw new Error('Kie.ai did not return a taskId');
+        }
+
+        // Step 2: Poll for task completion
+        // nano-banana-pro takes longer, so increase timeout
+        const maxAttempts = model === 'nano-banana-pro' ? 20 : 10; // 200s for pro, 100s for others
+        const pollInterval = 10000; // 10 seconds
+
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, pollInterval));
+
+            const queryResponse = await fetch(
+                `https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${taskId}`,
+                {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`,
+                    },
+                }
+            );
+
+            if (!queryResponse.ok) {
+                console.error('[Kie.ai] Query failed:', queryResponse.statusText);
+                continue;
+            }
+
+            const queryData = await queryResponse.json();
+            console.log(`[Kie.ai] Poll attempt ${attempt + 1}:`, JSON.stringify(queryData, null, 2));
+
+            // Check if task is complete
+            // Note: API returns 'state' or 'status' depending on endpoint version, checking both
+            const status = queryData.data?.state || queryData.data?.status;
+
+            if (status === 'success' || status === 'completed') {
+                let imageUrl = queryData.data?.output?.image_url ||
+                    queryData.data?.output?.[0] ||
+                    queryData.data?.image_url;
+
+                // Handle resultJson string format (seen in production)
+                if (!imageUrl && queryData.data?.resultJson) {
+                    try {
+                        const resultObj = JSON.parse(queryData.data.resultJson);
+                        if (resultObj.resultUrls && resultObj.resultUrls.length > 0) {
+                            imageUrl = resultObj.resultUrls[0];
+                        }
+                    } catch (e) {
+                        console.error('[Kie.ai] Failed to parse resultJson:', e);
+                    }
+                }
+
+                if (imageUrl) {
+                    return {
+                        url: imageUrl,
+                        provider: 'kie',
+                    };
+                }
+            }
+
+            // Check for failure
+            if (status === 'failed' || status === 'error') {
+                throw new Error(`Kie.ai task failed: ${queryData.data?.error || 'Unknown error'}`);
+            }
+        }
+
+        throw new Error('Kie.ai task timed out after 100 seconds');
+    }
+
+    private async generateWithQwen(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
+        const apiKey = process.env.KIE_API_KEY;
+
+        if (!apiKey) {
+            throw new Error('KIE_API_KEY environment variable is required');
+        }
+
+        const model = options.qwenModel || 'qwen/image-edit';
+        const outputFormat = options.outputFormat || 'png';
+        const aspectRatio = options.aspectRatio || '1:1';
+
+        // Qwen image-edit requires reference images
+        if (!options.referenceImages || options.referenceImages.length === 0) {
+            throw new Error('qwen/image-edit requires at least one reference image');
+        }
+
+        // Map our aspect ratio format to Qwen's expected format
+        const qwenImageSizeMap: Record<string, string> = {
+            '1:1': 'square',
+            '9:16': 'portrait_16_9',
+            '16:9': 'landscape_16_9',
+            '3:4': 'portrait_4_3',
+            '4:3': 'landscape_4_3',
+        };
+
+        const qwenImageSize = qwenImageSizeMap[aspectRatio] || 'landscape_4_3';
+
+        const requestBody = {
+            model: model,
+            input: {
+                prompt: options.prompt,
+                output_format: outputFormat,
+                image_size: qwenImageSize,
+                image_url: options.referenceImages[0] // Qwen uses singular image_url (first image only)
+            }
+        };
+
+        console.log('[Qwen] Request:', JSON.stringify(requestBody, null, 2));
+
+        // Step 1: Create task
+        const createResponse = await fetch('https://api.kie.ai/api/v1/jobs/createTask', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify(requestBody),
+        });
+
+        if (!createResponse.ok) {
+            const errorText = await createResponse.text();
+            console.error('[Qwen] Create task error:', errorText);
+            let errorMessage = createResponse.statusText;
+            try {
+                const error = JSON.parse(errorText);
+                errorMessage = error.message || error.error || errorText;
+            } catch (e) {
+                errorMessage = errorText;
+            }
+            throw new Error(`Qwen task creation failed: ${errorMessage}`);
+        }
+
+        const createData = await createResponse.json();
+        console.log('[Qwen] Create response:', JSON.stringify(createData, null, 2));
+
+        const taskId = createData.data?.taskId;
+        if (!taskId) {
+            throw new Error('Qwen API did not return a taskId');
+        }
+
+        // Step 2: Poll for task completion
+        const maxAttempts = 10; // 100 seconds
+        const pollInterval = 10000; // 10 seconds
+
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, pollInterval));
+
+            const queryResponse = await fetch(
+                `https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${taskId}`,
+                {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`,
+                    },
+                }
+            );
+
+            if (!queryResponse.ok) {
+                console.error('[Qwen] Query failed:', queryResponse.statusText);
+                continue;
+            }
+
+            const queryData = await queryResponse.json();
+            console.log(`[Qwen] Poll attempt ${attempt + 1}:`, JSON.stringify(queryData, null, 2));
+
+            const status = queryData.data?.state || queryData.data?.status;
+
+            if (status === 'success' || status === 'completed') {
+                let imageUrl = queryData.data?.output?.image_url ||
+                    queryData.data?.output?.[0] ||
+                    queryData.data?.image_url;
+
+                // Handle resultJson string format
+                if (!imageUrl && queryData.data?.resultJson) {
+                    try {
+                        const resultObj = JSON.parse(queryData.data.resultJson);
+                        if (resultObj.resultUrls && resultObj.resultUrls.length > 0) {
+                            imageUrl = resultObj.resultUrls[0];
+                        }
+                    } catch (e) {
+                        console.error('[Qwen] Failed to parse resultJson:', e);
+                    }
+                }
+
+                if (imageUrl) {
+                    return {
+                        url: imageUrl,
+                        provider: 'qwen-image-edit',
+                    };
+                }
+            }
+
+            // Check for failure
+            if (status === 'failed' || status === 'error') {
+                throw new Error(`Qwen task failed: ${queryData.data?.error || 'Unknown error'}`);
+            }
+        }
+
+        throw new Error('Qwen task timed out after 100 seconds');
+    }
+
+    private async generateWithSeedream(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
+        const apiKey = process.env.KIE_API_KEY;
+
+        if (!apiKey) {
+            throw new Error('KIE_API_KEY environment variable is required');
+        }
+
+        const model = options.seedreamModel || 'seedream/4.5-edit';
+        const outputFormat = options.outputFormat || 'png';
+        const aspectRatio = options.aspectRatio || '1:1';
+
+        // Seedream 4.5 Edit requires reference images
+        if (!options.referenceImages || options.referenceImages.length === 0) {
+            throw new Error('Seedream 4.5 Edit requires at least one reference image');
+        }
+
+        // Seedream uses aspect ratio format directly (1:1, 4:3, 3:4, 16:9, 9:16, 2:3, 3:2, 21:9)
+        // No mapping needed - just pass the aspect ratio as-is
+        const requestBody = {
+            model: model,
+            input: {
+                prompt: options.prompt,
+                output_format: outputFormat,
+                aspect_ratio: aspectRatio, // Seedream uses 'aspect_ratio' not 'image_size'
+                image_urls: options.referenceImages, // Seedream can use multiple images
+                quality: 'basic' // 'basic' for 2K, 'high' for 4K
+            }
+        };
+
+        console.log('[Seedream] Request:', JSON.stringify(requestBody, null, 2));
+
+        // Step 1: Create task
+        const createResponse = await fetch('https://api.kie.ai/api/v1/jobs/createTask', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify(requestBody),
+        });
+
+        if (!createResponse.ok) {
+            const errorText = await createResponse.text();
+            console.error('[Seedream] Create task error:', errorText);
+            let errorMessage = createResponse.statusText;
+            try {
+                const error = JSON.parse(errorText);
+                errorMessage = error.message || error.error || errorText;
+            } catch (e) {
+                errorMessage = errorText;
+            }
+            throw new Error(`Seedream task creation failed: ${errorMessage}`);
+        }
+
+        const createData = await createResponse.json();
+        console.log('[Seedream] Create response:', JSON.stringify(createData, null, 2));
+
+        const taskId = createData.data?.taskId;
+        if (!taskId) {
+            throw new Error('Seedream API did not return a taskId');
+        }
+
+        // Step 2: Poll for task completion
+        const maxAttempts = 15; // 150 seconds (Seedream may take longer)
+        const pollInterval = 10000; // 10 seconds
+
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, pollInterval));
+
+            const queryResponse = await fetch(
+                `https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${taskId}`,
+                {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`,
+                    },
+                }
+            );
+
+            if (!queryResponse.ok) {
+                console.error('[Seedream] Query failed:', queryResponse.statusText);
+                continue;
+            }
+
+            const queryData = await queryResponse.json();
+            console.log(`[Seedream] Poll attempt ${attempt + 1}:`, JSON.stringify(queryData, null, 2));
+
+            const status = queryData.data?.state || queryData.data?.status;
+
+            if (status === 'success' || status === 'completed') {
+                let imageUrl = queryData.data?.output?.image_url ||
+                    queryData.data?.output?.[0] ||
+                    queryData.data?.image_url;
+
+                // Handle resultJson string format
+                if (!imageUrl && queryData.data?.resultJson) {
+                    try {
+                        const resultObj = JSON.parse(queryData.data.resultJson);
+                        if (resultObj.resultUrls && resultObj.resultUrls.length > 0) {
+                            imageUrl = resultObj.resultUrls[0];
+                        }
+                    } catch (e) {
+                        console.error('[Seedream] Failed to parse resultJson:', e);
+                    }
+                }
+
+                if (imageUrl) {
+                    return {
+                        url: imageUrl,
+                        provider: 'seedream-4.5-edit',
+                    };
+                }
+            }
+
+            // Check for failure
+            if (status === 'failed' || status === 'error') {
+                throw new Error(`Seedream task failed: ${queryData.data?.error || 'Unknown error'}`);
+            }
+        }
+
+        throw new Error('Seedream task timed out after 150 seconds');
+    }
+
+    // Helper to enhance prompts for UI/screen generation
+    private enhancePromptForUI(originalPrompt: string): string {
+        // Check if prompt already mentions UI/screen/interface
+        const hasUIContext = /\b(ui|interface|screen|app|mobile|wireframe|mockup|design)\b/i.test(originalPrompt);
+
+        if (hasUIContext) {
+            // Already UI-focused, add strict interface-only constraints
+            return `${originalPrompt}. IMPORTANT: Show ONLY the user interface design, flat 2D screen layout, no phone mockup, no device frame, no background scenery, no 3D elements. Pure UI interface only, clean modern app screen design, professional digital interface`;
+        } else {
+            // Transform generic prompt into strict UI-only prompt
+            return `Mobile app user interface screen for: ${originalPrompt}. IMPORTANT: Show ONLY the flat UI interface design, no phone device, no mockup frame, no background scenery, no hands holding phone, no 3D elements. Pure 2D screen interface only with modern clean design and detailed UI elements`;
+        }
+    }
+
+    private async generateWithGemini(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
+        const apiKey = process.env.GOOGLE_AI_API_KEY;
+
+        if (!apiKey) {
+            throw new Error('GOOGLE_AI_API_KEY environment variable is required');
+        }
+
+        // Gemini API endpoint for Imagen 3
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${apiKey}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                instances: [{
+                    prompt: options.prompt,
+                }],
+                parameters: {
+                    sampleCount: 1,
+                    aspectRatio: '1:1', // 1024x1024
+                    safetyFilterLevel: 'block_some',
+                    personGeneration: 'allow_adult',
+                },
+            }),
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(`Gemini image generation failed: ${error.error?.message || response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        // Gemini returns base64 encoded image
+        const base64Image = data.predictions[0].bytesBase64Encoded;
+        const imageUrl = `data:image/png;base64,${base64Image}`;
+
+        return {
+            url: imageUrl,
+            provider: 'gemini',
+        };
+    }
+
+    private async generateWithRecraft(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
+        const apiKey = process.env.RECRAFT_API_KEY;
+
+        if (!apiKey) {
+            throw new Error('RECRAFT_API_KEY environment variable is required');
+        }
+
+        // Recraft V3 API endpoint
+        const response = await fetch('https://external.api.recraft.ai/v1/images/generations', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+                prompt: options.prompt,
+                model: 'recraftv3', // Nano Banana Pro
+                style: 'realistic_image',
+                size: options.size || '1024x1024',
+                n: 1,
+            }),
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(`Recraft V3 image generation failed: ${error.message || response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        return {
+            url: data.data[0].url,
+            provider: 'recraft',
+        };
+    }
+
+    private async generateWithReplicate(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
+        const apiKey = process.env.REPLICATE_API_KEY;
+
+        if (!apiKey) {
+            throw new Error('REPLICATE_API_KEY environment variable is required');
+        }
+
+        // Using Replicate's Flux model
+        const response = await fetch('https://api.replicate.com/v1/predictions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Token ${apiKey}`,
+            },
+            body: JSON.stringify({
+                version: 'black-forest-labs/flux-schnell', // Fast Flux model
+                input: {
+                    prompt: options.prompt,
+                    num_outputs: 1,
+                },
+            }),
+        });
+
+        if (!response.ok) {
+            throw new Error(`Replicate image generation failed: ${response.statusText}`);
+        }
+
+        const prediction = await response.json();
+
+        // Poll for completion
+        let result = prediction;
+        while (result.status !== 'succeeded' && result.status !== 'failed') {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            const statusResponse = await fetch(`https://api.replicate.com/v1/predictions/${result.id}`, {
+                headers: {
+                    'Authorization': `Token ${apiKey}`,
+                },
+            });
+
+            result = await statusResponse.json();
+        }
+
+        if (result.status === 'failed') {
+            throw new Error('Replicate image generation failed');
+        }
+
+        return {
+            url: result.output[0],
+            provider: 'replicate',
+        };
+    }
+}
+
+// Singleton instance
+const imageService = new ImageGenerationService();
+
+// Convenience function for backward compatibility
+export async function generate_image(
+    prompt: string,
+    name?: string,
+    provider?: ImageProvider
+): Promise<string> {
+    const result = await imageService.generateImage({ prompt, name, provider });
+    return result.url;
+}
+
+// Export service for advanced usage
+export { imageService };

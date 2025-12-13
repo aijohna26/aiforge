@@ -17,10 +17,10 @@ const SYSTEM_PROMPT = `You are an elite React Native and Expo architect. You bui
 
 ## Stack (EXACT versions - do not deviate)
 - expo: ~54.0.0
-- expo-router: ~6.0.0
-- expo-status-bar: ~3.0.0
-- react: 19.1.0
-- react-native: 0.81.4
+- expo-router: ~4.0.0
+- expo-status-bar: ~2.0.0
+- react: 18.3.1
+- react-native: 0.76.3
 - typescript: ~5.8.3
 
 ## Architecture Rules
@@ -73,13 +73,19 @@ const SYSTEM_PROMPT = `You are an elite React Native and Expo architect. You bui
   },
   "dependencies": {
     "expo": "~54.0.0",
-    "expo-router": "~6.0.0",
-    "expo-status-bar": "~3.0.0",
-    "react": "19.1.0",
-    "react-native": "0.81.4"
+    "expo-router": "~4.0.0",
+    "expo-status-bar": "~2.0.0",
+    "expo-splash-screen": "~0.29.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-native": "0.76.3",
+    "react-native-web": "~0.19.13",
+    "react-native-safe-area-context": "4.12.0",
+    "react-native-screens": "~4.4.0",
+    "expo-linking": "~7.0.0"
   },
   "devDependencies": {
-    "@types/react": "~19.0.10",
+    "@types/react": "~18.3.12",
     "typescript": "~5.8.3"
   }
 }
@@ -259,6 +265,9 @@ export async function POST(req: Request) {
 
     // Check credits and reserve if user is authenticated
     if (user) {
+      // Safety: Reset any stuck reservations from previous failed runs
+      await walletManager.resetReserved(user.id);
+
       const hasCredits = await walletManager.reserve(user.id, GENERATION_COST);
       if (!hasCredits) {
         return Response.json(
@@ -663,14 +672,20 @@ function buildMockProject(prompt: string): GeneratedProject {
             web: "expo start --web"
           },
           dependencies: {
-            "expo": "~53.0.0",
-            "expo-router": "~5.0.0",
-            "expo-status-bar": "~2.2.0",
-            "react": "19.0.0",
-            "react-native": "0.79.3"
+            "expo": "~54.0.0",
+            "expo-router": "~4.0.0",
+            "expo-status-bar": "~2.0.0",
+            "expo-splash-screen": "~0.29.0",
+            "react": "18.3.1",
+            "react-dom": "18.3.1",
+            "react-native": "0.76.3",
+            "react-native-web": "~0.19.13",
+            "react-native-safe-area-context": "4.12.0",
+            "react-native-screens": "~4.4.0",
+            "expo-linking": "~7.0.0"
           },
           devDependencies: {
-            "@types/react": "~19.0.10",
+            "@types/react": "~18.3.12",
             "typescript": "~5.8.3"
           }
         }, null, 2),

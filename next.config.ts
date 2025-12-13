@@ -21,3 +21,6 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
+
+
+// Force restart for new API routes
