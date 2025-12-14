@@ -84,7 +84,7 @@ export const EditorPanel = memo(
       <PanelGroup direction="vertical">
         <Panel defaultSize={showTerminal ? DEFAULT_EDITOR_SIZE : 100} minSize={20}>
           <PanelGroup direction="horizontal">
-            <Panel defaultSize={20} minSize={15} collapsible className="border-r border-bolt-elements-borderColor">
+            <Panel defaultSize={25} minSize={20} collapsible className="border-r border-bolt-elements-borderColor">
               <div className="h-full">
                 <Tabs.Root defaultValue="files" className="flex flex-col h-full">
                   <PanelHeader className="w-full text-sm font-medium text-bolt-elements-textSecondary px-1">
@@ -143,7 +143,7 @@ export const EditorPanel = memo(
             </Panel>
 
             <PanelResizeHandle />
-            <Panel className="flex flex-col" defaultSize={80} minSize={20}>
+            <Panel className="flex flex-col" defaultSize={75} minSize={20}>
               <PanelHeader className="overflow-x-auto">
                 {activeFileSegments?.length && (
                   <div className="flex items-center flex-1 text-sm">

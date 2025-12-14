@@ -3,7 +3,7 @@
  * Preventing TS checks with files presented in the video for a better presentation.
  */
 import type { JSONValue, Message } from 'ai';
-import React, { type RefCallback, useEffect, useState } from 'react';
+import React, { type RefCallback, useEffect, useState, useRef } from 'react';
 import { ClientOnly } from 'remix-utils/client-only';
 import { Menu } from '~/components/sidebar/Menu.client';
 import { Workbench } from '~/components/workbench/Workbench.client';
@@ -146,6 +146,13 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     const expoUrl = useStore(expoUrlAtom);
     const [qrModalOpen, setQrModalOpen] = useState(false);
 
+    const baseInputRef = useRef(input);
+    const handleInputChangeRef = useRef(handleInputChange);
+
+    useEffect(() => {
+      handleInputChangeRef.current = handleInputChange;
+    }, [handleInputChange]);
+
 
 
     useEffect(() => {
@@ -171,7 +178,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
         recognition.continuous = true;
         recognition.interimResults = true;
 
-        recognition.onresult = (event) => {
+        recognition.onresult = (event: any) => {
           const transcript = Array.from(event.results)
             .map((result) => result[0])
             .map((result) => result.transcript)
@@ -179,11 +186,14 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
 
           setTranscript(transcript);
 
-          if (handleInputChange) {
+          if (handleInputChangeRef.current) {
+            const baseInput = baseInputRef.current || '';
+            const newValue = baseInput + (baseInput && transcript ? ' ' : '') + transcript;
+
             const syntheticEvent = {
-              target: { value: transcript },
+              target: { value: newValue },
             } as React.ChangeEvent<HTMLTextAreaElement>;
-            handleInputChange(syntheticEvent);
+            handleInputChangeRef.current(syntheticEvent);
           }
         };
 
@@ -251,6 +261,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
 
     const startListening = () => {
       if (recognition) {
+        baseInputRef.current = input;
         recognition.start();
         setIsListening(true);
       }

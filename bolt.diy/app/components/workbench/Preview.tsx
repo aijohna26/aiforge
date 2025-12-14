@@ -4,8 +4,9 @@ import { IconButton } from '~/components/ui/IconButton';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { PortDropdown } from './PortDropdown';
 import { ScreenshotSelector } from './ScreenshotSelector';
-import { expoUrlAtom } from '~/lib/stores/qrCodeStore';
+import { expoUrlAtom, webPreviewReadyAtom } from '~/lib/stores/qrCodeStore';
 import { ExpoQrModal } from '~/components/workbench/ExpoQrModal';
+import { QRCode } from 'react-qrcode-logo';
 import type { ElementInfo } from './Inspector';
 
 type ResizeSide = 'left' | 'right' | null;
@@ -53,11 +54,6 @@ const WINDOW_SIZES: WindowSize[] = [
     hasFrame: true,
     frameType: 'tablet',
   },
-  { name: 'Small Laptop', width: 1280, height: 800, icon: 'i-ph:laptop', hasFrame: true, frameType: 'laptop' },
-  { name: 'Laptop', width: 1366, height: 768, icon: 'i-ph:laptop', hasFrame: true, frameType: 'laptop' },
-  { name: 'Large Laptop', width: 1440, height: 900, icon: 'i-ph:laptop', hasFrame: true, frameType: 'laptop' },
-  { name: 'Desktop', width: 1920, height: 1080, icon: 'i-ph:monitor', hasFrame: true, frameType: 'desktop' },
-  { name: '4K Display', width: 3840, height: 2160, icon: 'i-ph:monitor', hasFrame: true, frameType: 'desktop' },
 ];
 
 export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
@@ -65,6 +61,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [activePreviewIndex, setActivePreviewIndex] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
   const [isPortDropdownOpen, setIsPortDropdownOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const hasSelectedPreview = useRef(false);
@@ -74,7 +71,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
   const [iframeUrl, setIframeUrl] = useState<string | undefined>();
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [isInspectorMode, setIsInspectorMode] = useState(false);
-  const [isDeviceModeOn, setIsDeviceModeOn] = useState(false);
+  const [isDeviceModeOn, setIsDeviceModeOn] = useState(true);
   const [widthPercent, setWidthPercent] = useState<number>(37.5);
   const [currentWidth, setCurrentWidth] = useState<number>(0);
 
@@ -94,8 +91,9 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
   const [selectedWindowSize, setSelectedWindowSize] = useState<WindowSize>(WINDOW_SIZES[0]);
   const [isLandscape, setIsLandscape] = useState(false);
   const [showDeviceFrame, setShowDeviceFrame] = useState(true);
-  const [showDeviceFrameInPreview, setShowDeviceFrameInPreview] = useState(false);
+  const [showDeviceFrameInPreview, setShowDeviceFrameInPreview] = useState(true);
   const expoUrl = useStore(expoUrlAtom);
+  const webPreviewReady = useStore(webPreviewReadyAtom);
   const [isExpoQrModalOpen, setIsExpoQrModalOpen] = useState(false);
 
   useEffect(() => {
@@ -109,7 +107,16 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
     const { baseUrl } = activePreview;
     setIframeUrl(baseUrl);
     setDisplayPath('/');
+    setIsLoading(true);
   }, [activePreview]);
+
+  useEffect(() => {
+    if (webPreviewReady) {
+      setIsLoading(false);
+    } else {
+      setIsLoading(true);
+    }
+  }, [webPreviewReady]);
 
   const findMinPortIndex = useCallback(
     (minIndex: number, preview: { port: number }, index: number, array: { port: number }[]) => {
@@ -117,6 +124,12 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
     },
     [],
   );
+
+  useEffect(() => {
+    if (expoUrl && import.meta.env.VITE_SHOW_QR_ON_LOAD === 'true') {
+      setIsExpoQrModalOpen(true);
+    }
+  }, [expoUrl]);
 
   useEffect(() => {
     if (previews.length > 1 && !hasSelectedPreview.current) {
@@ -630,6 +643,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.data.type === 'INSPECTOR_READY') {
+        setIsLoading(false);
         if (iframeRef.current?.contentWindow) {
           iframeRef.current.contentWindow.postMessage(
             {
@@ -723,30 +737,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
         </div>
 
         <div className="flex items-center gap-2">
-          <IconButton
-            icon="i-ph:devices"
-            onClick={toggleDeviceMode}
-            title={isDeviceModeOn ? 'Switch to Responsive Mode' : 'Switch to Device Mode'}
-          />
 
-          {expoUrl && <IconButton icon="i-ph:qr-code" onClick={() => setIsExpoQrModalOpen(true)} title="Show QR" />}
-
-          <ExpoQrModal open={isExpoQrModalOpen} onClose={() => setIsExpoQrModalOpen(false)} />
-
-          {isDeviceModeOn && (
-            <>
-              <IconButton
-                icon="i-ph:device-rotate"
-                onClick={() => setIsLandscape(!isLandscape)}
-                title={isLandscape ? 'Switch to Portrait' : 'Switch to Landscape'}
-              />
-              <IconButton
-                icon={showDeviceFrameInPreview ? 'i-ph:device-mobile' : 'i-ph:device-mobile-slash'}
-                onClick={() => setShowDeviceFrameInPreview(!showDeviceFrameInPreview)}
-                title={showDeviceFrameInPreview ? 'Hide Device Frame' : 'Show Device Frame'}
-              />
-            </>
-          )}
           <IconButton
             icon="i-ph:cursor-click"
             onClick={toggleInspectorMode}
@@ -754,6 +745,11 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
               isInspectorMode ? 'bg-bolt-elements-background-depth-3 !text-bolt-elements-item-contentAccent' : ''
             }
             title={isInspectorMode ? 'Disable Element Inspector' : 'Enable Element Inspector'}
+          />
+          <IconButton
+            icon="i-ph:qr-code"
+            onClick={() => setIsExpoQrModalOpen(true)}
+            title="Scan Expo Go QR Code"
           />
           <IconButton
             icon={isFullscreen ? 'i-ph:arrows-in' : 'i-ph:arrows-out'}
@@ -921,52 +917,101 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                   className="device-wrapper"
                   style={{
                     display: 'flex',
-                    justifyContent: 'center',
+                    justifyContent: 'flex-start',
                     alignItems: 'center',
                     width: '100%',
                     height: '100%',
-                    padding: '0',
+                    padding: '10px 0 16px 0',
                     overflow: 'auto',
                     transition: 'all 0.3s ease',
                     position: 'relative',
+                    flexDirection: 'column',
                   }}
                 >
                   <div
                     className="device-frame-container"
                     style={{
                       position: 'relative',
-                      backgroundImage: 'url(/assets/iphone-frame-17.png)',
-                      backgroundSize: '100% 100%',
-                      backgroundRepeat: 'no-repeat',
-                      boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
-                      transform: 'scale(1)',
-                      transformOrigin: 'center center',
-                      transition: 'all 0.3s ease',
-                      margin: '40px',
-                      width: '433px',
-                      height: '882px',
+                      height: 'min(65vh, 600px)',
+                      maxHeight: '600px',
+                      aspectRatio: '433/882',
+                      width: 'auto',
+                      maxWidth: '100%',
                       display: 'flex',
                       justifyContent: 'center',
                       alignItems: 'center',
-                      padding: '22px 26px 22px 26px', // Adjust padding to fit the screen inside the frame
                     }}
                   >
-                    <iframe
-                      ref={iframeRef}
-                      title="preview"
+                    <svg
+                      viewBox="0 0 433 882"
+                      fill="none"
+                      xmlns="http://www.w3.org/2000/svg"
                       style={{
-                        border: 'none',
-                        width: '100%',
+                        width: 'auto',
                         height: '100%',
-                        background: 'white',
-                        display: 'block',
-                        borderRadius: '44px', // Match the screen curvature
+                        maxHeight: '100%',
+                        maxWidth: '100%',
                       }}
-                      src={iframeUrl}
-                      sandbox="allow-scripts allow-forms allow-popups allow-modals allow-storage-access-by-user-activation allow-same-origin"
-                      allow="cross-origin-isolated"
-                    />
+                    >
+                      <defs>
+                        <clipPath id="screen-mask">
+                          <rect x="22" y="22" width="389" height="838" rx="44" fill="white" />
+                        </clipPath>
+                      </defs>
+                      <rect width="433" height="882" rx="60" fill="none" />
+                      <rect x="18" y="18" width="397" height="846" rx="48" stroke="#333" strokeWidth="4" />
+
+                      <g clipPath="url(#screen-mask)">
+                        <foreignObject x="22" y="22" width="389" height="838">
+                          <div style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative' }}>
+                            <iframe
+                              ref={iframeRef}
+                              src={iframeUrl}
+                              title="preview"
+                              style={{
+                                border: 'none',
+                                width: '100%',
+                                height: '100%',
+                                background: 'white',
+                              }}
+                              /*
+                               * We clear loading in the INSPECTOR_READY message handler, but this is a fallback
+                               * in case the inspector script doesn't load or fire.
+                               */
+                              onLoad={() => {
+                                // We rely on webPreviewReadyAtom or INSPECTOR_READY to clear loading state
+                              }}
+                              sandbox="allow-scripts allow-forms allow-popups allow-modals allow-storage-access-by-user-activation allow-same-origin"
+                              allow="geolocation; ch-ua-full-version-list; cross-origin-isolated; screen-wake-lock; publickey-credentials-get; shared-storage-select-url; ch-ua-arch; bluetooth; compute-pressure; ch-prefers-reduced-transparency; deferred-fetch; usb; ch-save-data; publickey-credentials-create; shared-storage; deferred-fetch-minimal; run-ad-auction; ch-ua-form-factors; ch-downlink; otp-credentials; payment; ch-ua; ch-ua-model; ch-ect; autoplay; camera; private-state-token-issuance; accelerometer; ch-ua-platform-version; idle-detection; private-aggregation; interest-cohort; ch-viewport-height; local-fonts; ch-ua-platform; midi; ch-ua-full-version; xr-spatial-tracking; clipboard-read; gamepad; display-capture; keyboard-map; join-ad-interest-group; ch-width; ch-prefers-reduced-motion; browsing-topics; encrypted-media; gyroscope; serial; ch-rtt; ch-ua-mobile; window-management; unload; ch-dpr; ch-prefers-color-scheme; ch-ua-wow64; attribution-reporting; fullscreen; identity-credentials-get; private-state-token-redemption; hid; ch-ua-bitness; storage-access; sync-xhr; ch-device-memory; ch-viewport-width; picture-in-picture; magnetometer; clipboard-write; microphone"
+                            />
+                            {isLoading && (
+                              <div className="absolute inset-0 bg-white flex flex-col items-center justify-center z-10">
+                                <div className="i-ph:spinner animate-spin text-3xl text-gray-500 mb-4" />
+                                <div className="text-gray-500 font-medium">Starting up...</div>
+                              </div>
+                            )}
+                          </div>
+                        </foreignObject>
+                      </g>
+
+                      {/* Dynamic Island / Notch Area */}
+                      <rect x="126" y="32" width="181" height="30" rx="15" fill="black" />
+                    </svg>
                   </div>
+                  {expoUrl && (
+                    <div className="flex flex-col items-center mt-2 animate-fade-in flex-shrink-0">
+                      <div className="text-sm font-medium text-bolt-elements-textPrimary mb-1">Test on your phone</div>
+                      <div className="bg-white p-2 rounded-xl shadow-lg border border-gray-100">
+                        <QRCode
+                          style={{
+                            borderRadius: 8,
+                          }}
+                          value={expoUrl}
+                          size={120}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <iframe
@@ -1018,6 +1063,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
           )}
         </div>
       </div>
+      <ExpoQrModal open={isExpoQrModalOpen} onClose={() => setIsExpoQrModalOpen(false)} />
     </div>
   );
 });

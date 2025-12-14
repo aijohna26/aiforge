@@ -2,7 +2,7 @@ import type { WebContainer, WebContainerProcess } from '@webcontainer/api';
 import type { ITerminal } from '~/types/terminal';
 import { withResolvers } from './promises';
 import { atom } from 'nanostores';
-import { expoUrlAtom } from '~/lib/stores/qrCodeStore';
+import { expoUrlAtom, webPreviewReadyAtom } from '~/lib/stores/qrCodeStore';
 
 export async function newShellProcess(webcontainer: WebContainer, terminal: ITerminal) {
   const args: string[] = [];
@@ -176,7 +176,7 @@ export class BoltShell {
     return { process, terminalStream: streamA, commandStream: streamC, expoUrlStream: streamD };
   }
 
-  // Dedicated background watcher for Expo URL
+  // Dedicated background watcher for Expo URL and Web Bundled status
   private async _watchExpoUrlInBackground(stream: ReadableStream<string>) {
     const reader = stream.getReader();
     let buffer = '';
@@ -199,6 +199,20 @@ export class BoltShell {
           .replace(/[^\x20-\x7E]+$/g, '');
         expoUrlAtom.set(cleanUrl);
         buffer = buffer.slice(buffer.indexOf(expoUrlMatch[1]) + expoUrlMatch[1].length);
+      }
+
+      if (buffer.includes('Starting Metro Bundler')) {
+        webPreviewReadyAtom.set(false);
+        buffer = ''; // Clear buffer to avoid re-triggering or stale mixing
+      }
+
+      const webReadyMatch = '[web] Logs will appear in the browser console';
+      if (buffer.includes(webReadyMatch)) {
+        webPreviewReadyAtom.set(true);
+        // Remove the matched part to ensure we don't re-match it later
+        // and to keep buffer clean
+        const idx = buffer.indexOf(webReadyMatch);
+        buffer = buffer.slice(idx + webReadyMatch.length);
       }
 
       if (buffer.length > 2048) {

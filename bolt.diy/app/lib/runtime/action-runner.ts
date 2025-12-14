@@ -2,6 +2,7 @@ import type { WebContainer } from '@webcontainer/api';
 import { path as nodePath } from '~/utils/path';
 import { atom, map, type MapStore } from 'nanostores';
 import type { ActionAlert, BoltAction, DeployAlert, FileHistory, SupabaseAction, SupabaseAlert } from '~/types/actions';
+import { webPreviewReadyAtom } from '~/lib/stores/qrCodeStore';
 import { createScopedLogger } from '~/utils/logger';
 import { unreachable } from '~/utils/unreachable';
 import type { ActionCallbackData } from './message-parser';
@@ -188,6 +189,7 @@ export class ActionRunner {
         case 'start': {
           // making the start app non blocking
 
+          webPreviewReadyAtom.set(false);
           this.#runStartAction(action)
             .then(() => this.#updateAction(actionId, { status: 'complete' }))
             .catch((err: Error) => {

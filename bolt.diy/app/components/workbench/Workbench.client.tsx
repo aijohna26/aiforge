@@ -493,7 +493,7 @@ export const Workbench = memo(
           </div>
 
           {/* Right Panel: Preview */}
-          <div className="w-[400px] flex flex-col bg-bolt-elements-background-depth-2">
+          <div className="w-[350px] flex flex-col bg-bolt-elements-background-depth-2">
             <div className="flex items-center px-3 py-2 border-b border-bolt-elements-borderColor">
               <span className="text-sm font-medium text-bolt-elements-textPrimary">Preview</span>
             </div>
