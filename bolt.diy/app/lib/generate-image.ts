@@ -139,18 +139,18 @@ class ImageGenerationService {
             } catch (e) {
                 errorMessage = errorText;
             }
-            throw new Error(`Kie.ai 4o task creation failed: ${errorMessage}`);
+            throw new Error(`Image generation task creation failed: ${errorMessage}`);
         }
 
         const createData = await createResponse.json();
 
         if (createData.code !== 200) {
-            throw new Error(`Kie.ai 4o task creation failed: ${createData.msg}`);
+            throw new Error(`Image generation task creation failed: ${createData.msg || 'Unknown error'}`);
         }
 
         const taskId = createData.data?.taskId;
         if (!taskId) {
-            throw new Error('Kie.ai 4o did not return a taskId');
+            throw new Error('Image generation service did not return a task ID');
         }
 
         // Step 2: Poll for task completion
@@ -210,18 +210,18 @@ class ImageGenerationService {
                 }
 
                 console.error('[Kie.ai 4o] No image URLs found in response:', JSON.stringify(queryData, null, 2));
-                throw new Error('Kie.ai 4o completed but returned no image URLs');
+                throw new Error('Image generation completed but returned no image URLs');
             }
 
             // Failed
             if (status === 2) {
-                throw new Error(`Kie.ai 4o task failed: ${queryData.data?.errorMessage || 'Unknown error'}`);
+                throw new Error(`Image generation failed: ${queryData.data?.errorMessage || 'Unknown error'}`);
             }
 
             // Still generating (status === 0), continue polling
         }
 
-        throw new Error('Kie.ai 4o task timed out after 5 minutes');
+        throw new Error('Image generation timed out. Please try again.');
     }
 
     private async generateWithOpenAI(
@@ -301,14 +301,21 @@ class ImageGenerationService {
                 prompt: enhancedPrompt,
                 output_format: outputFormat,
                 image_size: aspectRatio,
-                // Use image_urls for edit, image_input for others
+                // Use image_urls for edit, image_input for pro/others
+                // API expects direct HTTP/HTTPS URLs (not base64 or data URLs)
                 ...(options.referenceImages && options.referenceImages.length > 0 && {
-                    [model === 'nano-banana-edit' ? 'image_urls' : 'image_input']: options.referenceImages
+                    [model === 'nano-banana-edit' ? 'image_urls' : 'image_input']: model === 'nano-banana-edit'
+                        ? [options.referenceImages[0]] // Edit model typically wants exactly one source image
+                        : options.referenceImages
                 }),
             }
         };
 
-        console.log(':', JSON.stringify(requestBody, null, 2));
+        console.log(`[Image Service] Creating task for model: ${modelName} with ${options.referenceImages?.length || 0} reference images`);
+        if (options.referenceImages && options.referenceImages.length > 0) {
+            console.log('[Image Service] Reference images:', options.referenceImages);
+        }
+        console.log('[Image Service] Request body:', JSON.stringify(requestBody, null, 2));
 
         // Step 1: Create task
         const createResponse = await fetch('https://api.kie.ai/api/v1/jobs/createTask', {
@@ -330,15 +337,20 @@ class ImageGenerationService {
             } catch (e) {
                 errorMessage = errorText;
             }
-            throw new Error(`Kie.ai task creation failed: ${errorMessage}`);
+            throw new Error(`Image generation task creation failed: ${errorMessage}`);
         }
 
         const createData = await createResponse.json();
-        console.log('[Kie.ai] Create response:', JSON.stringify(createData, null, 2));
+        console.log('[Image Service] Create response:', JSON.stringify(createData, null, 2));
+
+        if (createData.code !== 200) {
+            const message = createData.msg || createData.message || 'Unknown provider error';
+            throw new Error(`Image Service Error: ${message}`);
+        }
 
         const taskId = createData.data?.taskId;
         if (!taskId) {
-            throw new Error('Kie.ai did not return a taskId');
+            throw new Error('Image generation service did not return a task ID');
         }
 
         // Step 2: Poll for task completion
@@ -398,11 +410,11 @@ class ImageGenerationService {
 
             // Check for failure
             if (status === 'failed' || status === 'error') {
-                throw new Error(`Kie.ai task failed: ${queryData.data?.error || 'Unknown error'}`);
+                throw new Error(`Image generation failed: ${queryData.data?.error || 'Unknown error'}`);
             }
         }
 
-        throw new Error('Kie.ai task timed out after 100 seconds');
+        throw new Error('Image generation timed out. Please try again.');
     }
 
     private async generateWithQwen(options: ImageGenerationOptions): Promise<ImageGenerationResult> {

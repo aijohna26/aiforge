@@ -113,9 +113,20 @@ export const ChatImpl = memo(
     const { showChat } = useStore(chatStore);
     const [animationScope] = useAnimate();
     const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
-    const [chatMode, setChatMode] = useState<'discuss' | 'build'>('build');
+    const [chatMode, setChatMode] = useState<'discuss' | 'build' | 'design'>('build');
     const [selectedElement, setSelectedElement] = useState<ElementInfo | null>(null);
     const mcpSettings = useMCPStore((state) => state.settings);
+
+    const currentView = useStore(workbenchStore.currentView);
+
+    useEffect(() => {
+      if (currentView === 'design') {
+        setChatMode('design');
+      } else if (chatMode === 'design') {
+        // Switch back to build if leaving design mode
+        setChatMode('build');
+      }
+    }, [currentView]);
 
     const {
       messages,

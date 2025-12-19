@@ -95,10 +95,45 @@ export async function POST(req: NextRequest) {
 
             console.log(`[Image Test] Image generated successfully, ${cost} credits deducted`);
 
+            // Persist to Supabase to avoid temporary URL expiration
+            let finalImageUrl = result.url;
+            if (result.url.startsWith('http') && !result.url.includes('supabase.co')) {
+                try {
+                    console.log(`[Image Test] Persisting external URL to Supabase: ${result.url}`);
+                    const imgRes = await fetch(result.url);
+                    if (imgRes.ok) {
+                        const blob = await imgRes.blob();
+                        const arrayBuffer = await blob.arrayBuffer();
+                        const buffer = Buffer.from(arrayBuffer);
+                        const filename = `generated/${Date.now()}-${Math.random().toString(36).substring(7)}.png`;
+
+                        const { data: uploadData, error: uploadError } = await supabase.storage
+                            .from('images')
+                            .upload(filename, buffer, {
+                                contentType: blob.type || 'image/png',
+                                cacheControl: '3600',
+                                upsert: false
+                            });
+
+                        if (!uploadError) {
+                            const { data: { publicUrl } } = supabase.storage.from('images').getPublicUrl(filename);
+                            finalImageUrl = publicUrl;
+                            console.log(`[Image Test] Successfully persisted to Supabase: ${finalImageUrl}`);
+                        } else {
+                            console.error(`[Image Test] Supabase upload error:`, uploadError);
+                        }
+                    } else {
+                        console.error(`[Image Test] Failed to fetch generated image for persistence: ${imgRes.statusText}`);
+                    }
+                } catch (persistError) {
+                    console.error("[Image Test] Persistence error:", persistError);
+                }
+            }
+
             return NextResponse.json({
                 success: true,
                 prompt,
-                imageUrl: result.url,
+                imageUrl: finalImageUrl,
                 provider: result.provider,
                 revisedPrompt: result.revisedPrompt,
                 options: {

@@ -17,8 +17,8 @@ interface MarkdownProps {
   html?: boolean;
   limitedMarkdown?: boolean;
   append?: (message: Message) => void;
-  chatMode?: 'discuss' | 'build';
-  setChatMode?: (mode: 'discuss' | 'build') => void;
+  chatMode?: 'discuss' | 'build' | 'design';
+  setChatMode?: (mode: 'discuss' | 'build' | 'design') => void;
   model?: string;
   provider?: ProviderInfo;
 }

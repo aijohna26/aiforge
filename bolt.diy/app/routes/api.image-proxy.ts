@@ -18,15 +18,19 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
         const response = await fetch(remoteUrl.toString(), {
             cache: 'no-store',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            },
         });
 
         if (!response.ok) {
-            return json({ error: 'Failed to fetch image' }, { status: response.status || 500 });
+            console.error(`[Image Proxy] Failed to fetch. Status: ${response.status}, URL: ${remoteUrl.toString()}`);
+            return json({ error: `Failed to fetch image: ${response.statusText}` }, { status: response.status || 500 });
         }
 
         const contentType = response.headers.get('content-type') || 'application/octet-stream';
         const buffer = await response.arrayBuffer();
-
+        console.log("diy ==== api.image-proxy");
         return new Response(buffer, {
             status: 200,
             headers: {

@@ -19,6 +19,7 @@ import { classNames } from '~/utils/classNames';
 import { cubicEasingFn } from '~/utils/easings';
 import { renderLogger } from '~/utils/logger';
 import { EditorPanel } from './EditorPanel';
+import { DesignPanel } from './DesignPanel';
 import { Preview } from './Preview';
 import useViewport from '~/lib/hooks';
 
@@ -49,12 +50,12 @@ const viewTransition = { ease: cubicEasingFn };
 
 const sliderOptions: SliderOptions<WorkbenchViewType> = [
   {
-    value: 'code',
-    text: 'Code',
+    value: 'design',
+    text: 'Design',
   },
   {
-    value: 'diff',
-    text: 'Diff',
+    value: 'code',
+    text: 'Code',
   },
   {
     value: 'preview',
@@ -397,15 +398,32 @@ export const Workbench = memo(
               <Slider
                 selected={selectedView === 'preview' || selectedView === 'qr' ? 'code' : selectedView}
                 options={[
+                  { value: 'design', text: 'Design' },
                   { value: 'code', text: 'Code' },
-                  { value: 'diff', text: 'Diff' },
                 ]}
                 setSelected={setSelectedView}
               />
               <div className="ml-auto" />
-              {selectedView === 'code' && (
+              {(selectedView === 'code' || selectedView === 'diff') && (
                 <div className="flex overflow-y-auto">
                   <ExportChatButton exportChat={exportChat} />
+                  {/* Diff Button */}
+                  <div className="flex border border-bolt-elements-borderColor rounded-md overflow-hidden ml-1">
+                    <button
+                      onClick={() => {
+                        setSelectedView(selectedView === 'diff' ? 'code' : 'diff');
+                      }}
+                      className={classNames(
+                        "rounded-md items-center justify-center px-3 py-1.5 text-xs flex gap-1.7 transition-colors",
+                        selectedView === 'diff'
+                          ? "bg-bolt-elements-item-backgroundAccent text-bolt-elements-item-contentAccent"
+                          : "bg-accent-500 text-white hover:text-bolt-elements-item-contentAccent hover:bg-bolt-elements-button-primary-backgroundHover outline-accent-500"
+                      )}
+                    >
+                      <div className="i-ph:git-diff" />
+                      Diff
+                    </button>
+                  </div>
                   {/* Sync Button */}
                   <div className="flex border border-bolt-elements-borderColor rounded-md overflow-hidden ml-1">
                     <DropdownMenu.Root>
@@ -468,7 +486,20 @@ export const Workbench = memo(
               )}
             </div>
             <div className="relative flex-1 overflow-hidden">
-              <View initial={{ x: '0%' }} animate={{ x: selectedView === 'code' ? '0%' : '-100%' }}>
+              <View
+                initial={{ x: '0%' }}
+                animate={{
+                  x: selectedView === 'design' ? '0%' : '-100%',
+                }}
+              >
+                <DesignPanel />
+              </View>
+              <View
+                initial={{ x: '100%' }}
+                animate={{
+                  x: selectedView === 'code' ? '0%' : selectedView === 'design' ? '100%' : '-100%',
+                }}
+              >
                 <EditorPanel
                   editorDocument={currentDocument}
                   isStreaming={isStreaming}
@@ -485,7 +516,9 @@ export const Workbench = memo(
               </View>
               <View
                 initial={{ x: '100%' }}
-                animate={{ x: selectedView === 'diff' ? '0%' : selectedView === 'code' ? '100%' : '-100%' }}
+                animate={{
+                  x: selectedView === 'diff' ? '0%' : '100%',
+                }}
               >
                 <DiffView fileHistory={fileHistory} setFileHistory={setFileHistory} />
               </View>
@@ -493,14 +526,16 @@ export const Workbench = memo(
           </div>
 
           {/* Right Panel: Preview */}
-          <div className="w-[350px] flex flex-col bg-bolt-elements-background-depth-2">
-            <div className="flex items-center px-3 py-2 border-b border-bolt-elements-borderColor">
-              <span className="text-sm font-medium text-bolt-elements-textPrimary">Preview</span>
+          {selectedView !== 'design' && (
+            <div className="w-[350px] flex flex-col bg-bolt-elements-background-depth-2">
+              <div className="flex items-center px-3 py-2 border-b border-bolt-elements-borderColor">
+                <span className="text-sm font-medium text-bolt-elements-textPrimary">Preview</span>
+              </div>
+              <div className="flex-1 overflow-hidden relative">
+                <Preview setSelectedElement={setSelectedElement} />
+              </div>
             </div>
-            <div className="flex-1 overflow-hidden relative">
-              <Preview setSelectedElement={setSelectedElement} />
-            </div>
-          </div>
+          )}
         </div>
       );
     }
@@ -538,8 +573,26 @@ export const Workbench = memo(
                   />
                   <Slider selected={selectedView} options={sliderOptions} setSelected={setSelectedView} />
                   <div className="ml-auto" />
-                  {selectedView === 'code' && (
+                  {(selectedView === 'code' || selectedView === 'diff') && (
                     <div className="flex overflow-y-auto">
+                      {/* Diff Button */}
+                      <div className="flex border border-bolt-elements-borderColor rounded-md overflow-hidden mr-1">
+                        <button
+                          onClick={() => {
+                            setSelectedView(selectedView === 'diff' ? 'code' : 'diff');
+                          }}
+                          className={classNames(
+                            "rounded-md items-center justify-center px-3 py-1.5 text-xs flex gap-1.7 transition-colors",
+                            selectedView === 'diff'
+                              ? "bg-bolt-elements-item-backgroundAccent text-bolt-elements-item-contentAccent"
+                              : "bg-accent-500 text-white hover:text-bolt-elements-item-contentAccent hover:bg-bolt-elements-button-primary-backgroundHover outline-accent-500"
+                          )}
+                        >
+                          <div className="i-ph:git-diff" />
+                          Diff
+                        </button>
+                      </div>
+
                       {/* Export Chat Button */}
                       <ExportChatButton exportChat={exportChat} />
 
@@ -613,7 +666,20 @@ export const Workbench = memo(
                   />
                 </div>
                 <div className="relative flex-1 overflow-hidden">
-                  <View initial={{ x: '0%' }} animate={{ x: selectedView === 'code' ? '0%' : '-100%' }}>
+                  <View
+                    initial={{ x: '0%' }}
+                    animate={{
+                      x: selectedView === 'design' ? '0%' : '-100%',
+                    }}
+                  >
+                    <DesignPanel />
+                  </View>
+                  <View
+                    initial={{ x: '100%' }}
+                    animate={{
+                      x: selectedView === 'code' ? '0%' : selectedView === 'design' ? '100%' : '-100%',
+                    }}
+                  >
                     <EditorPanel
                       editorDocument={currentDocument}
                       isStreaming={isStreaming}
@@ -630,7 +696,9 @@ export const Workbench = memo(
                   </View>
                   <View
                     initial={{ x: '100%' }}
-                    animate={{ x: selectedView === 'diff' ? '0%' : selectedView === 'code' ? '100%' : '-100%' }}
+                    animate={{
+                      x: selectedView === 'diff' ? '0%' : '100%',
+                    }}
                   >
                     <DiffView fileHistory={fileHistory} setFileHistory={setFileHistory} />
                   </View>

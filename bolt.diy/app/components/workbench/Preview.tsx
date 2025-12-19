@@ -943,7 +943,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                     }}
                   >
                     <svg
-                      viewBox="0 0 433 882"
+                      viewBox="0 0 433 932"
                       fill="none"
                       xmlns="http://www.w3.org/2000/svg"
                       style={{
@@ -955,14 +955,14 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                     >
                       <defs>
                         <clipPath id="screen-mask">
-                          <rect x="22" y="22" width="389" height="838" rx="44" fill="white" />
+                          <rect x="22" y="22" width="389" height="888" rx="44" fill="white" />
                         </clipPath>
                       </defs>
-                      <rect width="433" height="882" rx="60" fill="none" />
-                      <rect x="18" y="18" width="397" height="846" rx="48" stroke="#333" strokeWidth="4" />
+                      <rect width="433" height="932" rx="60" fill="none" />
+                      <rect x="18" y="18" width="397" height="896" rx="48" stroke="#333" strokeWidth="4" />
 
                       <g clipPath="url(#screen-mask)">
-                        <foreignObject x="22" y="22" width="389" height="838">
+                        <foreignObject x="22" y="22" width="389" height="888">
                           <div style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative' }}>
                             <iframe
                               ref={iframeRef}

@@ -4,8 +4,8 @@ import { walletManager } from "~/lib/wallet";
 import { calculateImageGenerationCost, type ImageModel } from "~/lib/pricing";
 import { createClient } from "~/lib/supabase/server";
 
-// Test endpoint for image generation with full configuration options
-// POST /api/test/image
+// Test endpoint for image editing with full configuration options
+// POST /api/test/image-edit
 export async function action({ request }: ActionFunctionArgs) {
     if (request.method !== "POST") {
         return json({ error: "Method not allowed" }, { status: 405 });
@@ -15,11 +15,18 @@ export async function action({ request }: ActionFunctionArgs) {
 
     try {
         const body = await request.json();
-        const { prompt, provider, openaiModel, googleModel, qwenModel, seedreamModel, outputFormat, aspectRatio, referenceImages } = body;
+        const { imageUrl, prompt, provider, qwenModel, seedreamModel, outputFormat, aspectRatio } = body;
 
         if (!prompt || typeof prompt !== "string") {
             return json(
-                { error: "Please provide a 'prompt'" },
+                { error: "Please provide a 'prompt' describing the edits" },
+                { status: 400, headers }
+            );
+        }
+
+        if (!imageUrl || typeof imageUrl !== "string") {
+            return json(
+                { error: "Please provide an 'imageUrl' to edit" },
                 { status: 400, headers }
             );
         }
@@ -41,31 +48,23 @@ export async function action({ request }: ActionFunctionArgs) {
         const userId = user?.id || 'dev-test-user';
 
         // Calculate cost based on model
-        let model: ImageModel = 'nano-banana';
-        if (provider === 'openai' && openaiModel) {
-            model = openaiModel as ImageModel;
-        } else if (provider === 'gpt-image-1') {
-            model = 'gpt-image-1';
-        } else if (provider === 'qwen-image-edit' || qwenModel) {
-            model = 'qwen-image-edit';
-        } else if (provider === 'seedream-4.5-edit' || seedreamModel) {
+        let model: ImageModel = 'qwen-image-edit';
+        if (provider === 'seedream-4.5-edit' || seedreamModel) {
             model = 'seedream-4.5-edit';
-        } else if (googleModel) {
-            model = googleModel as ImageModel;
+        } else if (qwenModel) {
+            model = 'qwen-image-edit';
         }
 
         const cost = calculateImageGenerationCost(model);
 
-        console.log(`[Image Test] Generating image with options:`, {
+        console.log(`[Image Edit] Editing image with options:`, {
+            imageUrl,
             prompt,
-            provider,
-            openaiModel,
-            googleModel,
+            provider: provider || 'qwen-image-edit',
             qwenModel,
             seedreamModel,
             outputFormat,
             aspectRatio,
-            referenceImagesCount: referenceImages?.length || 0,
             cost,
         });
 
@@ -91,17 +90,15 @@ export async function action({ request }: ActionFunctionArgs) {
         try {
             const options: ImageGenerationOptions = {
                 prompt,
-                provider,
-                openaiModel,
-                googleModel,
+                provider: provider || 'qwen-image-edit',
                 qwenModel,
                 seedreamModel,
                 outputFormat,
                 aspectRatio,
-                referenceImages,
+                referenceImages: [imageUrl], // Pass the image to edit as a reference image
             };
 
-            // Generate image
+            // Generate edited image
             const result = await imageService.generateImage(options);
 
             // Settle the reserved credits (deduct the actual cost) - only for authenticated users
@@ -109,7 +106,7 @@ export async function action({ request }: ActionFunctionArgs) {
                 await walletManager.settle(userId, cost, cost);
             }
 
-            console.log(`[Image Test] Image generated successfully${isDevelopmentMode ? ' (dev mode - no credits charged)' : `, ${cost} credits deducted`}`);
+            console.log(`[Image Edit] Image edited successfully${isDevelopmentMode ? ' (dev mode - no credits charged)' : `, ${cost} credits deducted`}`);
 
             return json({
                 success: true,
@@ -118,15 +115,13 @@ export async function action({ request }: ActionFunctionArgs) {
                 provider: result.provider,
                 revisedPrompt: result.revisedPrompt,
                 options: {
-                    openaiModel,
-                    googleModel,
                     qwenModel,
                     seedreamModel,
                     outputFormat,
                     aspectRatio,
                 },
                 creditsUsed: cost,
-                message: `Image generated successfully! ${cost} credits used.`,
+                message: `Image edited successfully! ${cost} credits used.`,
             }, { headers });
         } catch (error) {
             // Refund reserved credits on error - only for authenticated users
@@ -136,8 +131,8 @@ export async function action({ request }: ActionFunctionArgs) {
             throw error;
         }
     } catch (error) {
-        console.error("[Image Test] Error:", error);
-        const errorMessage = error instanceof Error ? error.message : "Image generation failed";
+        console.error("[Image Edit] Error:", error);
+        const errorMessage = error instanceof Error ? error.message : "Image editing failed";
 
         return json(
             {

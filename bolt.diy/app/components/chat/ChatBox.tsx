@@ -55,8 +55,8 @@ interface ChatBoxProps {
   handleStop?: (() => void) | undefined;
   enhancingPrompt?: boolean | undefined;
   enhancePrompt?: (() => void) | undefined;
-  chatMode?: 'discuss' | 'build';
-  setChatMode?: (mode: 'discuss' | 'build') => void;
+  chatMode?: 'discuss' | 'build' | 'design';
+  setChatMode?: (mode: 'discuss' | 'build' | 'design') => void;
   designScheme?: DesignScheme;
   setDesignScheme?: (scheme: DesignScheme) => void;
   selectedElement?: ElementInfo | null;
@@ -73,10 +73,10 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
          * {
          *   'sticky bottom-2': chatStarted,
          * },
+         *
          */
       )}
     >
-
       <div>
         <ClientOnly>
           {() => (
@@ -212,7 +212,13 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
             minHeight: props.TEXTAREA_MIN_HEIGHT,
             maxHeight: props.TEXTAREA_MAX_HEIGHT,
           }}
-          placeholder={props.chatMode === 'build' ? 'How can I help you today?' : 'What would you like to discuss?'}
+          placeholder={
+            props.chatMode === 'design'
+              ? 'Tell me about the app you want to build...'
+              : props.chatMode === 'build'
+                ? 'How can I help you today?'
+                : 'What would you like to discuss?'
+          }
           translate="no"
         />
         <ClientOnly>

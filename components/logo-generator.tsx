@@ -146,6 +146,10 @@ export function LogoGenerator({ appInfo, onSave, stylePreferences }: LogoGenerat
                 setLogoUrls(validUrls);
                 // Auto-select first image
                 setSelectedLogo(validUrls[0]);
+                // Auto-save the first selected logo
+                if (onSave) {
+                    onSave(validUrls[0], prompt);
+                }
             } else {
                 setError('Failed to generate any logos');
             }
@@ -187,6 +191,10 @@ export function LogoGenerator({ appInfo, onSave, stylePreferences }: LogoGenerat
             if (data.success && data.imageUrl) {
                 setLogoUrls(prev => [...prev, data.imageUrl]);
                 setSelectedLogo(data.imageUrl); // Select the new edited version
+                // Auto-save the edited logo
+                if (onSave) {
+                    onSave(data.imageUrl, editPrompt);
+                }
                 setIsEditModalOpen(false); // Close modal on success
                 setEditPrompt(''); // Clear edit prompt on success
             } else {
@@ -373,7 +381,13 @@ export function LogoGenerator({ appInfo, onSave, stylePreferences }: LogoGenerat
                         {logoUrls.map((url, index) => (
                             <div
                                 key={index}
-                                onClick={() => setSelectedLogo(url)}
+                                onClick={() => {
+                                    setSelectedLogo(url);
+                                    // Auto-save when logo is selected
+                                    if (onSave) {
+                                        onSave(url, prompt);
+                                    }
+                                }}
                                 className={`border-2 rounded-lg overflow-hidden bg-white dark:bg-slate-900 p-4 cursor-pointer transition-all ${selectedLogo === url
                                     ? 'border-blue-500 shadow-lg'
                                     : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'

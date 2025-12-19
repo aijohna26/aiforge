@@ -272,49 +272,31 @@ export default function WizardPage() {
         setIsLoaded(true);
     }, []);
 
-    // Mark as unsaved when state changes
+    // Save to localStorage immediately when state changes
     useEffect(() => {
         if (!isLoaded) return;
-        setSaveStatus('unsaved');
+
+        const state: WizardState = {
+            currentStep,
+            appInfo,
+            savedLogo,
+            savedScreens,
+            styleBoard,
+            packages,
+            screenGeneratorState,
+        };
+
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+            console.log('[Wizard] Auto-saved to localStorage');
+            setSaveStatus('saved');
+        } catch (error) {
+            console.error('[Wizard] Failed to save state:', error);
+            setSaveStatus('unsaved');
+        }
+
         setLastActivity(Date.now());
     }, [isLoaded, currentStep, appInfo, savedLogo, savedScreens, styleBoard, packages, screenGeneratorState]);
-
-    // Auto-save every minute when there are unsaved changes
-    useEffect(() => {
-        if (!isLoaded) return;
-
-        const saveInterval = setInterval(() => {
-            if (saveStatus === 'unsaved') {
-                const timeSinceActivity = Date.now() - lastActivity;
-
-                // Only save if there was activity in the last 5 minutes
-                if (timeSinceActivity < 5 * 60 * 1000) {
-                    setSaveStatus('saving');
-
-                    const state: WizardState = {
-                        currentStep,
-                        appInfo,
-                        savedLogo,
-                        savedScreens,
-                        styleBoard,
-                        packages,
-                        screenGeneratorState,
-                    };
-
-                    try {
-                        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-                        console.log('[Wizard] Auto-saved to localStorage');
-                        setSaveStatus('saved');
-                    } catch (error) {
-                        console.error('[Wizard] Failed to save state:', error);
-                        setSaveStatus('unsaved');
-                    }
-                }
-            }
-        }, 60000); // Check every minute
-
-        return () => clearInterval(saveInterval);
-    }, [isLoaded, saveStatus, lastActivity, currentStep, appInfo, savedLogo, savedScreens, styleBoard, packages, screenGeneratorState]);
 
     const steps = [
         { number: 1, title: 'App Info & Branding', icon: '📝' },
@@ -378,6 +360,7 @@ export default function WizardPage() {
             generatedScreens: { splash: [], signin: [], signup: [] },
             selectedVariations: { splash: null, signin: null, signup: null },
         });
+        setShowResetAlert(false); // Close the dialog
         toast.success('Session cleared! Starting fresh.');
     };
 

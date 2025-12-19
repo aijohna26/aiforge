@@ -1,5 +1,13 @@
 import { json, type ActionFunctionArgs, unstable_parseMultipartFormData, unstable_createMemoryUploadHandler } from "@remix-run/node";
 import { createClient } from "~/lib/supabase/server";
+import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseAdmin =
+    supabaseUrl && supabaseServiceKey
+        ? createSupabaseAdminClient(supabaseUrl, supabaseServiceKey)
+        : null;
 
 export async function action({ request }: ActionFunctionArgs) {
     if (request.method !== "POST") {
@@ -41,7 +49,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
         // Try Supabase first
         try {
-            const supabase = createClient(request, headers);
+            const supabase = supabaseAdmin ?? createClient(request, headers);
             const filename = `temp/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '')}`;
 
             // Convert File to ArrayBuffer/Buffer for Supabase upload
@@ -57,7 +65,27 @@ export async function action({ request }: ActionFunctionArgs) {
                 });
 
             if (!error) {
-                const { data: { publicUrl } } = supabase.storage.from('images').getPublicUrl(filename);
+                const buildAbsoluteUrl = (url?: string | null) => {
+                    if (!url) return null;
+                    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+                    if (supabaseUrl) {
+                        return `${supabaseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+                    }
+                    return url;
+                };
+
+                const { data: publicUrlData } = supabase.storage.from('images').getPublicUrl(filename);
+                let publicUrl = buildAbsoluteUrl(publicUrlData.publicUrl);
+
+                if (supabaseAdmin) {
+                    const { data: signedData, error: signedError } = await supabase.storage
+                        .from('images')
+                        .createSignedUrl(filename, 60 * 60 * 24 * 365);
+                    if (!signedError && signedData?.signedUrl) {
+                        publicUrl = buildAbsoluteUrl(signedData.signedUrl);
+                    }
+                }
+
                 console.log(`[Upload] ✅ Uploaded to Supabase: ${publicUrl}`);
                 return json({ url: publicUrl, provider: 'supabase' }, { headers });
             }

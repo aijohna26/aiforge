@@ -144,6 +144,10 @@ export function LogoGenerator({ appInfo, onSave, stylePreferences }: LogoGenerat
                 setLogoUrls(validUrls);
                 // Auto-select first image
                 setSelectedLogo(validUrls[0]);
+                // Auto-save the first selected logo
+                if (onSave) {
+                    onSave(validUrls[0], prompt);
+                }
             } else {
                 setError('Failed to generate any logos');
             }
@@ -185,6 +189,10 @@ export function LogoGenerator({ appInfo, onSave, stylePreferences }: LogoGenerat
             if (data.success && data.imageUrl) {
                 setLogoUrls(prev => [...prev, data.imageUrl]);
                 setSelectedLogo(data.imageUrl); // Select the new edited version
+                // Auto-save the edited logo
+                if (onSave) {
+                    onSave(data.imageUrl, editPrompt);
+                }
                 setIsEditModalOpen(false); // Close modal on success
                 setEditPrompt(''); // Clear edit prompt on success
             } else {
@@ -371,7 +379,13 @@ export function LogoGenerator({ appInfo, onSave, stylePreferences }: LogoGenerat
                         {logoUrls.map((url, index) => (
                             <div
                                 key={index}
-                                onClick={() => setSelectedLogo(url)}
+                                onClick={() => {
+                                    setSelectedLogo(url);
+                                    // Auto-save when logo is selected
+                                    if (onSave) {
+                                        onSave(url, prompt);
+                                    }
+                                }}
                                 className={`border-2 rounded-lg overflow-hidden bg-white dark:bg-slate-900 p-4 cursor-pointer transition-all ${selectedLogo === url
                                     ? 'border-blue-500 shadow-lg'
                                     : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
@@ -389,7 +403,7 @@ export function LogoGenerator({ appInfo, onSave, stylePreferences }: LogoGenerat
                                             setSelectedLogo(url);
                                             setIsEditModalOpen(true);
                                         }}
-                                        className="absolute top-2 right-2 bg-white/90 dark:bg-slate-800/90 hover:bg-white dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 p-1.5 rounded-full shadow-sm border border-slate-200 dark:border-slate-600 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
+                                        className="absolute top-2 right-2 bg-white/90 dark:bg-slate-800/90 hover:bg-white dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 p-2 rounded-full shadow-lg border border-slate-200 dark:border-slate-600 transition-all group-hover:opacity-100 focus:opacity-100 opacity-60 hover:opacity-100"
                                         title="Edit this logo"
                                     >
                                         ✏️
