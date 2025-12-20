@@ -1,15 +1,38 @@
-import { useStore } from '@nanostores/react';
-import type { LinksFunction } from '@remix-run/cloudflare';
-import { Links, Meta, Outlet, Scripts, ScrollRestoration } from '@remix-run/react';
+import { json, type LinksFunction, type LoaderFunctionArgs } from '@remix-run/cloudflare';
+import { Links, Meta, Outlet, Scripts, ScrollRestoration, useLoaderData, useRevalidator } from '@remix-run/react';
 import tailwindReset from '@unocss/reset/tailwind-compat.css?url';
 import { themeStore } from './lib/stores/theme';
 import { stripIndents } from './utils/stripIndent';
 import { createHead } from 'remix-island';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { ClientOnly } from 'remix-utils/client-only';
 import { cssTransition, ToastContainer } from 'react-toastify';
+import { createClient as createServerClient } from './lib/supabase/server';
+import { createClient as createBrowserClient } from './lib/supabase/browser';
+
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const response = new Headers();
+  const supabase = createServerClient(request, response);
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  return json(
+    {
+      session,
+      env: {
+        VITE_SUPABASE_URL: process.env.VITE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL,
+        VITE_SUPABASE_ANON_KEY: process.env.VITE_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      },
+    },
+    {
+      headers: response,
+    },
+  );
+};
 
 import reactToastifyStyles from 'react-toastify/dist/ReactToastify.css?url';
 import globalStyles from './styles/index.scss?url';
@@ -112,10 +135,28 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
+import { useStore } from '@nanostores/react';
 import { logStore } from './lib/stores/logs';
 
 export default function App() {
+  const { session, env } = useLoaderData<typeof loader>();
+  const revalidator = useRevalidator();
   const theme = useStore(themeStore);
+  const [supabase] = useState(() => createBrowserClient());
+
+  const serverUserId = session?.user?.id;
+
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user?.id !== serverUserId) {
+        revalidator.revalidate();
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [supabase, serverUserId, revalidator]);
 
   useEffect(() => {
     logStore.logSystem('Application initialized', {
@@ -123,15 +164,12 @@ export default function App() {
       platform: navigator.platform,
       userAgent: navigator.userAgent,
       timestamp: new Date().toISOString(),
+      user: session?.user?.email,
     });
 
     // Initialize debug logging with improved error handling
     import('./utils/debugLogger')
       .then(({ debugLogger }) => {
-        /*
-         * The debug logger initializes itself and starts disabled by default
-         * It will only start capturing when enableDebugMode() is called
-         */
         const status = debugLogger.getStatus();
         logStore.logSystem('Debug logging ready', {
           initialized: status.initialized,

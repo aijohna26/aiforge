@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { PlanTicket, TicketStatus, TicketPriority } from '~/lib/stores/plan';
 import { updateTicket, updateTicketStatus } from '~/lib/stores/plan';
+import { classNames } from '~/utils/classNames';
 
 interface TicketDetailModalProps {
     ticket: PlanTicket;
@@ -10,19 +11,19 @@ interface TicketDetailModalProps {
 export function TicketDetailModal({ ticket, onClose }: TicketDetailModalProps) {
     const [isEditing, setIsEditing] = useState(false);
 
-    const priorityOptions: { value: TicketPriority; label: string; emoji: string }[] = [
-        { value: 'highest', label: 'Highest', emoji: '🔴' },
-        { value: 'high', label: 'High', emoji: '🟠' },
-        { value: 'medium', label: 'Medium', emoji: '🟡' },
-        { value: 'low', label: 'Low', emoji: '🟢' },
-        { value: 'lowest', label: 'Lowest', emoji: '⚪' },
+    const priorityOptions: { value: TicketPriority; label: string; icon: string; color: string }[] = [
+        { value: 'highest', label: 'Highest', icon: 'i-ph:caret-double-up-bold', color: 'text-rose-500' },
+        { value: 'high', label: 'High', icon: 'i-ph:caret-up-bold', color: 'text-orange-500' },
+        { value: 'medium', label: 'Medium', icon: 'i-ph:minus-bold', color: 'text-amber-500' },
+        { value: 'low', label: 'Low', icon: 'i-ph:caret-down-bold', color: 'text-emerald-500' },
+        { value: 'lowest', label: 'Lowest', icon: 'i-ph:caret-double-down-bold', color: 'text-slate-500' },
     ];
 
-    const statusOptions: { value: TicketStatus; label: string }[] = [
-        { value: 'todo', label: 'To Do' },
-        { value: 'in-progress', label: 'In Progress' },
-        { value: 'testing', label: 'Testing' },
-        { value: 'done', label: 'Done' },
+    const statusOptions: { value: TicketStatus; label: string; icon: string }[] = [
+        { value: 'todo', label: 'To Do', icon: 'i-ph:list-bullets-bold' },
+        { value: 'in-progress', label: 'In Progress', icon: 'i-ph:rocket-launch-bold' },
+        { value: 'testing', label: 'Testing', icon: 'i-ph:flask-bold' },
+        { value: 'done', label: 'Done', icon: 'i-ph:check-circle-bold' },
     ];
 
     const handleStatusChange = (newStatus: TicketStatus) => {
@@ -33,108 +34,122 @@ export function TicketDetailModal({ ticket, onClose }: TicketDetailModalProps) {
         updateTicket(ticket.id, { priority: newPriority });
     };
 
-    const typeIcons = {
-        epic: 'i-ph:lightning',
-        story: 'i-ph:book-open',
-        task: 'i-ph:check-square',
-        bug: 'i-ph:bug',
+    const typeConfig = {
+        epic: { icon: 'i-ph:lightning-bold', color: 'text-orange-500 dark:text-purple-500', bg: 'bg-orange-500/10 dark:bg-purple-500/10' },
+        story: { icon: 'i-ph:book-open-bold', color: 'text-blue-500', bg: 'bg-blue-500/10' },
+        task: { icon: 'i-ph:circle-fill', color: 'text-slate-400', bg: 'bg-slate-400/10' },
+        bug: { icon: 'i-ph:bug-bold', color: 'text-rose-500', bg: 'bg-rose-500/10' },
     };
 
+    const type = typeConfig[ticket.type];
+
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-            <div className="bg-bolt-elements-background-depth-2 rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-bolt-elements-borderColor">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={onClose}>
+            <div
+                className="bg-white dark:bg-[#0A0A0A] rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-gray-200 dark:border-white/10"
+                onClick={(e) => e.stopPropagation()}
+            >
                 {/* Header */}
-                <div className="flex items-start justify-between p-6 border-b border-bolt-elements-borderColor">
+                <div className="flex items-start justify-between p-8 border-b border-gray-100 dark:border-white/5">
                     <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                            <div className={`${typeIcons[ticket.type]} text-xl ${ticket.type === 'epic' ? 'text-purple-500' :
-                                    ticket.type === 'story' ? 'text-green-500' :
-                                        ticket.type === 'task' ? 'text-blue-500' :
-                                            'text-red-500'
-                                }`} />
-                            <span className="text-sm font-mono text-blue-500 font-semibold">
+                        <div className="flex items-center gap-3 mb-3">
+                            <div className={classNames("flex items-center gap-1.5 px-2 py-1 rounded-md", type.bg)}>
+                                <div className={classNames(type.icon, type.color, "text-xs")} />
+                                <span className={classNames(type.color, "capitalize text-[10px] font-bold tracking-widest uppercase")}>
+                                    {ticket.type}
+                                </span>
+                            </div>
+                            <span className="text-xs font-bold font-mono text-orange-600 dark:text-purple-400">
                                 {ticket.key}
                             </span>
-                            <span className="text-xs px-2 py-1 rounded bg-bolt-elements-background-depth-1 text-bolt-elements-textSecondary capitalize">
-                                {ticket.type}
-                            </span>
                         </div>
-                        <h2 className="text-xl font-bold text-bolt-elements-textPrimary">
+                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
                             {ticket.title}
                         </h2>
                     </div>
                     <button
                         onClick={onClose}
-                        className="text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary transition-colors"
+                        className="w-10 h-10 rounded-xl flex items-center justify-center bg-gray-50 dark:bg-white/5 text-gray-400 hover:text-gray-900 dark:hover:text-white transition-all hover:rotate-90"
                     >
-                        <div className="i-ph:x text-xl" />
+                        <div className="i-ph:x-bold text-xl" />
                     </button>
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                    {/* Status and Priority */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-bolt-elements-textSecondary mb-2">
+                <div className="flex-1 overflow-y-auto p-8 space-y-8 scrollbar-thin">
+                    {/* Status and Priority Grid */}
+                    <div className="grid grid-cols-2 gap-6 p-6 rounded-2xl bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-bold uppercase tracking-[0.1em] text-gray-500 dark:text-gray-500 flex items-center gap-2">
+                                <div className="i-ph:kanban-bold" />
                                 Status
                             </label>
                             <select
                                 value={ticket.status}
                                 onChange={(e) => handleStatusChange(e.target.value as TicketStatus)}
-                                className="w-full px-3 py-2 rounded-lg bg-bolt-elements-background-depth-1 border border-bolt-elements-borderColor text-bolt-elements-textPrimary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-[#111] border border-gray-200 dark:border-white/10 text-sm font-semibold text-gray-900 dark:text-white focus:ring-2 focus:ring-orange-500/50 dark:focus:ring-purple-500/50 outline-none transition-all appearance-none cursor-pointer"
                             >
                                 {statusOptions.map((option) => (
-                                    <option key={option.value} value={option.value}>
+                                    <option key={option.value} value={option.value} className="bg-white dark:bg-[#111]">
                                         {option.label}
                                     </option>
                                 ))}
                             </select>
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-bolt-elements-textSecondary mb-2">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-bold uppercase tracking-[0.1em] text-gray-500 dark:text-gray-500 flex items-center gap-2">
+                                <div className="i-ph:flag-bold" />
                                 Priority
                             </label>
-                            <select
-                                value={ticket.priority}
-                                onChange={(e) => handlePriorityChange(e.target.value as TicketPriority)}
-                                className="w-full px-3 py-2 rounded-lg bg-bolt-elements-background-depth-1 border border-bolt-elements-borderColor text-bolt-elements-textPrimary focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                                {priorityOptions.map((option) => (
-                                    <option key={option.value} value={option.value}>
-                                        {option.emoji} {option.label}
-                                    </option>
-                                ))}
-                            </select>
+                            <div className="relative">
+                                <select
+                                    value={ticket.priority}
+                                    onChange={(e) => handlePriorityChange(e.target.value as TicketPriority)}
+                                    className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-[#111] border border-gray-200 dark:border-white/10 text-sm font-semibold text-gray-900 dark:text-white focus:ring-2 focus:ring-orange-500/50 dark:focus:ring-purple-500/50 outline-none transition-all appearance-none cursor-pointer"
+                                >
+                                    {priorityOptions.map((option) => (
+                                        <option key={option.value} value={option.value} className="bg-white dark:bg-[#111]">
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </select>
+                                <div className={classNames("absolute right-10 top-1/2 -translate-y-1/2 pointer-events-none", priorityOptions.find(p => p.value === ticket.priority)?.color)}>
+                                    <div className={priorityOptions.find(p => p.value === ticket.priority)?.icon} />
+                                </div>
+                            </div>
                         </div>
                     </div>
 
                     {/* Description */}
-                    <div>
-                        <h3 className="text-sm font-semibold text-bolt-elements-textPrimary mb-2">
+                    <div className="space-y-3">
+                        <h3 className="text-xs font-bold uppercase tracking-[0.1em] text-gray-900 dark:text-white flex items-center gap-2">
+                            <div className="i-ph:text-align-left-bold text-orange-500 dark:text-purple-500" />
                             Description
                         </h3>
-                        <p className="text-sm text-bolt-elements-textSecondary whitespace-pre-wrap">
-                            {ticket.description}
-                        </p>
+                        <div className="p-5 rounded-2xl bg-white dark:bg-[#111] border border-gray-200 dark:border-white/5">
+                            <p className="text-sm leading-relaxed text-gray-600 dark:text-gray-300 font-medium whitespace-pre-wrap">
+                                {ticket.description}
+                            </p>
+                        </div>
                     </div>
 
                     {/* Acceptance Criteria */}
                     {ticket.acceptanceCriteria.length > 0 && (
-                        <div>
-                            <h3 className="text-sm font-semibold text-bolt-elements-textPrimary mb-3">
+                        <div className="space-y-4">
+                            <h3 className="text-xs font-bold uppercase tracking-[0.1em] text-gray-900 dark:text-white flex items-center gap-2">
+                                <div className="i-ph:list-checks-bold text-orange-500 dark:text-purple-500" />
                                 Acceptance Criteria
                             </h3>
                             <div className="space-y-2">
                                 {ticket.acceptanceCriteria.map((criteria, index) => (
                                     <div
                                         key={index}
-                                        className="flex items-start gap-3 p-3 rounded-lg bg-bolt-elements-background-depth-1 border border-bolt-elements-borderColor"
+                                        className="flex items-start gap-4 p-4 rounded-xl bg-white dark:bg-[#111] border border-gray-200 dark:border-white/5 hover:border-orange-500/20 dark:hover:border-purple-500/20 transition-all group"
                                     >
-                                        <div className="flex-shrink-0 w-5 h-5 rounded border-2 border-green-500 flex items-center justify-center mt-0.5">
-                                            <div className="i-ph:check text-green-500 text-xs" />
+                                        <div className="flex-shrink-0 w-6 h-6 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mt-0.5 group-hover:bg-emerald-500 group-hover:text-white transition-all">
+                                            <div className="i-ph:check-bold text-[10px] text-emerald-500 group-hover:text-white" />
                                         </div>
-                                        <p className="text-sm text-bolt-elements-textPrimary flex-1">
+                                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300 flex-1">
                                             {criteria}
                                         </p>
                                     </div>
@@ -143,119 +158,79 @@ export function TicketDetailModal({ ticket, onClose }: TicketDetailModalProps) {
                         </div>
                     )}
 
-                    {/* Labels */}
-                    {ticket.labels.length > 0 && (
-                        <div>
-                            <h3 className="text-sm font-semibold text-bolt-elements-textPrimary mb-2">
+                    {/* Section Grid for Metadata and Labels */}
+                    <div className="grid grid-cols-2 gap-8 pt-8 border-t border-gray-100 dark:border-white/5">
+                        <div className="space-y-4">
+                            <h3 className="text-xs font-bold uppercase tracking-[0.1em] text-gray-900 dark:text-white flex items-center gap-2">
+                                <div className="i-ph:tag-bold text-orange-500 dark:text-purple-500" />
                                 Labels
                             </h3>
                             <div className="flex flex-wrap gap-2">
                                 {ticket.labels.map((label) => (
                                     <span
                                         key={label}
-                                        className="text-xs px-3 py-1 rounded-full bg-bolt-elements-background-depth-1 text-bolt-elements-textSecondary border border-bolt-elements-borderColor"
+                                        className="text-[10px] font-bold uppercase tracking-tight px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-white/10"
                                     >
                                         {label}
                                     </span>
                                 ))}
                             </div>
                         </div>
-                    )}
-
-                    {/* Metadata */}
-                    <div className="grid grid-cols-2 gap-4 pt-4 border-t border-bolt-elements-borderColor">
-                        {ticket.estimatedHours && (
-                            <div>
-                                <span className="text-xs text-bolt-elements-textTertiary">Estimated Hours</span>
-                                <p className="text-sm font-medium text-bolt-elements-textPrimary mt-1">
+                        <div className="space-y-6">
+                            <div className="flex items-center justify-between p-4 rounded-xl bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5">
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Allocation</span>
+                                <div className="flex items-center gap-1.5 text-sm font-bold text-gray-900 dark:text-white">
+                                    <div className="i-ph:timer-bold text-orange-500 dark:text-purple-500" />
                                     {ticket.estimatedHours}h
-                                </p>
+                                </div>
                             </div>
-                        )}
-                        <div>
-                            <span className="text-xs text-bolt-elements-textTertiary">Created</span>
-                            <p className="text-sm font-medium text-bolt-elements-textPrimary mt-1">
-                                {new Date(ticket.createdAt).toLocaleDateString()}
-                            </p>
+                            <div className="flex items-center justify-between p-4 rounded-xl bg-gray-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/5">
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Timeline</span>
+                                <div className="flex items-center gap-1.5 text-sm font-bold text-gray-900 dark:text-white">
+                                    <div className="i-ph:calendar-bold text-orange-500 dark:text-purple-500" />
+                                    {new Date(ticket.createdAt).toLocaleDateString()}
+                                </div>
+                            </div>
                         </div>
                     </div>
-
-                    {/* Related Items */}
-                    {(ticket.relatedScreens.length > 0 || ticket.relatedDataModels.length > 0) && (
-                        <div className="pt-4 border-t border-bolt-elements-borderColor">
-                            <h3 className="text-sm font-semibold text-bolt-elements-textPrimary mb-3">
-                                Related Items
-                            </h3>
-                            {ticket.relatedScreens.length > 0 && (
-                                <div className="mb-3">
-                                    <span className="text-xs text-bolt-elements-textTertiary">Screens:</span>
-                                    <div className="flex flex-wrap gap-2 mt-1">
-                                        {ticket.relatedScreens.map((screenId) => (
-                                            <span
-                                                key={screenId}
-                                                className="text-xs px-2 py-1 rounded bg-blue-500/10 text-blue-500 border border-blue-500/20"
-                                            >
-                                                {screenId}
-                                            </span>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                            {ticket.relatedDataModels.length > 0 && (
-                                <div>
-                                    <span className="text-xs text-bolt-elements-textTertiary">Data Models:</span>
-                                    <div className="flex flex-wrap gap-2 mt-1">
-                                        {ticket.relatedDataModels.map((modelId) => (
-                                            <span
-                                                key={modelId}
-                                                className="text-xs px-2 py-1 rounded bg-purple-500/10 text-purple-500 border border-purple-500/20"
-                                            >
-                                                {modelId}
-                                            </span>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
                 </div>
 
                 {/* Footer Actions */}
-                <div className="flex items-center justify-between p-6 border-t border-bolt-elements-borderColor bg-bolt-elements-background-depth-1">
-                    <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between p-8 border-t border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.02]">
+                    <div className="flex items-center gap-3">
                         {ticket.status !== 'in-progress' && (
                             <button
                                 onClick={() => handleStatusChange('in-progress')}
-                                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors flex items-center gap-2"
+                                className="px-6 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 dark:bg-purple-600 dark:hover:bg-purple-700 text-white text-sm font-bold transition-all flex items-center gap-2 shadow-lg shadow-orange-500/20 dark:shadow-purple-500/20 active:scale-[0.98]"
                             >
-                                <div className="i-ph:play" />
-                                Start Work
+                                <div className="i-ph:play-bold" />
+                                Start Development
                             </button>
                         )}
                         {ticket.status === 'in-progress' && (
                             <button
                                 onClick={() => handleStatusChange('testing')}
-                                className="px-4 py-2 rounded-lg bg-yellow-600 hover:bg-yellow-700 text-white font-medium transition-colors flex items-center gap-2"
+                                className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold transition-all flex items-center gap-2 shadow-lg shadow-amber-500/20 active:scale-[0.98]"
                             >
-                                <div className="i-ph:flask" />
-                                Move to Testing
+                                <div className="i-ph:flask-bold" />
+                                Release to Test
                             </button>
                         )}
                         {ticket.status === 'testing' && (
                             <button
                                 onClick={() => handleStatusChange('done')}
-                                className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium transition-colors flex items-center gap-2"
+                                className="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/20 active:scale-[0.98]"
                             >
-                                <div className="i-ph:check-circle" />
-                                Mark as Done
+                                <div className="i-ph:check-circle-bold" />
+                                Complete Task
                             </button>
                         )}
                     </div>
                     <button
                         onClick={onClose}
-                        className="px-4 py-2 rounded-lg bg-bolt-elements-background-depth-2 hover:bg-bolt-elements-background-depth-3 text-bolt-elements-textPrimary border border-bolt-elements-borderColor transition-colors"
+                        className="px-6 py-2.5 rounded-xl bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 text-sm font-bold border border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/10 transition-all"
                     >
-                        Close
+                        Back to Board
                     </button>
                 </div>
             </div>

@@ -1,14 +1,30 @@
-import { json, type MetaFunction } from '@remix-run/cloudflare';
+import { json, redirect, type MetaFunction, type LoaderFunctionArgs } from '@remix-run/cloudflare';
 import { ClientOnly } from 'remix-utils/client-only';
 import { BaseChat } from '~/components/chat/BaseChat';
 import { Chat } from '~/components/chat/Chat.client';
 import { Header } from '~/components/header/Header';
+import { createClient } from '~/lib/supabase/server';
 
 export const meta: MetaFunction = () => {
   return [{ title: 'AppForge' }, { name: 'description', content: 'Talk with AppForge, an AI assistant from StackBlitz' }];
 };
 
-export const loader = () => json({});
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const response = new Headers();
+  const supabase = createClient(request, response);
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session) {
+    return redirect('/?auth=true', {
+      headers: response,
+    });
+  }
+
+  return json({ session }, { headers: response });
+};
 
 /**
  * Landing page component for Bolt

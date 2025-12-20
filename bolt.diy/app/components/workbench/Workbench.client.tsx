@@ -430,7 +430,7 @@ export const Workbench = memo(
                         "rounded-md items-center justify-center px-3 py-1.5 text-xs flex gap-1.7 transition-colors",
                         selectedView === 'diff'
                           ? "bg-bolt-elements-item-backgroundAccent text-bolt-elements-item-contentAccent"
-                          : "bg-accent-500 text-white hover:text-bolt-elements-item-contentAccent hover:bg-bolt-elements-button-primary-backgroundHover outline-accent-500"
+                          : "bg-bolt-elements-button-primary-background text-bolt-elements-button-primary-text hover:text-bolt-elements-item-contentAccent hover:bg-bolt-elements-button-primary-backgroundHover"
                       )}
                     >
                       <div className="i-ph:git-diff" />
@@ -442,7 +442,7 @@ export const Workbench = memo(
                     <DropdownMenu.Root>
                       <DropdownMenu.Trigger
                         disabled={isSyncing || streaming}
-                        className="rounded-md items-center justify-center [&:is(:disabled,.disabled)]:cursor-not-allowed [&:is(:disabled,.disabled)]:opacity-60 px-3 py-1.5 text-xs bg-accent-500 text-white hover:text-bolt-elements-item-contentAccent [&:not(:disabled,.disabled)]:hover:bg-bolt-elements-button-primary-backgroundHover outline-accent-500 flex gap-1.7"
+                        className="rounded-md items-center justify-center [&:is(:disabled,.disabled)]:cursor-not-allowed [&:is(:disabled,.disabled)]:opacity-60 px-3 py-1.5 text-xs bg-bolt-elements-button-primary-background text-bolt-elements-button-primary-text hover:text-bolt-elements-item-contentAccent [&:not(:disabled,.disabled)]:hover:bg-bolt-elements-button-primary-backgroundHover flex gap-1.7"
                       >
                         {isSyncing ? 'Syncing...' : 'Sync'}
                         <span className={classNames('i-ph:caret-down transition-transform')} />
@@ -485,7 +485,7 @@ export const Workbench = memo(
                       onClick={() => {
                         workbenchStore.toggleTerminal(!workbenchStore.showTerminal.get());
                       }}
-                      className="rounded-md items-center justify-center [&:is(:disabled,.disabled)]:cursor-not-allowed [&:is(:disabled,.disabled)]:opacity-60 px-3 py-1.5 text-xs bg-accent-500 text-white hover:text-bolt-elements-item-contentAccent [&:not(:disabled,.disabled)]:hover:bg-bolt-elements-button-primary-backgroundHover outline-accent-500 flex gap-1.7"
+                      className="rounded-md items-center justify-center [&:is(:disabled,.disabled)]:cursor-not-allowed [&:is(:disabled,.disabled)]:opacity-60 px-3 py-1.5 text-xs bg-bolt-elements-button-primary-background text-bolt-elements-button-primary-text hover:text-bolt-elements-item-contentAccent [&:not(:disabled,.disabled)]:hover:bg-bolt-elements-button-primary-backgroundHover flex gap-1.7"
                     >
                       <div className="i-ph:terminal" />
                       Toggle Terminal
@@ -606,7 +606,7 @@ export const Workbench = memo(
                             "rounded-md items-center justify-center px-3 py-1.5 text-xs flex gap-1.7 transition-colors",
                             selectedView === 'diff'
                               ? "bg-bolt-elements-item-backgroundAccent text-bolt-elements-item-contentAccent"
-                              : "bg-accent-500 text-white hover:text-bolt-elements-item-contentAccent hover:bg-bolt-elements-button-primary-backgroundHover outline-accent-500"
+                              : "bg-bolt-elements-button-primary-background text-bolt-elements-button-primary-text hover:text-bolt-elements-item-contentAccent hover:bg-bolt-elements-button-primary-backgroundHover"
                           )}
                         >
                           <div className="i-ph:git-diff" />
@@ -622,7 +622,7 @@ export const Workbench = memo(
                         <DropdownMenu.Root>
                           <DropdownMenu.Trigger
                             disabled={isSyncing || streaming}
-                            className="rounded-md items-center justify-center [&:is(:disabled,.disabled)]:cursor-not-allowed [&:is(:disabled,.disabled)]:opacity-60 px-3 py-1.5 text-xs bg-accent-500 text-white hover:text-bolt-elements-item-contentAccent [&:not(:disabled,.disabled)]:hover:bg-bolt-elements-button-primary-backgroundHover outline-accent-500 flex gap-1.7"
+                            className="rounded-md items-center justify-center [&:is(:disabled,.disabled)]:cursor-not-allowed [&:is(:disabled,.disabled)]:opacity-60 px-3 py-1.5 text-xs bg-bolt-elements-button-primary-background text-bolt-elements-button-primary-text hover:text-bolt-elements-item-contentAccent [&:not(:disabled,.disabled)]:hover:bg-bolt-elements-button-primary-backgroundHover flex gap-1.7"
                           >
                             {isSyncing ? 'Syncing...' : 'Sync'}
                             <span className={classNames('i-ph:caret-down transition-transform')} />
@@ -665,7 +665,7 @@ export const Workbench = memo(
                           onClick={() => {
                             workbenchStore.toggleTerminal(!workbenchStore.showTerminal.get());
                           }}
-                          className="rounded-md items-center justify-center [&:is(:disabled,.disabled)]:cursor-not-allowed [&:is(:disabled,.disabled)]:opacity-60 px-3 py-1.5 text-xs bg-accent-500 text-white hover:text-bolt-elements-item-contentAccent [&:not(:disabled,.disabled)]:hover:bg-bolt-elements-button-primary-backgroundHover outline-accent-500 flex gap-1.7"
+                          className="rounded-md items-center justify-center [&:is(:disabled,.disabled)]:cursor-not-allowed [&:is(:disabled,.disabled)]:opacity-60 px-3 py-1.5 text-xs bg-bolt-elements-button-primary-background text-bolt-elements-button-primary-text hover:text-bolt-elements-item-contentAccent [&:not(:disabled,.disabled)]:hover:bg-bolt-elements-button-primary-backgroundHover flex gap-1.7"
                         >
                           <div className="i-ph:terminal" />
                           Toggle Terminal

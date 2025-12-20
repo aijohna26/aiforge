@@ -1,6 +1,10 @@
 import { useStore } from '@nanostores/react';
 import { useState } from 'react';
 import { planStore, updateTicketStatus, setViewMode, getTicketsByStatus, addTicket, type PlanTicket, type TicketStatus, type TicketPriority, type TicketType } from '~/lib/stores/plan';
+import { TicketCard } from './TicketCard';
+import { TicketDetailModal } from './TicketDetailModal';
+import { CreateTicketModal } from './CreateTicketModal';
+import { classNames } from '~/utils/classNames';
 
 export function PlanPanel() {
     const planState = useStore(planStore);
@@ -9,10 +13,10 @@ export function PlanPanel() {
     const [selectedTicket, setSelectedTicket] = useState<PlanTicket | null>(null);
 
     const columns: { status: TicketStatus; title: string; color: string; icon: string }[] = [
-        { status: 'todo', title: 'To Do', color: 'bg-gray-500', icon: '📋' },
-        { status: 'in-progress', title: 'In Progress', color: 'bg-blue-500', icon: '🚀' },
-        { status: 'testing', title: 'Testing', color: 'bg-yellow-500', icon: '🧪' },
-        { status: 'done', title: 'Done', color: 'bg-green-500', icon: '✅' },
+        { status: 'todo', title: 'To Do', color: 'text-slate-400', icon: 'i-ph:list-bullets-bold' },
+        { status: 'in-progress', title: 'In Progress', color: 'text-orange-500 dark:text-purple-500', icon: 'i-ph:rocket-launch-bold' },
+        { status: 'testing', title: 'Testing', color: 'text-amber-500', icon: 'i-ph:flask-bold' },
+        { status: 'done', title: 'Done', color: 'text-emerald-500', icon: 'i-ph:check-circle-bold' },
     ];
 
     const handleDragStart = (ticketId: string) => {
@@ -30,46 +34,27 @@ export function PlanPanel() {
         }
     };
 
-    const handleCreateTicket = () => {
-        const tickets = planState.tickets;
-        const ticketNumber = tickets.length + 1;
-        const newTicket: PlanTicket = {
-            id: `${planState.projectKey}-${ticketNumber}`,
-            key: `${planState.projectKey}-${ticketNumber}`,
-            title: `Sample Task ${ticketNumber}`,
-            description: 'This is a sample ticket. Click to edit details.',
-            type: 'task',
-            priority: 'medium',
-            status: 'todo',
-            estimatedHours: 4,
-            acceptanceCriteria: ['Implement feature', 'Write tests', 'Update documentation'],
-            relatedScreens: [],
-            relatedDataModels: [],
-            dependencies: [],
-            labels: ['sample'],
-            orderIndex: tickets.length,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-        };
-        addTicket(newTicket);
-    };
-
     const totalTickets = planState.tickets.length;
     const completedTickets = planState.tickets.filter(t => t.status === 'done').length;
     const progress = totalTickets > 0 ? Math.round((completedTickets / totalTickets) * 100) : 0;
 
     return (
-        <div className="h-full flex flex-col bg-bolt-elements-background-depth-1">
+        <div className="h-full flex flex-col bg-[#F9FAFB] dark:bg-[#0A0A0A]">
             {/* Header */}
-            <div className="flex-shrink-0 border-b border-bolt-elements-borderColor bg-bolt-elements-background-depth-2">
-                <div className="px-6 py-4">
-                    <div className="flex items-center justify-between mb-4">
+            <div className="flex-shrink-0 border-b border-gray-200 dark:border-white/5 bg-white dark:bg-[#0A0A0A]">
+                <div className="px-8 py-6">
+                    <div className="flex items-center justify-between mb-6">
                         <div>
-                            <h2 className="text-xl font-bold text-bolt-elements-textPrimary">
-                                {planState.projectKey} Board
-                            </h2>
-                            <p className="text-sm text-bolt-elements-textSecondary mt-1">
-                                {totalTickets} tickets • {completedTickets} completed
+                            <div className="flex items-center gap-3">
+                                <h2 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
+                                    {planState.projectKey} Board
+                                </h2>
+                                <div className="px-2 py-0.5 rounded-md bg-orange-500/10 dark:bg-purple-500/10 border border-orange-500/20 dark:border-purple-500/20 text-[10px] font-bold text-orange-600 dark:text-purple-400 uppercase tracking-widest">
+                                    Active Sprint
+                                </div>
+                            </div>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1.5 font-medium">
+                                {totalTickets} tickets total <span className="mx-1.5 opacity-30">•</span> {completedTickets} completed
                             </p>
                         </div>
 
@@ -77,38 +62,38 @@ export function PlanPanel() {
                         <div className="flex items-center gap-3">
                             {/* Create Ticket Button */}
                             <button
-                                onClick={handleCreateTicket}
-                                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors flex items-center gap-2 shadow-sm"
+                                onClick={() => setIsCreating(true)}
+                                className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-700 dark:bg-purple-600 dark:hover:bg-purple-700 text-white text-sm font-semibold transition-all flex items-center gap-2 shadow-lg shadow-orange-500/20 dark:shadow-purple-500/20 active:scale-[0.98]"
                             >
-                                <div className="i-ph:plus-circle text-lg" />
+                                <div className="i-ph:plus-bold text-lg" />
                                 Create Ticket
                             </button>
 
                             {/* View Toggle */}
-                            <div className="flex items-center gap-1 bg-bolt-elements-background-depth-1 rounded-lg p-1 border border-bolt-elements-borderColor">
+                            <div className="flex items-center gap-1 bg-gray-100 dark:bg-white/5 rounded-xl p-1 border border-gray-200 dark:border-white/5">
                                 <button
                                     onClick={() => setViewMode('board')}
-                                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${planState.viewMode === 'board'
-                                            ? 'bg-blue-600 text-white shadow-sm'
-                                            : 'text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary hover:bg-bolt-elements-background-depth-2'
-                                        }`}
+                                    className={classNames(
+                                        "px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2",
+                                        planState.viewMode === 'board'
+                                            ? 'bg-white dark:bg-[#1A1A1A] text-orange-600 dark:text-purple-400 shadow-sm border border-gray-200 dark:border-white/10'
+                                            : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 ring-offset-background'
+                                    )}
                                 >
-                                    <div className="flex items-center gap-1.5">
-                                        <div className="i-ph:kanban" />
-                                        Board
-                                    </div>
+                                    <div className="i-ph:kanban-bold" />
+                                    Board
                                 </button>
                                 <button
                                     onClick={() => setViewMode('list')}
-                                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${planState.viewMode === 'list'
-                                            ? 'bg-blue-600 text-white shadow-sm'
-                                            : 'text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary hover:bg-bolt-elements-background-depth-2'
-                                        }`}
+                                    className={classNames(
+                                        "px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2",
+                                        planState.viewMode === 'list'
+                                            ? 'bg-white dark:bg-[#1A1A1A] text-orange-600 dark:text-purple-400 shadow-sm border border-gray-200 dark:border-white/10'
+                                            : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+                                    )}
                                 >
-                                    <div className="flex items-center gap-1.5">
-                                        <div className="i-ph:list" />
-                                        List
-                                    </div>
+                                    <div className="i-ph:list-bold" />
+                                    List
                                 </button>
                             </div>
                         </div>
@@ -116,14 +101,14 @@ export function PlanPanel() {
 
                     {/* Progress Bar */}
                     {totalTickets > 0 && (
-                        <div className="w-full">
-                            <div className="flex items-center justify-between text-xs text-bolt-elements-textSecondary mb-1.5">
-                                <span className="font-medium">Progress</span>
-                                <span className="font-semibold">{progress}%</span>
+                        <div className="max-w-md">
+                            <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-500 mb-2">
+                                <span>Overall Progress</span>
+                                <span className="text-orange-600 dark:text-purple-400">{progress}%</span>
                             </div>
-                            <div className="w-full h-2 bg-bolt-elements-background-depth-1 rounded-full overflow-hidden border border-bolt-elements-borderColor">
+                            <div className="w-full h-1.5 bg-gray-100 dark:bg-white/5 rounded-full overflow-hidden">
                                 <div
-                                    className="h-full bg-gradient-to-r from-blue-500 to-green-500 transition-all duration-500"
+                                    className="h-full bg-gradient-to-r from-orange-500 to-orange-600 dark:from-purple-600 dark:to-indigo-500 transition-all duration-700 ease-out shadow-orange-500/40 dark:shadow-[0_0_10px_rgba(168,85,247,0.4)]"
                                     style={{ width: `${progress}%` }}
                                 />
                             </div>
@@ -135,107 +120,54 @@ export function PlanPanel() {
             {/* Board View */}
             {planState.viewMode === 'board' && (
                 <div className="flex-1 overflow-x-auto overflow-y-hidden">
-                    <div className="h-full flex gap-4 p-6 min-w-max">
+                    <div className="h-full flex gap-6 p-8 min-w-max">
                         {columns.map((column) => {
                             const tickets = getTicketsByStatus(column.status);
 
                             return (
                                 <div
                                     key={column.status}
-                                    className="flex-shrink-0 w-80 flex flex-col"
+                                    className="flex-shrink-0 w-80 flex flex-col group/column"
                                     onDragOver={handleDragOver}
                                     onDrop={() => handleDrop(column.status)}
                                 >
                                     {/* Column Header */}
-                                    <div className="flex items-center gap-2 mb-3 px-1">
-                                        <span className="text-lg">{column.icon}</span>
-                                        <h3 className="font-semibold text-bolt-elements-textPrimary uppercase text-xs tracking-wide">
+                                    <div className="flex items-center gap-3 mb-4 px-2">
+                                        <div className={classNames("w-8 h-8 rounded-lg flex items-center justify-center bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/5", column.color)}>
+                                            <div className={classNames(column.icon, "text-sm")} />
+                                        </div>
+                                        <h3 className="font-bold text-gray-900 dark:text-white text-[11px] uppercase tracking-[0.1em]">
                                             {column.title}
                                         </h3>
-                                        <span className="ml-auto text-xs font-semibold text-bolt-elements-textTertiary bg-bolt-elements-background-depth-2 px-2.5 py-1 rounded-full border border-bolt-elements-borderColor">
+                                        <div className="ml-auto text-[10px] font-bold text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-white/5 w-6 h-6 flex items-center justify-center rounded-full border border-gray-200 dark:border-white/5">
                                             {tickets.length}
-                                        </span>
+                                        </div>
                                     </div>
 
                                     {/* Column Content */}
-                                    <div className="flex-1 overflow-y-auto space-y-2 min-h-[400px] bg-bolt-elements-background-depth-2/50 rounded-lg p-3 border border-bolt-elements-borderColor">
+                                    <div className={classNames(
+                                        "flex-1 overflow-y-auto space-y-3 min-h-[400px] p-2 rounded-2xl transition-colors duration-200",
+                                        "bg-gray-50/50 dark:bg-white/[0.02] border border-gray-200/50 dark:border-white/[0.03]",
+                                        "group-hover/column:bg-gray-100/50 dark:group-hover/column:bg-white/[0.04]"
+                                    )}>
                                         {tickets.length === 0 ? (
-                                            <div className="flex flex-col items-center justify-center h-32 text-bolt-elements-textTertiary text-sm">
-                                                <div className="i-ph:tray text-3xl mb-2 opacity-40" />
-                                                <span className="opacity-60">No tickets</span>
+                                            <div className="flex flex-col items-center justify-center h-48 text-gray-400 dark:text-gray-600">
+                                                <div className="i-ph:tray-bold text-4xl mb-3 opacity-20" />
+                                                <span className="text-xs font-semibold tracking-wide opacity-50 uppercase">Empty Column</span>
                                             </div>
                                         ) : (
                                             tickets.map((ticket) => (
-                                                <div
+                                                <TicketCard
                                                     key={ticket.id}
-                                                    draggable
-                                                    onDragStart={() => handleDragStart(ticket.id)}
+                                                    ticket={ticket}
+                                                    onDragStart={handleDragStart}
                                                     onClick={() => setSelectedTicket(ticket)}
-                                                    className="bg-bolt-elements-background-depth-2 border border-bolt-elements-borderColor rounded-lg p-3 cursor-pointer hover:border-blue-500/50 hover:shadow-md transition-all group"
-                                                >
-                                                    {/* Ticket Header */}
-                                                    <div className="flex items-start justify-between mb-2">
-                                                        <span className="text-xs font-mono text-blue-500 font-semibold">
-                                                            {ticket.key}
-                                                        </span>
-                                                        <div className="flex items-center gap-1">
-                                                            {/* Priority */}
-                                                            <span className="text-sm" title={`Priority: ${ticket.priority}`}>
-                                                                {ticket.priority === 'highest' && '🔴'}
-                                                                {ticket.priority === 'high' && '🟠'}
-                                                                {ticket.priority === 'medium' && '🟡'}
-                                                                {ticket.priority === 'low' && '🟢'}
-                                                                {ticket.priority === 'lowest' && '⚪'}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Ticket Title */}
-                                                    <h4 className="text-sm font-medium text-bolt-elements-textPrimary mb-2 line-clamp-2 group-hover:text-blue-500 transition-colors">
-                                                        {ticket.title}
-                                                    </h4>
-
-                                                    {/* Labels */}
-                                                    {ticket.labels.length > 0 && (
-                                                        <div className="flex flex-wrap gap-1 mb-2">
-                                                            {ticket.labels.slice(0, 2).map((label) => (
-                                                                <span
-                                                                    key={label}
-                                                                    className="text-[10px] px-2 py-0.5 rounded-full bg-bolt-elements-background-depth-1 text-bolt-elements-textSecondary border border-bolt-elements-borderColor"
-                                                                >
-                                                                    {label}
-                                                                </span>
-                                                            ))}
-                                                            {ticket.labels.length > 2 && (
-                                                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-bolt-elements-background-depth-1 text-bolt-elements-textTertiary">
-                                                                    +{ticket.labels.length - 2}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    )}
-
-                                                    {/* Footer */}
-                                                    <div className="flex items-center justify-between mt-3 pt-2 border-t border-bolt-elements-borderColor">
-                                                        {/* Type Badge */}
-                                                        <div className="flex items-center gap-1 text-xs text-bolt-elements-textTertiary">
-                                                            {ticket.type === 'epic' && <span className="text-purple-500">⚡</span>}
-                                                            {ticket.type === 'story' && <span className="text-green-500">📖</span>}
-                                                            {ticket.type === 'task' && <span className="text-blue-500">☑️</span>}
-                                                            {ticket.type === 'bug' && <span className="text-red-500">🐛</span>}
-                                                            <span className="capitalize text-[10px]">{ticket.type}</span>
-                                                        </div>
-
-                                                        {/* Estimated Hours */}
-                                                        {ticket.estimatedHours && (
-                                                            <div className="flex items-center gap-1 text-xs text-bolt-elements-textTertiary">
-                                                                <div className="i-ph:clock text-xs" />
-                                                                <span className="text-[10px]">{ticket.estimatedHours}h</span>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
+                                                />
                                             ))
                                         )}
+
+                                        {/* Drop zone placeholder indicator */}
+                                        <div className="h-20 border-2 border-dashed border-gray-200 dark:border-white/5 rounded-xl opacity-0 hover:opacity-100 transition-opacity" />
                                     </div>
                                 </div>
                             );
@@ -244,63 +176,18 @@ export function PlanPanel() {
                 </div>
             )}
 
-            {/* Ticket Detail Modal */}
+            {/* Modals */}
             {selectedTicket && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setSelectedTicket(null)}>
-                    <div className="bg-bolt-elements-background-depth-2 rounded-xl shadow-2xl max-w-2xl w-full border border-bolt-elements-borderColor p-6" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-start justify-between mb-4">
-                            <div>
-                                <div className="flex items-center gap-2 mb-2">
-                                    <span className="text-sm font-mono text-blue-500 font-semibold">{selectedTicket.key}</span>
-                                    <span className="text-xs px-2 py-1 rounded bg-bolt-elements-background-depth-1 text-bolt-elements-textSecondary capitalize border border-bolt-elements-borderColor">
-                                        {selectedTicket.type}
-                                    </span>
-                                </div>
-                                <h2 className="text-xl font-bold text-bolt-elements-textPrimary">{selectedTicket.title}</h2>
-                            </div>
-                            <button
-                                onClick={() => setSelectedTicket(null)}
-                                className="text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary transition-colors"
-                            >
-                                <div className="i-ph:x text-xl" />
-                            </button>
-                        </div>
+                <TicketDetailModal
+                    ticket={selectedTicket}
+                    onClose={() => setSelectedTicket(null)}
+                />
+            )}
 
-                        <div className="space-y-4">
-                            <div>
-                                <h3 className="text-sm font-semibold text-bolt-elements-textPrimary mb-2">Description</h3>
-                                <p className="text-sm text-bolt-elements-textSecondary">{selectedTicket.description}</p>
-                            </div>
-
-                            {selectedTicket.acceptanceCriteria.length > 0 && (
-                                <div>
-                                    <h3 className="text-sm font-semibold text-bolt-elements-textPrimary mb-2">Acceptance Criteria</h3>
-                                    <div className="space-y-2">
-                                        {selectedTicket.acceptanceCriteria.map((criteria, index) => (
-                                            <div key={index} className="flex items-start gap-2 text-sm text-bolt-elements-textSecondary">
-                                                <div className="i-ph:check-circle text-green-500 mt-0.5" />
-                                                <span>{criteria}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            <div className="flex items-center gap-4 pt-4 border-t border-bolt-elements-borderColor">
-                                <div>
-                                    <span className="text-xs text-bolt-elements-textTertiary">Priority:</span>
-                                    <span className="ml-2 text-sm font-medium text-bolt-elements-textPrimary capitalize">{selectedTicket.priority}</span>
-                                </div>
-                                {selectedTicket.estimatedHours && (
-                                    <div>
-                                        <span className="text-xs text-bolt-elements-textTertiary">Estimated:</span>
-                                        <span className="ml-2 text-sm font-medium text-bolt-elements-textPrimary">{selectedTicket.estimatedHours}h</span>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            {isCreating && (
+                <CreateTicketModal
+                    onClose={() => setIsCreating(false)}
+                />
             )}
         </div>
     );

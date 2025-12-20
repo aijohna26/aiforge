@@ -1,4 +1,5 @@
 import type { PlanTicket } from '~/lib/stores/plan';
+import { classNames } from '~/utils/classNames';
 
 interface TicketCardProps {
     ticket: PlanTicket;
@@ -8,18 +9,18 @@ interface TicketCardProps {
 
 export function TicketCard({ ticket, onDragStart, onClick }: TicketCardProps) {
     const priorityConfig = {
-        highest: { color: 'text-red-500', icon: '🔴', bg: 'bg-red-500/10' },
-        high: { color: 'text-orange-500', icon: '🟠', bg: 'bg-orange-500/10' },
-        medium: { color: 'text-yellow-500', icon: '🟡', bg: 'bg-yellow-500/10' },
-        low: { color: 'text-green-500', icon: '🟢', bg: 'bg-green-500/10' },
-        lowest: { color: 'text-gray-500', icon: '⚪', bg: 'bg-gray-500/10' },
+        highest: { color: 'text-rose-500', icon: 'i-ph:caret-double-up-bold', label: 'Highest' },
+        high: { color: 'text-orange-500', icon: 'i-ph:caret-up-bold', label: 'High' },
+        medium: { color: 'text-amber-500', icon: 'i-ph:minus-bold', label: 'Medium' },
+        low: { color: 'text-emerald-500', icon: 'i-ph:caret-down-bold', label: 'Low' },
+        lowest: { color: 'text-slate-500', icon: 'i-ph:caret-double-down-bold', label: 'Lowest' },
     };
 
     const typeConfig = {
-        epic: { icon: 'i-ph:lightning', color: 'text-purple-500', bg: 'bg-purple-500/10' },
-        story: { icon: 'i-ph:book-open', color: 'text-green-500', bg: 'bg-green-500/10' },
-        task: { icon: 'i-ph:check-square', color: 'text-blue-500', bg: 'bg-blue-500/10' },
-        bug: { icon: 'i-ph:bug', color: 'text-red-500', bg: 'bg-red-500/10' },
+        epic: { icon: 'i-ph:lightning-bold', color: 'text-orange-500 dark:text-purple-500', bg: 'bg-orange-500/10 dark:bg-purple-500/10' },
+        story: { icon: 'i-ph:book-open-bold', color: 'text-blue-500', bg: 'bg-blue-500/10' },
+        task: { icon: 'i-ph:circle-fill', color: 'text-slate-400', bg: 'bg-slate-400/10' },
+        bug: { icon: 'i-ph:bug-bold', color: 'text-rose-500', bg: 'bg-rose-500/10' },
     };
 
     const priority = priorityConfig[ticket.priority];
@@ -30,72 +31,74 @@ export function TicketCard({ ticket, onDragStart, onClick }: TicketCardProps) {
             draggable
             onDragStart={() => onDragStart(ticket.id)}
             onClick={onClick}
-            className="bg-bolt-elements-background-depth-2 border border-bolt-elements-borderColor rounded-lg p-3 cursor-pointer hover:border-blue-500/50 hover:shadow-lg transition-all group"
+            className={classNames(
+                "group relative bg-white dark:bg-[#141414] border border-gray-200 dark:border-white/5",
+                "rounded-xl p-4 cursor-pointer transition-all duration-200",
+                "hover:border-orange-500/40 dark:hover:border-purple-500/40 hover:shadow-[0_8px_30px_rgba(249,115,22,0.1)] dark:hover:shadow-[0_8px_30px_rgba(168,85,247,0.08)]",
+                "hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]"
+            )}
         >
             {/* Header */}
-            <div className="flex items-start justify-between mb-2">
-                <span className="text-xs font-mono text-blue-500 font-semibold">
-                    {ticket.key}
-                </span>
-                <div className="flex items-center gap-1">
-                    <span className={`text-xs ${priority.color}`} title={`Priority: ${ticket.priority}`}>
-                        {priority.icon}
+            <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold tracking-wider uppercase text-orange-600 dark:text-purple-400/80 font-mono">
+                        {ticket.key}
                     </span>
+                </div>
+                <div className={classNames("flex items-center justify-center w-5 h-5 rounded-md bg-opacity-10", priority.color)}>
+                    <div className={classNames(priority.icon, "text-xs")} title={priority.label} />
                 </div>
             </div>
 
             {/* Title */}
-            <h4 className="text-sm font-medium text-bolt-elements-textPrimary mb-2 line-clamp-2 group-hover:text-blue-500 transition-colors">
+            <h4 className="text-[13px] leading-relaxed font-semibold text-gray-800 dark:text-gray-100 mb-3 line-clamp-2 group-hover:text-orange-600 dark:group-hover:text-purple-400 transition-colors">
                 {ticket.title}
             </h4>
 
             {/* Labels */}
             {ticket.labels.length > 0 && (
-                <div className="flex flex-wrap gap-1 mb-2">
+                <div className="flex flex-wrap gap-1.5 mb-4">
                     {ticket.labels.slice(0, 3).map((label) => (
                         <span
                             key={label}
-                            className="text-[10px] px-1.5 py-0.5 rounded bg-bolt-elements-background-depth-1 text-bolt-elements-textSecondary border border-bolt-elements-borderColor"
+                            className="text-[9px] font-bold uppercase tracking-tight px-2 py-0.5 rounded-md bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400 border border-transparent dark:border-white/5"
                         >
                             {label}
                         </span>
                     ))}
-                    {ticket.labels.length > 3 && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-bolt-elements-background-depth-1 text-bolt-elements-textTertiary">
-                            +{ticket.labels.length - 3}
-                        </span>
-                    )}
                 </div>
             )}
 
             {/* Footer */}
-            <div className="flex items-center justify-between mt-3 pt-2 border-t border-bolt-elements-borderColor">
+            <div className="flex items-center justify-between mt-auto pt-3 border-t border-gray-100 dark:border-white/5">
                 <div className="flex items-center gap-2">
-                    {/* Type Badge */}
-                    <div className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded ${type.bg}`}>
-                        <div className={`${type.icon} ${type.color} text-xs`} />
-                        <span className={`${type.color} capitalize text-[10px] font-medium`}>
+                    <div className={classNames("flex items-center gap-1.5 px-2 py-0.5 rounded-md", type.bg)}>
+                        <div className={classNames(type.icon, type.color, "text-[10px]")} />
+                        <span className={classNames(type.color, "capitalize text-[10px] font-bold tracking-tight")}>
                             {ticket.type}
                         </span>
                     </div>
                 </div>
 
-                {/* Estimated Hours */}
-                {ticket.estimatedHours && (
-                    <div className="flex items-center gap-1 text-xs text-bolt-elements-textTertiary">
-                        <div className="i-ph:clock" />
-                        <span>{ticket.estimatedHours}h</span>
-                    </div>
-                )}
+                {/* Meta details */}
+                <div className="flex items-center gap-3">
+                    {ticket.acceptanceCriteria.length > 0 && (
+                        <div className="flex items-center gap-1 text-[10px] font-medium text-gray-400 dark:text-gray-500">
+                            <div className="i-ph:list-checks-bold" />
+                            <span>{ticket.acceptanceCriteria.length}</span>
+                        </div>
+                    )}
+                    {ticket.estimatedHours && (
+                        <div className="flex items-center gap-1 text-[10px] font-medium text-gray-400 dark:text-gray-500">
+                            <div className="i-ph:timer-bold" />
+                            <span>{ticket.estimatedHours}h</span>
+                        </div>
+                    )}
+                </div>
             </div>
 
-            {/* Acceptance Criteria Count */}
-            {ticket.acceptanceCriteria.length > 0 && (
-                <div className="mt-2 flex items-center gap-1 text-xs text-bolt-elements-textTertiary">
-                    <div className="i-ph:check-circle" />
-                    <span>{ticket.acceptanceCriteria.length} acceptance criteria</span>
-                </div>
-            )}
+            {/* Subtle glow on hover */}
+            <div className="absolute inset-0 rounded-xl bg-orange-500/5 dark:bg-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
         </div>
     );
 }
