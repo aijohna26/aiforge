@@ -8,13 +8,16 @@ import {
     type Step5Data,
     type Step4Data,
 } from '~/lib/stores/designWizard';
+import { ImageEditor } from './ImageEditor';
+import { migrateImageToSupabase } from './utils/migrateImages';
+
 
 type ProviderOption = 'gemini' | 'openai';
 
 const GEMINI_MODELS = [
     {
         value: 'nano-banana',
-        label: 'Gemini Nano Banana',
+        label: 'Gemini Nano Banana Standard',
         supportsImageInput: false,
         requiresImageInput: false,
         priority: 1,
@@ -42,6 +45,14 @@ const OPENAI_MODELS = [
 
 const IMAGE_COUNT_OPTIONS = [1, 2, 3, 4];
 const ASPECT_RATIO_OPTIONS = ['9:16', '3:4', '1:1', '4:3', '16:9'];
+
+const EDIT_MODELS = [
+    { value: 'nano-banana-edit', label: 'Nano Banana Edit', provider: 'gemini' },
+    { value: 'seedream-4.5-edit', label: 'Seedream 4.5 Edit', provider: 'seedream-4.5-edit' },
+    { value: 'qwen-image-edit', label: 'Qwen Image Edit', provider: 'qwen-image-edit' },
+    { value: 'gpt-image-1-edit', label: 'GPT Image 1 Edit', provider: 'gpt-image-1' },
+];
+
 
 type GenerationResponse = {
     success?: boolean;
@@ -122,6 +133,13 @@ export function Step5Frame() {
     const [screenPendingDelete, setScreenPendingDelete] = useState<string | null>(null);
     const [screenNavigationSettings, setScreenNavigationSettings] = useState<Record<string, boolean>>({});
     const [screenLogoSettings, setScreenLogoSettings] = useState<Record<string, boolean>>({});
+    const [isEditingScreen, setIsEditingScreen] = useState(false);
+    const [editPrompt, setEditPrompt] = useState('');
+    const [editModel, setEditModel] = useState('nano-banana-edit');
+    const [screenToEdit, setScreenToEdit] = useState<{ id: string; url: string; variationId: string } | null>(null);
+    const [isManualEditing, setIsManualEditing] = useState(false);
+    const [screenToManualEdit, setScreenToManualEdit] = useState<{ id: string; url: string; variationId: string } | null>(null);
+
 
     const isBusy = activeRequests > 0;
     const screens = step4.screens;
@@ -205,12 +223,10 @@ export function Step5Frame() {
     const availableGeminiModels = useMemo(() => {
         const filtered = GEMINI_MODELS.filter((model) => {
             if (hasReferences) {
-                // If references are included, we MUST use a model that supports image input.
-                // Standard nano-banana (which doesn't support image input) is excluded.
+                // If references (NAV/LOGO) are ON: Only Pro or Edit are allowed (models that support image input)
                 return model.supportsImageInput;
             } else {
-                // If NO references are included, we CANNOT use a model that REQUIRE image input.
-                // nano-banana-edit (which requires it) is excluded.
+                // If references are OFF: Only Standard or Pro are allowed (models that don't REQUIRE image input)
                 return !model.requiresImageInput;
             }
         });
@@ -312,14 +328,32 @@ export function Step5Frame() {
             }
 
             const quantity = quantityOverride ?? imageCount;
-            const includeNav = getIncludeNav(screenId);
-            const includeLogo = getIncludeLogo(screenId);
-            const prompt = buildScreenPrompt(screen, includeNav, includeLogo);
             const isGemini = provider === 'gemini';
             const modelLabel = isGemini
                 ? GEMINI_MODELS.find((m) => m.value === googleModel)?.label || googleModel
                 : OPENAI_MODELS.find((m) => m.value === openaiModel)?.label || openaiModel;
             const providerLabel = isGemini ? 'Gemini' : 'OpenAI';
+
+            // Smart logic check for Gemini
+            if (isGemini) {
+                const screenIncludeNav = getIncludeNav(screenId);
+                const screenIncludeLogo = getIncludeLogo(screenId);
+                const screenHasRefs = (screenIncludeNav && hasNavigationBar) || (screenIncludeLogo && splashLogoUrl);
+
+                if (screenHasRefs && googleModel === 'nano-banana') {
+                    toast.error(`"${screen.name}" has branding enabled (Nav/Logo), but Gemini Nano Banana Standard does not support it. Please switch to Gemini Nano Banana Pro.`);
+                    return;
+                }
+
+                if (!screenHasRefs && googleModel === 'nano-banana-edit') {
+                    toast.error(`"${screen.name}" does not have branding enabled, but Gemini Nano Banana Edit requires reference images. Please switch to Standard or Pro.`);
+                    return;
+                }
+            }
+
+            const includeNav = getIncludeNav(screenId);
+            const includeLogo = getIncludeLogo(screenId);
+            const prompt = buildScreenPrompt(screen, includeNav, includeLogo);
 
             setActiveRequests((count) => count + 1);
             setGeneratingScreens((prev) => ({ ...prev, [screenId]: true }));
@@ -496,10 +530,32 @@ export function Step5Frame() {
 
     const handleGenerateAll = useCallback(async () => {
         if (!screensMissingGeneration.length) return;
+
+        // Pre-validation for Gemini
+        if (provider === 'gemini') {
+            const invalidScreens = screensMissingGeneration.filter(screen => {
+                const screenIncludeNav = getIncludeNav(screen.id);
+                const screenIncludeLogo = getIncludeLogo(screen.id);
+                const screenHasRefs = (screenIncludeNav && hasNavigationBar) || (screenIncludeLogo && splashLogoUrl);
+
+                if (screenHasRefs && googleModel === 'nano-banana') return true;
+                if (!screenHasRefs && googleModel === 'nano-banana-edit') return true;
+                return false;
+            });
+
+            if (invalidScreens.length > 0) {
+                const msg = googleModel === 'nano-banana'
+                    ? `Gemini Nano Banana Standard cannot be used for screens with branding (Nav/Logo). Please switch to Pro.`
+                    : `Gemini Nano Banana Edit requires branding/references. Please switch to Standard or Pro for pure text generation.`;
+                toast.error(msg);
+                return;
+            }
+        }
+
         for (const screen of screensMissingGeneration) {
             await handleGenerateScreen(screen.id);
         }
-    }, [screensMissingGeneration, handleGenerateScreen]);
+    }, [screensMissingGeneration, handleGenerateScreen, provider, googleModel, getIncludeNav, getIncludeLogo, hasNavigationBar, splashLogoUrl]);
 
     const handleToggleSelection = useCallback(
         (screenId: string) => {
@@ -575,9 +631,136 @@ export function Step5Frame() {
         [step5.generatedScreens, selectedScreenId]
     );
 
+    const handleEditScreen = useCallback(async () => {
+        if (!screenToEdit || !editPrompt.trim()) return;
+
+        const originalSource = getOriginalUrl(screenToEdit.url);
+        if (!originalSource) {
+            toast.error('Source image is not valid for editing. Ensure it is a permanent URL.');
+            return;
+        }
+
+        setActiveRequests((count) => count + 1);
+        try {
+            const modelConfig = EDIT_MODELS.find(m => m.value === editModel);
+            const isGemini = modelConfig?.provider === 'gemini';
+
+            const response = await fetch('/api/test/image', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    prompt: editPrompt,
+                    provider: modelConfig?.provider || 'gemini',
+                    googleModel: isGemini ? editModel : undefined,
+                    seedreamModel: editModel === 'seedream-4.5-edit' ? editModel : undefined,
+                    qwenModel: editModel === 'qwen-image-edit' ? editModel : undefined,
+                    outputFormat: 'png',
+                    aspectRatio: aspectRatio,
+                    referenceImages: [originalSource],
+                }),
+            });
+
+            const data = await response.json();
+            if (!response.ok || !data?.success || !data?.imageUrl) {
+                throw new Error(data?.error || 'Failed to edit screen');
+            }
+
+            const providerName =
+                modelConfig?.provider === 'gemini' ? 'Gemini' :
+                    modelConfig?.provider === 'seedream-4.5-edit' ? 'Seedream' :
+                        modelConfig?.provider === 'gpt-image-1' ? 'OpenAI' :
+                            'Qwen';
+
+            const newVariation = {
+                id: `${screenToEdit.id}-edit-${Date.now()}`,
+                url: getSafeImageUrl(data.imageUrl),
+                originalUrl: data.imageUrl,
+                prompt: editPrompt,
+                provider: providerName,
+                model: modelConfig?.label || editModel,
+                creditsUsed: data.creditsUsed || 18,
+                createdAt: new Date().toISOString(),
+            };
+
+            const updatedScreens = step5.generatedScreens.map((gen) => {
+                if (gen.screenId !== screenToEdit.id) return gen;
+
+                const mergedVariations = [...gen.variations, newVariation];
+                return {
+                    ...gen,
+                    variations: mergedVariations,
+                    url: newVariation.url,
+                    selectedVariationId: newVariation.id,
+                    creditsUsed: gen.creditsUsed + (newVariation.creditsUsed || 0),
+                };
+            });
+
+            updateStep5Data({
+                generatedScreens: updatedScreens,
+                totalCreditsUsed: step5.totalCreditsUsed + (newVariation.creditsUsed || 0),
+            });
+
+            toast.success('Screen edited successfully');
+            setIsEditingScreen(false);
+            setEditPrompt('');
+            setScreenToEdit(null);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to edit screen';
+            console.error('[Screen Edit]', error);
+            toast.error(message);
+        } finally {
+            setActiveRequests((count) => Math.max(0, count - 1));
+        }
+    }, [screenToEdit, editPrompt, editModel, aspectRatio, step5.generatedScreens, step5.totalCreditsUsed]);
+
+    const handleSaveManualEdit = useCallback(async (editedImageUrl: string) => {
+        if (!screenToManualEdit) return;
+
+        // If it's a data URL, try to migrate it immediately to permanent storage
+        let finalUrl = editedImageUrl;
+        if (editedImageUrl.startsWith('data:')) {
+            toast.info('Saving edited image to permanent storage...');
+            try {
+                finalUrl = await migrateImageToSupabase(editedImageUrl);
+            } catch (e) {
+                console.error('[Manual Edit] Migration failed, using data URL:', e);
+            }
+        }
+
+        const safeUrl = getSafeImageUrl(finalUrl);
+        const updatedScreens = step5.generatedScreens.map((gen) => {
+            if (gen.screenId !== screenToManualEdit.id) return gen;
+
+            const variationIndex = gen.variations.findIndex(v => v.id === screenToManualEdit.variationId);
+            if (variationIndex === -1) return gen;
+
+            const updatedVariations = [...gen.variations];
+            updatedVariations[variationIndex] = {
+                ...updatedVariations[variationIndex],
+                url: safeUrl,
+                originalUrl: finalUrl,
+            };
+
+            return {
+                ...gen,
+                variations: updatedVariations,
+                url: gen.selectedVariationId === screenToManualEdit.variationId ? safeUrl : gen.url,
+            };
+        });
+
+        updateStep5Data({
+            generatedScreens: updatedScreens,
+        });
+
+        toast.success('Screen edited successfully');
+        setIsManualEditing(false);
+        setScreenToManualEdit(null);
+    }, [screenToManualEdit, step5.generatedScreens]);
+
+
     return (
         <>
-            <div className="w-[1100px] pointer-events-auto bg-[#11121D] border-2 border-[#1F243B] rounded-2xl p-10 shadow-2xl text-white">
+            <div className="w-[1210px] max-h-[85vh] overflow-y-auto custom-scrollbar pointer-events-auto bg-[#11121D] border-2 border-[#1F243B] rounded-2xl p-10 pb-60 shadow-2xl text-white">
                 <div className="flex items-center justify-between mb-6">
                     <div>
                         <h2 className="text-3xl font-bold mb-1">Step 5: Screen Generation</h2>
@@ -958,7 +1141,7 @@ export function Step5Frame() {
                                                                 />
                                                                 <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 text-xs">
                                                                     <button
-                                                                        className="px-3 py-1 rounded-full bg-white text-black text-[11px]"
+                                                                        className="px-3 py-1 rounded-full bg-white text-black text-[11px] font-bold"
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
                                                                             setViewingVariation({ url: variation.url, title: selectedGenerated.name });
@@ -966,8 +1149,30 @@ export function Step5Frame() {
                                                                     >
                                                                         View
                                                                     </button>
+                                                                    <div className="flex gap-2">
+                                                                        <button
+                                                                            className="px-3 py-1 rounded-full bg-blue-600 text-white text-[11px] font-bold"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                setScreenToEdit({ id: selectedGenerated.screenId, url: variation.url, variationId: variation.id });
+                                                                                setIsEditingScreen(true);
+                                                                            }}
+                                                                        >
+                                                                            AI Edit
+                                                                        </button>
+                                                                        <button
+                                                                            className="px-3 py-1 rounded-full bg-amber-600 text-white text-[11px] font-bold"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                setScreenToManualEdit({ id: selectedGenerated.screenId, url: variation.url, variationId: variation.id });
+                                                                                setIsManualEditing(true);
+                                                                            }}
+                                                                        >
+                                                                            Manual
+                                                                        </button>
+                                                                    </div>
                                                                     <button
-                                                                        className="px-3 py-1 rounded-full bg-red-500/80 text-white text-[11px]"
+                                                                        className="px-3 py-1 rounded-full bg-red-500/80 text-white text-[11px] font-bold"
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
                                                                             handleDeleteVariation(selectedGenerated.screenId, variation.id);
@@ -1120,6 +1325,148 @@ export function Step5Frame() {
                 )
                 : null
             }
+
+            {typeof window !== 'undefined' && isEditingScreen && screenToEdit
+                ? createPortal(
+                    <div
+                        className="fixed inset-0 z-[10000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+                        onClick={() => {
+                            if (!isBusy) {
+                                setIsEditingScreen(false);
+                                setScreenToEdit(null);
+                            }
+                        }}
+                    >
+                        <div
+                            className="bg-[#0b0c14] border border-[#1F243B] rounded-2xl p-6 shadow-2xl w-full max-w-xl"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                                    <div className="i-ph:sparkle text-blue-400" />
+                                    AI Design Editor
+                                </h3>
+                                <button
+                                    onClick={() => {
+                                        setIsEditingScreen(false);
+                                        setScreenToEdit(null);
+                                    }}
+                                    className="text-slate-400 hover:text-white transition-colors"
+                                    disabled={isBusy}
+                                >
+                                    <div className="i-ph:x text-2xl" />
+                                </button>
+                            </div>
+
+                            <div className="flex gap-4 mb-6">
+                                <div className="w-1/3 aspect-[9/16] rounded-lg border border-[#1F243B] overflow-hidden bg-slate-900">
+                                    <img src={screenToEdit.url} alt="To Edit" className="w-full h-full object-cover" />
+                                </div>
+                                <div className="flex-1 space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-400 uppercase mb-2">
+                                            Edit Model
+                                        </label>
+                                        <select
+                                            value={editModel}
+                                            onChange={(e) => setEditModel(e.target.value)}
+                                            className="w-full px-3 py-2 rounded-lg bg-[#0B0F1C] border border-[#1F243B] focus:border-blue-500 outline-none text-sm transition-all text-white"
+                                            disabled={isBusy}
+                                        >
+                                            {EDIT_MODELS.map((model) => (
+                                                <option key={model.value} value={model.value}>
+                                                    {model.label} ({model.provider})
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-400 uppercase mb-2">
+                                            What would you like to change?
+                                        </label>
+                                        <textarea
+                                            value={editPrompt}
+                                            onChange={(e) => setEditPrompt(e.target.value)}
+                                            placeholder="e.g. Change the background to a dark gradient, make the buttons more rounded, add a glassmorphism effect to the cards..."
+                                            className="w-full h-32 px-3 py-2 rounded-lg bg-[#0B0F1C] border border-[#1F243B] focus:border-blue-500 outline-none text-sm transition-all resize-none text-white"
+                                            disabled={isBusy}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end gap-3 pt-4 border-t border-[#1F243B]">
+                                <button
+                                    onClick={() => {
+                                        setIsEditingScreen(false);
+                                        setScreenToEdit(null);
+                                    }}
+                                    className="px-4 py-2 rounded-lg border border-slate-600 text-sm text-white hover:bg-slate-700 transition-colors disabled:opacity-50"
+                                    disabled={isBusy}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleEditScreen}
+                                    disabled={isBusy || !editPrompt.trim()}
+                                    className="px-6 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm font-semibold transition-colors flex items-center gap-2 disabled:opacity-50 disabled:bg-slate-700 shadow-lg shadow-blue-500/20"
+                                >
+                                    {isBusy ? (
+                                        <>
+                                            <div className="i-ph:circle-notch animate-spin" />
+                                            Updating Design...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div className="i-ph:sparkle" />
+                                            Apply AI Edits
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>,
+                    document.body
+                )
+                : null
+            }
+
+            {typeof window !== 'undefined' && isManualEditing && screenToManualEdit
+                ? createPortal(
+                    <div className="fixed inset-0 z-[10000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+                        <div className="bg-[#0b0c14] border border-[#1F243B] rounded-2xl shadow-2xl w-full max-w-5xl h-[90vh] flex flex-col overflow-hidden">
+                            <div className="p-4 border-b border-[#1F243B] flex items-center justify-between">
+                                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                                    <div className="i-ph:paint-brush text-amber-400" />
+                                    Manual Design Editor
+                                </h3>
+                                <button
+                                    onClick={() => {
+                                        setIsManualEditing(false);
+                                        setScreenToManualEdit(null);
+                                    }}
+                                    className="text-slate-400 hover:text-white transition-colors"
+                                >
+                                    <div className="i-ph:x text-2xl" />
+                                </button>
+                            </div>
+                            <div className="flex-1 overflow-hidden relative">
+                                <ImageEditor
+                                    imageUrl={screenToManualEdit.url}
+                                    onSave={(url) => handleSaveManualEdit(url)}
+                                    onCancel={() => {
+                                        setIsManualEditing(false);
+                                        setScreenToManualEdit(null);
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    </div>,
+                    document.body
+                )
+                : null
+            }
         </>
     );
 }
+

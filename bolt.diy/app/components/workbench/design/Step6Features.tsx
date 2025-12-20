@@ -42,16 +42,16 @@ interface Step6FeaturesProps {
 
 const INTEGRATIONS: Integration[] = [
     {
-        id: 'convex',
-        name: 'Convex',
+        id: 'supabase',
+        name: 'Supabase',
         description: 'Backend (database, realtime sync, jobs, file storage)',
         category: 'backend',
         icon: 'i-ph:database',
         popular: true,
     },
     {
-        id: 'convex-auth',
-        name: 'Convex Auth',
+        id: 'supabase-auth',
+        name: 'Supabase Auth',
         description: 'User authentication (email, magic link; mobile-friendly)',
         category: 'auth',
         icon: 'i-ph:shield-check',
@@ -339,8 +339,8 @@ export function Step6Features({ selectedIntegrations, dataModels, onUpdate, onCo
     const selectedCount = (selectedIntegrations || []).filter(i => i.enabled).length;
 
     return (
-        <div className="min-h-screen bg-[#06080F] p-8">
-            <div className="max-w-[1500px] mx-auto">
+        <div className="w-[880px] max-h-[85vh] overflow-y-auto custom-scrollbar bg-[#06080F] border-2 border-[#1E2533] rounded-3xl p-8 pb-60 shadow-2xl pointer-events-auto">
+            <div className="mx-auto">
                 {/* Header */}
                 <div className="mb-10">
                     <h2 className="text-4xl font-extrabold text-white mb-4 tracking-tight">Step 6: Features</h2>
@@ -404,14 +404,14 @@ export function Step6Features({ selectedIntegrations, dataModels, onUpdate, onCo
                     </div>
                 </div>
 
-                {/* Integrations Grid - 2 Column Layout */}
-                <div className="grid gap-12 xl:grid-cols-2 items-start">
+                {/* Integrations Grid - Single Column Layout for Thinner View */}
+                <div className="grid gap-12 grid-cols-1 items-start">
                     {Object.entries(groupedIntegrations).map(([category, integrations]) => (
                         <div key={category} className="space-y-4">
                             <h3 className="text-xs font-bold mb-4 text-blue-400/80 uppercase tracking-[0.2em]">
                                 {CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS]}
                             </h3>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 gap-3">
                                 {integrations.map((integration) => {
                                     const selected = isSelected(integration.id);
                                     return (
@@ -535,7 +535,7 @@ export function Step6Features({ selectedIntegrations, dataModels, onUpdate, onCo
                                         <div className="flex items-center gap-4">
                                             <button
                                                 onClick={parseManualDescription}
-                                                className="text-[10px] font-black text-cyan-400 hover:text-cyan-300 uppercase tracking-wider flex items-center gap-1 transition-colors"
+                                                className="bg-transparent border-none p-0 text-[10px] font-black text-cyan-400 hover:text-cyan-300 uppercase tracking-wider flex items-center gap-1 transition-colors outline-none"
                                             >
                                                 <div className="i-ph:wand text-xs" />
                                                 Analyze Description
@@ -637,7 +637,7 @@ export function Step6Features({ selectedIntegrations, dataModels, onUpdate, onCo
                                     <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Active Schema Definition</h4>
                                     <button
                                         onClick={clearAllModels}
-                                        className="text-[10px] font-black text-rose-500/60 hover:text-rose-500 uppercase tracking-widest flex items-center gap-1.5 transition-colors"
+                                        className="bg-transparent border-none p-0 text-[10px] font-black text-rose-500/60 hover:text-rose-500 uppercase tracking-widest flex items-center gap-1.5 transition-colors outline-none"
                                     >
                                         <div className="i-ph:trash-simple-bold text-xs" />
                                         Clear All

@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 export async function loadBoltExpoTemplate() {
-  const templatePath = path.join(process.cwd(), 'templates/bolt-expo-template');
+  const templatePath = path.join(process.cwd(), 'templates/af-expo-template');
   const files: Record<string, { type: string; content: string }> = {};
 
   // Read all files recursively

@@ -45,7 +45,7 @@ interface SelectedScreen {
 }
 
 type ScreenType = 'splash' | 'onboarding' | 'signin' | 'signup' | 'home' | 'camera' | 'list' | 'detail' | 'search' | 'form' | 'settings' | 'profile';
-type ModelType = 'nano-banana-pro' | 'nano-banana-edit' | 'dall-e-3' | 'gpt-image-1' | 'qwen-image-edit' | 'seedream-4.5-edit';
+type ModelType = 'nano-banana' | 'nano-banana-pro' | 'nano-banana-edit' | 'dall-e-3' | 'gpt-image-1' | 'qwen-image-edit' | 'seedream-4.5-edit';
 
 interface ScreenConfig {
     name: string;
@@ -189,6 +189,7 @@ export function ScreenGenerator({ appInfo, savedLogo, onSave, initialState, onSt
     const [selectedModel, setSelectedModel] = useState<ModelType>('nano-banana-edit');
 
     const MODEL_CONFIGS: Record<ModelType, { name: string; cost: number; provider: string; googleModel?: string; openaiModel?: string; qwenModel?: string; seedreamModel?: string }> = {
+        'nano-banana': { name: 'Nano Banana Standard', cost: 6, provider: 'gemini', googleModel: 'nano-banana' },
         'nano-banana-pro': { name: 'Nano Banana Pro', cost: 27, provider: 'gemini', googleModel: 'nano-banana-pro' },
         'nano-banana-edit': { name: 'Nano Banana Edit', cost: 6, provider: 'gemini', googleModel: 'nano-banana-edit' },
         'qwen-image-edit': { name: 'Qwen Image Edit', cost: 3, provider: 'qwen-image-edit', qwenModel: 'qwen/image-edit' },
@@ -502,7 +503,7 @@ export function ScreenGenerator({ appInfo, savedLogo, onSave, initialState, onSt
                         ))}
                     </select>
                     <p className="text-xs text-slate-500 mt-1">
-                        Nano Banana is excluded as it does not support reference images.
+                        Nano Banana Standard is included but will ignore reference images if provided.
                     </p>
                 </div>
 

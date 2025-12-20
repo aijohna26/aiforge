@@ -88,7 +88,44 @@ export async function action({ request }: ActionFunctionArgs) {
             }
         }
 
+        // Helper to migrate base64 to Supabase
+        const migrateImage = async (url: string) => {
+            if (!url.startsWith('data:')) return url;
+
+            try {
+                const [header, base64Data] = url.split(',');
+                const mimeType = header.match(/:(.*?);/)?.[1] || 'image/png';
+                const extension = mimeType.split('/')[1] || 'png';
+
+                // Convert base64 to buffer
+                const buffer = Buffer.from(base64Data, 'base64');
+                const fileName = `migrated/${Date.now()}-${Math.random().toString(36).substring(7)}.${extension}`;
+
+                console.log(`[Image Test] Migrating base64 image to Supabase: ${fileName} (${buffer.length} bytes)`);
+
+                const { data, error: uploadError } = await supabase.storage
+                    .from('images')
+                    .upload(fileName, buffer, {
+                        contentType: mimeType,
+                        upsert: true
+                    });
+
+                if (uploadError) throw uploadError;
+
+                const { data: { publicUrl } } = supabase.storage.from('images').getPublicUrl(fileName);
+                return publicUrl;
+            } catch (e) {
+                console.error('[Image Test] Migration failed:', e);
+                return url; // Fallback to original
+            }
+        };
+
         try {
+            // Migrate all reference images if they are base64
+            const migratedReferenceImages = referenceImages && Array.isArray(referenceImages)
+                ? await Promise.all(referenceImages.map(img => migrateImage(img)))
+                : referenceImages;
+
             const options: ImageGenerationOptions = {
                 prompt,
                 provider,
@@ -98,7 +135,7 @@ export async function action({ request }: ActionFunctionArgs) {
                 seedreamModel,
                 outputFormat,
                 aspectRatio,
-                referenceImages,
+                referenceImages: migratedReferenceImages,
             };
 
             // Generate image

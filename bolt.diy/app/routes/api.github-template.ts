@@ -213,8 +213,8 @@ export async function loader({ request, context }: { request: Request; context: 
 
 
     // Use local template for bolt-expo-template
-    if (repo === 'xKevIsDev/bolt-expo-template') {
-      const files = import.meta.glob('../../templates/bolt-expo-template/**/*', {
+    if (repo === 'xKevIsDev/af-expo-template') {
+      const files = import.meta.glob('../../templates/af-expo-template/**/*', {
         query: '?raw',
         import: 'default',
         eager: true,
@@ -222,7 +222,7 @@ export async function loader({ request, context }: { request: Request; context: 
 
       const formattedFiles = Object.entries(files)
         .map(([key, value]) => {
-          const path = key.replace('../../templates/bolt-expo-template/', '');
+          const path = key.replace('../../templates/af-expo-template/', '');
           return {
             name: path.split('/').pop() || '',
             path,

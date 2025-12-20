@@ -322,7 +322,7 @@ export function BrandStyleFrame() {
 
     return (
         <>
-            <div className="w-[900px] pointer-events-auto bg-[#11121D] border-2 border-[#1F243B] rounded-2xl p-10 shadow-2xl text-white">
+            <div className="w-[990px] max-h-[85vh] overflow-y-auto custom-scrollbar pointer-events-auto bg-[#11121D] border-2 border-[#1F243B] rounded-2xl p-10 pb-60 shadow-2xl text-white">
                 <div className="flex items-center justify-between mb-6">
                     <div>
                         <h2 className="text-3xl font-bold mb-1">Step 3: Smart Style Guide</h2>
@@ -364,7 +364,7 @@ export function BrandStyleFrame() {
                                 : 'bg-black text-white hover:bg-white hover:text-black transition-colors'
                                 }`}
                         >
-                            Continue to Logo
+                            Open Logo Generator
                         </button>
                     </div>
                 )}
@@ -601,7 +601,7 @@ export function BrandStyleFrame() {
                                             onChange={(e) => setGoogleModel(e.target.value as GoogleModel)}
                                             className="px-3 py-2 bg-[#1A1F32] border border-[#444] rounded-lg text-sm focus:outline-none focus:border-blue-500"
                                         >
-                                            <option value="nano-banana">Nano Banana</option>
+                                            <option value="nano-banana">Nano Banana Standard</option>
                                             <option value="nano-banana-pro">Nano Banana Pro</option>
                                         </select>
                                     )}
@@ -725,161 +725,165 @@ export function BrandStyleFrame() {
             </div>
 
             {/* Edit Logo Modal - Rendered via Portal for proper centering */}
-            {isEditModalOpen && logoToEdit && typeof document !== 'undefined' && createPortal(
-                <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                    <div className="bg-[#0B0F1C] border border-[#1F243B] rounded-xl p-6 shadow-2xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-xl font-bold text-white">Edit Logo</h3>
-                            <button
-                                onClick={() => setIsEditModalOpen(false)}
-                                className="text-slate-400 hover:text-white transition-colors"
-                            >
-                                ✕
-                            </button>
-                        </div>
+            {
+                isEditModalOpen && logoToEdit && typeof document !== 'undefined' && createPortal(
+                    <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                        <div className="bg-[#0B0F1C] border border-[#1F243B] rounded-xl p-6 shadow-2xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-xl font-bold text-white">Edit Logo</h3>
+                                <button
+                                    onClick={() => setIsEditModalOpen(false)}
+                                    className="text-slate-400 hover:text-white transition-colors"
+                                >
+                                    ✕
+                                </button>
+                            </div>
 
-                        <div className="mb-6">
-                            <img
-                                src={logoToEdit}
-                                alt="Logo to edit"
-                                className="w-full max-w-sm mx-auto rounded-lg border border-[#1F243B]"
-                            />
-                        </div>
-
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-300 mb-2">
-                                    Describe the changes you want
-                                </label>
-                                <textarea
-                                    value={editPrompt}
-                                    onChange={(e) => setEditPrompt(e.target.value)}
-                                    placeholder="E.g., Make the icon larger, change color to blue, add a gradient..."
-                                    className="w-full px-4 py-3 rounded-lg bg-[#161B2F] border border-[#1F243B] text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                                    rows={4}
+                            <div className="mb-6">
+                                <img
+                                    src={logoToEdit}
+                                    alt="Logo to edit"
+                                    className="w-full max-w-sm mx-auto rounded-lg border border-[#1F243B]"
                                 />
                             </div>
 
-                            <div className="flex gap-3 justify-end">
-                                <button
-                                    onClick={() => setIsEditModalOpen(false)}
-                                    className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white transition-colors"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={async () => {
-                                        if (!editPrompt.trim()) {
-                                            toast.error('Please describe the changes you want');
-                                            return;
-                                        }
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                                        Describe the changes you want
+                                    </label>
+                                    <textarea
+                                        value={editPrompt}
+                                        onChange={(e) => setEditPrompt(e.target.value)}
+                                        placeholder="E.g., Make the icon larger, change color to blue, add a gradient..."
+                                        className="w-full px-4 py-3 rounded-lg bg-[#161B2F] border border-[#1F243B] text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                                        rows={4}
+                                    />
+                                </div>
 
-                                        setIsGeneratingLogo(true);
-                                        toast.info('Editing logo...');
-
-                                        try {
-                                            // Extract original URL if it's a proxy URL
-                                            const originalUrl = getOriginalUrl(logoToEdit);
-                                            console.log('[Edit Logo] Original URL:', originalUrl);
-                                            console.log('[Edit Logo] Logo to edit:', logoToEdit);
-
-                                            const response = await fetch('/api/test/image', {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({
-                                                    prompt: editPrompt,
-                                                    provider: 'gemini',
-                                                    googleModel: 'nano-banana-edit',
-                                                    outputFormat: 'png',
-                                                    aspectRatio: '1:1',
-                                                    referenceImages: [originalUrl],
-                                                }),
-                                            });
-
-                                            if (!response.ok) {
-                                                const errorData = await response.json();
-                                                throw new Error(errorData.error || `Server error: ${response.status}`);
+                                <div className="flex gap-3 justify-end">
+                                    <button
+                                        onClick={() => setIsEditModalOpen(false)}
+                                        className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={async () => {
+                                            if (!editPrompt.trim()) {
+                                                toast.error('Please describe the changes you want');
+                                                return;
                                             }
 
-                                            const data = await response.json();
+                                            setIsGeneratingLogo(true);
+                                            toast.info('Editing logo...');
 
-                                            if (data.success && data.imageUrl) {
-                                                const safeUrl = getSafeLogoUrl(data.imageUrl);
+                                            try {
+                                                // Extract original URL if it's a proxy URL
+                                                const originalUrl = getOriginalUrl(logoToEdit);
+                                                console.log('[Edit Logo] Original URL:', originalUrl);
+                                                console.log('[Edit Logo] Logo to edit:', logoToEdit);
 
-                                                // Add to local state
-                                                setLogoUrls((prev) => [...prev, safeUrl]);
-                                                setSelectedLogo(safeUrl);
-
-                                                // Add to store logoVariations
-                                                const timestamp = Date.now();
-                                                const newVariation = {
-                                                    id: `logo-edited-${timestamp}`,
-                                                    url: safeUrl,
-                                                    prompt: editPrompt,
-                                                };
-                                                const existingVariations = designWizardStore.get().step3.logoVariations || [];
-                                                updateStep3Data({
-                                                    logoVariations: [...existingVariations, newVariation],
-                                                    logo: {
-                                                        url: safeUrl,
+                                                const response = await fetch('/api/test/image', {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({
                                                         prompt: editPrompt,
-                                                        format: 'png',
-                                                        selectedVariation: existingVariations.length,
-                                                    },
+                                                        provider: 'gemini',
+                                                        googleModel: 'nano-banana-edit',
+                                                        outputFormat: 'png',
+                                                        aspectRatio: '1:1',
+                                                        referenceImages: [originalUrl],
+                                                    }),
                                                 });
 
-                                                setIsEditModalOpen(false);
-                                                setEditPrompt('');
-                                                toast.success('Logo edited successfully!');
-                                            } else {
-                                                throw new Error(data.error || 'Failed to edit logo');
+                                                if (!response.ok) {
+                                                    const errorData = await response.json();
+                                                    throw new Error(errorData.error || `Server error: ${response.status}`);
+                                                }
+
+                                                const data = await response.json();
+
+                                                if (data.success && data.imageUrl) {
+                                                    const safeUrl = getSafeLogoUrl(data.imageUrl);
+
+                                                    // Add to local state
+                                                    setLogoUrls((prev) => [...prev, safeUrl]);
+                                                    setSelectedLogo(safeUrl);
+
+                                                    // Add to store logoVariations
+                                                    const timestamp = Date.now();
+                                                    const newVariation = {
+                                                        id: `logo-edited-${timestamp}`,
+                                                        url: safeUrl,
+                                                        prompt: editPrompt,
+                                                    };
+                                                    const existingVariations = designWizardStore.get().step3.logoVariations || [];
+                                                    updateStep3Data({
+                                                        logoVariations: [...existingVariations, newVariation],
+                                                        logo: {
+                                                            url: safeUrl,
+                                                            prompt: editPrompt,
+                                                            format: 'png',
+                                                            selectedVariation: existingVariations.length,
+                                                        },
+                                                    });
+
+                                                    setIsEditModalOpen(false);
+                                                    setEditPrompt('');
+                                                    toast.success('Logo edited successfully!');
+                                                } else {
+                                                    throw new Error(data.error || 'Failed to edit logo');
+                                                }
+                                            } catch (error: any) {
+                                                console.error('[Edit Logo] Error:', error);
+                                                toast.error(error.message || 'An error occurred while editing logo');
+                                            } finally {
+                                                setIsGeneratingLogo(false);
                                             }
-                                        } catch (error: any) {
-                                            console.error('[Edit Logo] Error:', error);
-                                            toast.error(error.message || 'An error occurred while editing logo');
-                                        } finally {
-                                            setIsGeneratingLogo(false);
-                                        }
-                                    }}
-                                    disabled={isGeneratingLogo || !editPrompt.trim()}
-                                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                                >
-                                    {isGeneratingLogo && (
-                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                    )}
-                                    {isGeneratingLogo ? 'Editing...' : 'Generate Edit'}
-                                </button>
+                                        }}
+                                        disabled={isGeneratingLogo || !editPrompt.trim()}
+                                        className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                    >
+                                        {isGeneratingLogo && (
+                                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                        )}
+                                        {isGeneratingLogo ? 'Editing...' : 'Generate Edit'}
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </div>,
-                document.body
-            )}
+                    </div>,
+                    document.body
+                )
+            }
 
             {/* Full Size Logo Modal - Rendered via Portal */}
-            {isFullSizeModalOpen && selectedLogo && typeof document !== 'undefined' && createPortal(
-                <div
-                    className="fixed inset-0 z-[10002] flex items-center justify-center bg-black/80 backdrop-blur-sm"
-                    onClick={() => setIsFullSizeModalOpen(false)}
-                >
-                    <div className="relative max-w-[90vw] max-h-[90vh] p-4">
-                        <button
-                            onClick={() => setIsFullSizeModalOpen(false)}
-                            className="absolute -top-12 right-0 text-white hover:text-gray-300 text-2xl font-bold transition-colors"
-                            title="Close"
-                        >
-                            ✕
-                        </button>
-                        <img
-                            src={selectedLogo}
-                            alt="Logo Full Size"
-                            className="max-w-full max-h-[90vh] object-contain rounded-lg"
-                            onClick={(e) => e.stopPropagation()}
-                        />
-                    </div>
-                </div>,
-                document.body
-            )}
+            {
+                isFullSizeModalOpen && selectedLogo && typeof document !== 'undefined' && createPortal(
+                    <div
+                        className="fixed inset-0 z-[10002] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+                        onClick={() => setIsFullSizeModalOpen(false)}
+                    >
+                        <div className="relative max-w-[90vw] max-h-[90vh] p-4">
+                            <button
+                                onClick={() => setIsFullSizeModalOpen(false)}
+                                className="absolute -top-12 right-0 text-white hover:text-gray-300 text-2xl font-bold transition-colors"
+                                title="Close"
+                            >
+                                ✕
+                            </button>
+                            <img
+                                src={selectedLogo}
+                                alt="Logo Full Size"
+                                className="max-w-full max-h-[90vh] object-contain rounded-lg"
+                                onClick={(e) => e.stopPropagation()}
+                            />
+                        </div>
+                    </div>,
+                    document.body
+                )
+            }
         </>
     );
 }

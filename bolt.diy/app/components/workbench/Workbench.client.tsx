@@ -21,6 +21,7 @@ import { renderLogger } from '~/utils/logger';
 import { EditorPanel } from './EditorPanel';
 import { DesignPanel } from './DesignPanel';
 import { Preview } from './Preview';
+import { PlanPanel } from './plan/PlanPanel';
 import useViewport from '~/lib/hooks';
 
 import { usePreviewStore } from '~/lib/stores/previews';
@@ -52,6 +53,10 @@ const sliderOptions: SliderOptions<WorkbenchViewType> = [
   {
     value: 'design',
     text: 'Design',
+  },
+  {
+    value: 'plan',
+    text: 'Plan',
   },
   {
     value: 'code',
@@ -327,6 +332,13 @@ export const Workbench = memo(
     const expoUrl = useStore(expoUrlAtom);
 
     useEffect(() => {
+      // If we have a seed prompt waiting, we should be in code view
+      if (typeof window !== 'undefined' && localStorage.getItem('bolt_seed_prompt')) {
+        setSelectedView('code');
+      }
+    }, []);
+
+    useEffect(() => {
       if (hasPreview) {
         if (expoUrl && !isFullPage) {
           setSelectedView('qr');
@@ -399,6 +411,7 @@ export const Workbench = memo(
                 selected={selectedView === 'preview' || selectedView === 'qr' ? 'code' : selectedView}
                 options={[
                   { value: 'design', text: 'Design' },
+                  { value: 'plan', text: 'Plan' },
                   { value: 'code', text: 'Code' },
                 ]}
                 setSelected={setSelectedView}
@@ -497,7 +510,15 @@ export const Workbench = memo(
               <View
                 initial={{ x: '100%' }}
                 animate={{
-                  x: selectedView === 'code' ? '0%' : selectedView === 'design' ? '100%' : '-100%',
+                  x: selectedView === 'plan' ? '0%' : selectedView === 'design' ? '100%' : '-100%',
+                }}
+              >
+                <PlanPanel />
+              </View>
+              <View
+                initial={{ x: '100%' }}
+                animate={{
+                  x: selectedView === 'code' ? '0%' : selectedView === 'plan' ? '100%' : selectedView === 'design' ? '200%' : '-100%',
                 }}
               >
                 <EditorPanel
@@ -526,7 +547,7 @@ export const Workbench = memo(
           </div>
 
           {/* Right Panel: Preview */}
-          {selectedView !== 'design' && (
+          {selectedView !== 'design' && selectedView !== 'plan' && (
             <div className="w-[350px] flex flex-col bg-bolt-elements-background-depth-2">
               <div className="flex items-center px-3 py-2 border-b border-bolt-elements-borderColor">
                 <span className="text-sm font-medium text-bolt-elements-textPrimary">Preview</span>
@@ -677,7 +698,15 @@ export const Workbench = memo(
                   <View
                     initial={{ x: '100%' }}
                     animate={{
-                      x: selectedView === 'code' ? '0%' : selectedView === 'design' ? '100%' : '-100%',
+                      x: selectedView === 'plan' ? '0%' : selectedView === 'design' ? '100%' : '-100%',
+                    }}
+                  >
+                    <PlanPanel />
+                  </View>
+                  <View
+                    initial={{ x: '100%' }}
+                    animate={{
+                      x: selectedView === 'code' ? '0%' : selectedView === 'plan' ? '100%' : selectedView === 'design' ? '200%' : '-100%',
                     }}
                   >
                     <EditorPanel

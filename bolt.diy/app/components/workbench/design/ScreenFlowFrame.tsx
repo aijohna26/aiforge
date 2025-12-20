@@ -22,7 +22,7 @@ const SCREEN_TYPES = [
 const NAV_MAX_ITEMS = 4;
 
 const GEMINI_MODELS = [
-    { value: 'nano-banana', label: 'Gemini Nano Banana' },
+    { value: 'nano-banana', label: 'Gemini Nano Banana Standard' },
     { value: 'nano-banana-pro', label: 'Gemini Nano Banana Pro' },
     { value: 'gpt-image-1', label: 'GPT Image 1' },
 ];
@@ -460,19 +460,30 @@ export function ScreenFlowFrame() {
         }
     }, [editNavPrompt, editNavModel, navToEditOriginal, navAspectRatio, navBarVariations, navigation]);
 
-    const handleSaveManualEdit = useCallback((editedImageUrl: string) => {
+    const handleSaveManualEdit = useCallback(async (editedImageUrl: string) => {
         if (!navToManualEditId) return;
 
         // Find the variation being edited
         const variationIndex = navBarVariations.findIndex(v => v.id === navToManualEditId);
         if (variationIndex === -1) return;
 
+        // If it's a data URL, try to migrate it immediately to permanent storage
+        let finalUrl = editedImageUrl;
+        if (editedImageUrl.startsWith('data:')) {
+            toast.info('Saving edited image to permanent storage...');
+            try {
+                finalUrl = await migrateImageToSupabase(editedImageUrl);
+            } catch (e) {
+                console.error('[Manual Edit] Migration failed, using data URL:', e);
+            }
+        }
+
         const updatedVariations = [...navBarVariations];
-        const safeUrl = getSafeImageUrl(editedImageUrl);
+        const safeUrl = getSafeImageUrl(finalUrl);
         updatedVariations[variationIndex] = {
             ...updatedVariations[variationIndex],
             url: safeUrl,
-            originalUrl: editedImageUrl,
+            originalUrl: finalUrl,
         };
 
         updateStep4Data({
@@ -725,7 +736,7 @@ export function ScreenFlowFrame() {
     };
 
     return (
-        <div className="w-[900px] pointer-events-auto bg-[#11121D] border-2 border-[#1F243B] rounded-2xl p-10 shadow-2xl text-white">
+        <div className="w-[990px] max-h-[85vh] overflow-y-auto custom-scrollbar pointer-events-auto bg-[#11121D] border-2 border-[#1F243B] rounded-2xl p-10 pb-60 shadow-2xl text-white">
             <div className="mb-6">
                 <h2 className="text-3xl font-bold mb-1">Step 4: Screen Flow Mapping</h2>
                 <p className="text-sm text-slate-300">
@@ -1016,11 +1027,10 @@ export function ScreenFlowFrame() {
                 <div className="mb-4 flex gap-3">
                     <button
                         onClick={() => handleToggleNavType('bottom')}
-                        disabled={navConfirmed}
                         className={`flex-1 p-3 rounded-lg border-2 transition-all ${navType === 'bottom'
                             ? 'border-blue-500 bg-blue-500/10'
                             : 'border-[#2F344B] bg-[#171C2D] hover:border-blue-500/50'
-                            } ${navConfirmed ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            }`}
                     >
                         <div className="flex items-center gap-2 mb-1">
                             <div className="i-ph:layout text-lg text-blue-400" />
@@ -1030,11 +1040,10 @@ export function ScreenFlowFrame() {
                     </button>
                     <button
                         onClick={() => handleToggleNavType('none')}
-                        disabled={navConfirmed}
                         className={`flex-1 p-3 rounded-lg border-2 transition-all ${navType === 'none'
                             ? 'border-blue-500 bg-blue-500/10'
                             : 'border-[#2F344B] bg-[#171C2D] hover:border-blue-500/50'
-                            } ${navConfirmed ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            }`}
                     >
                         <div className="flex items-center gap-2 mb-1">
                             <div className="i-ph:x-circle text-lg text-slate-400" />

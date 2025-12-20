@@ -46,6 +46,7 @@ export interface Step3Data {
     }>;
     entryMode: 'ai' | 'manual';
     logoTextMode: 'symbol-only' | 'with-text';
+    lastExtractedImageIds?: string[]; // Track which images were used for last style extraction
     colorPalette: {
         primary: string;
         secondary: string;
@@ -181,6 +182,7 @@ export interface Step5Data {
         variations: Array<{
             id: string;
             url: string;
+            originalUrl?: string;
             prompt: string;
             provider: string;
             model: string;
@@ -278,6 +280,7 @@ const initialDesignData: DesignWizardData = {
         selectedTypographyId: null,
         selectedStyleId: null,
         lastExtractedAt: null,
+        lastExtractedImageIds: [],
         extractionStatus: 'idle',
         extractionError: undefined,
         logoProcessStatus: 'idle',
@@ -397,6 +400,18 @@ const migrateStoredWizardData = (data: DesignWizardData): DesignWizardData => {
     } else {
         if (!migrated.step6.integrations) migrated.step6.integrations = [];
         if (!migrated.step6.dataModels) migrated.step6.dataModels = [];
+    }
+
+    // Migrate step3 to include lastExtractedImageIds
+    if (migrated.step3 && !migrated.step3.lastExtractedImageIds) {
+        migrated.step3.lastExtractedImageIds = [];
+    }
+
+    // Remove deprecated Convex integrations
+    if (migrated.step6?.integrations) {
+        migrated.step6.integrations = migrated.step6.integrations.filter(
+            i => !['convex', 'convex-auth'].includes(i.id)
+        );
     }
 
     return migrated;
@@ -573,6 +588,12 @@ export function resetDesignWizard() {
             console.error('[DesignWizard] Failed to clear localStorage:', error);
         }
     }
+}
+
+export function loadWizardData(data: DesignWizardData) {
+    // Ensure we migrate the data if it's from an older version
+    const migrated = migrateStoredWizardData(data);
+    designWizardStore.set(migrated);
 }
 
 // ============================================

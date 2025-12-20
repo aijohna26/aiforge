@@ -1,6 +1,7 @@
 import { useStore } from '@nanostores/react';
-import { useState } from 'react';
-import { designWizardStore, goToNextStep, goToPreviousStep, canProceedToNextStep, resetDesignWizard, updateStep6Data } from '~/lib/stores/designWizard';
+import { useState, useEffect } from 'react';
+import { toast } from 'react-toastify';
+import { designWizardStore, goToNextStep, goToPreviousStep, canProceedToNextStep, resetDesignWizard, updateStep6Data, setCurrentStep } from '~/lib/stores/designWizard';
 import { MoodBoardFrame } from './MoodBoardFrame';
 import { WizardStep1Form } from './WizardStep1Form';
 import { BrandStyleFrame } from './BrandStyleFrame';
@@ -10,14 +11,17 @@ import { Step6Features } from './Step6Features';
 import { Step7Review } from './Step7Review';
 import { extractStyleGuideFromMoodboard } from '~/lib/styleGuideExtraction';
 import { updateStep7Data } from '~/lib/stores/designWizard';
+import { generateBootstrapPrompt } from '~/lib/utils/bootstrapPromptGenerator';
+import { generatePRD } from '~/lib/utils/prdGenerator';
 
 interface DesignWizardCanvasProps {
     zoom?: number;
     panX?: number;
     panY?: number;
+    onRecenter?: () => void;
 }
 
-export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0 }: DesignWizardCanvasProps) {
+export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }: DesignWizardCanvasProps) {
     const wizardData = useStore(designWizardStore);
     const { currentStep } = wizardData;
     const [isAnimating, setIsAnimating] = useState(false);
@@ -28,6 +32,14 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0 }: DesignWizar
     const isLogoGenerating = logoProcessStatus === 'generating';
     const awaitsLogo = currentStep === 3 && !wizardData.step3.logo;
     const awaitingLogoCompletion = awaitsLogo;
+
+    // Force internal scroll reset to top when step changes
+    useEffect(() => {
+        const scrollContainers = document.querySelectorAll('.overflow-y-auto');
+        scrollContainers.forEach((container) => {
+            container.scrollTo({ top: 0, behavior: 'instant' });
+        });
+    }, [currentStep]);
 
     const handleClearSession = () => {
         resetDesignWizard();
@@ -52,9 +64,31 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0 }: DesignWizar
                 return;
             }
             if (!wizardData.step2.referenceImages.length) return;
+
+            // Get current image IDs
+            const currentImageIds = wizardData.step2.referenceImages.map((img) => img.id);
+            const lastExtractedImageIds = wizardData.step3.lastExtractedImageIds || [];
+
+            // Check if mood board has changed since last extraction
+            const moodBoardHasChanged =
+                currentImageIds.length !== lastExtractedImageIds.length ||
+                !currentImageIds.every((id) => lastExtractedImageIds.includes(id));
+
+            // Check if we already have style data extracted from these exact images
+            const hasExistingStyleData = !!(wizardData.step3.colorPalette && wizardData.step3.typography);
+
+            if (hasExistingStyleData && !moodBoardHasChanged) {
+                // Style data already exists and mood board hasn't changed - no need to re-extract
+                console.log('[DesignWizard] Skipping style extraction - mood board unchanged, data already exists');
+                triggerStepAdvance();
+                return;
+            }
+
             try {
                 setIsExtracting(true);
-                await extractStyleGuideFromMoodboard(wizardData.step2.referenceImages.map((img) => img.url));
+                const imageUrls = wizardData.step2.referenceImages.map((img) => img.url);
+                const imageIds = wizardData.step2.referenceImages.map((img) => img.id);
+                await extractStyleGuideFromMoodboard(imageUrls, imageIds);
                 triggerStepAdvance();
             } catch (error) {
                 // errors handled in helper via toast; stay on step 2
@@ -116,32 +150,95 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0 }: DesignWizar
                 throw new Error('Failed to finalize images');
             }
 
-            // 2. Save full design to database
+            // Create a finalized version of data with permanent Supabase URLs
+            const finalizedWizardData = {
+                ...wizardData,
+                step3: {
+                    ...wizardData.step3,
+                    logo: (wizardData.step3.logo && finalizeData.logoUrl)
+                        ? { ...wizardData.step3.logo, url: finalizeData.logoUrl }
+                        : wizardData.step3.logo
+                },
+                step5: {
+                    ...wizardData.step5,
+                    generatedScreens: wizardData.step5.generatedScreens.map(screen => {
+                        const finalScreen = finalizeData.screens.find((s: any) => s.id === screen.screenId);
+                        return finalScreen ? { ...screen, url: finalScreen.url } : screen;
+                    })
+                }
+            };
+
+            // 2. Generate PRD and tickets
+            const prdGenerated = generatePRD(finalizedWizardData);
+
+            // Generate tickets from PRD
+            const { generateTicketsFromPRD, setTickets, setPlanProject } = await import('~/lib/stores/plan');
+            const tickets = generateTicketsFromPRD(finalizedWizardData);
+
+            // 3. Save full design to database with tickets
             const saveResponse = await fetch('/api/save-wizard-project', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(wizardData)
+                body: JSON.stringify({
+                    ...finalizedWizardData,
+                    prd: prdGenerated,
+                    tickets: tickets
+                })
             });
 
             const saveData = await saveResponse.json();
 
             if (!saveData.success) {
-                console.warn('Database save failed, but images were persisted:', saveData.error);
+                // If database save failed, WE DO NOT WIPE LOCALSTORAGE
+                console.error('[Save Wizard] Error Response:', saveData);
+
+                if (saveData.sql) {
+                    toast.error(
+                        <div>
+                            <p className="font-bold mb-1">{saveData.error}</p>
+                            <code className="block p-2 bg-black/50 rounded text-[10px] break-all mb-1 select-all">
+                                {saveData.sql}
+                            </code>
+                            <p className="text-[10px]">Copied SQL to console for easy access.</p>
+                        </div>,
+                        { autoClose: 10000 }
+                    );
+                    console.log('%c[Supabase SQL Fix]', 'color: #3ECF8E; font-weight: bold; font-size: 14px;', '\n' + saveData.sql);
+                } else {
+                    toast.error(`Database save failed: ${saveData.error}`);
+                }
+
+                setIsGenerating(false);
+                return;
             }
 
-            // 3. Success!
+            // 4. Initialize Plan store with tickets
+            const projectKey = finalizedWizardData.step7.projectName
+                .toUpperCase()
+                .replace(/[^A-Z0-9]/g, '')
+                .substring(0, 4) || 'PROJ';
+
+            setPlanProject(saveData.projectId, projectKey, saveData.prdUrl);
+            setTickets(tickets);
+
+            // 5. Success!
             setIsGenerating(false);
+            toast.success('PRD Generated! Tickets created in Plan view.');
+
+            // Clear the local wizard state ONLY AFTER SUCCESSFUL DB SAVE
             resetDesignWizard();
 
-            // Navigate or show success
+            // Navigate to Plan view
             if (typeof window !== 'undefined') {
-                window.location.href = '/?generated=true';
+                const { workbenchStore } = await import('~/lib/stores/workbench');
+                workbenchStore.currentView.set('plan');
+                workbenchStore.showWorkbench.set(true);
             }
 
         } catch (error) {
             console.error('Finalization error:', error);
             setIsGenerating(false);
-            // toast.error('Failed to generate app. Please try again.');
+            toast.error('Failed to generate PRD. Please try again.');
         }
     };
 
@@ -153,31 +250,36 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0 }: DesignWizar
             id: 1,
             title: 'App Information',
             description: 'Tell us about your app',
-            component: <WizardStep1Form zoom={1} panX={0} panY={0} />,
+            component: <WizardStep1Form zoom={zoom} panX={panX} panY={panY} />,
+            width: 700
         },
         {
             id: 2,
             title: 'Style Guide',
             description: 'Upload images to create your mood board',
-            component: <MoodBoardFrame zoom={1} panX={0} panY={0} />,
+            component: <MoodBoardFrame zoom={zoom} panX={panX} panY={panY} />,
+            width: 700
         },
         {
             id: 3,
             title: 'Brand Assets',
             description: 'Generate logo and color palette',
             component: <BrandStyleFrame />,
+            width: 900
         },
         {
             id: 4,
             title: 'Screen Flow',
             description: 'Map out your app screens',
             component: <ScreenFlowFrame />,
+            width: 900
         },
         {
             id: 5,
             title: 'Screen Generation',
             description: 'Generate screen designs with AI',
             component: <Step5Frame />,
+            width: 1100
         },
         {
             id: 6,
@@ -191,41 +293,50 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0 }: DesignWizar
                     onComplete={() => triggerStepAdvance()}
                 />
             ),
+            width: 1200
         },
         {
             id: 7,
             title: 'Review & Generate',
             description: 'Review and generate your app',
             component: <Step7Review />,
+            width: 1000
         },
     ];
 
     return (
         <>
-            {/* Progress Indicator with Clear Session Button */}
-            <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[9999] flex items-center gap-4">
-                <div className="flex items-center gap-2 bg-[#1a1a1a] border border-[#333] rounded-full px-6 py-3 shadow-lg">
+            {/* VS Code Inspired Absolute Navigation Bar */}
+            <div className="absolute top-6 left-1/2 transform -translate-x-1/2 z-[9999] flex items-center gap-4">
+                <div className="flex items-center gap-2 bg-[#1A1A1A] border border-[#333] rounded-full px-6 py-2.5 shadow-2xl">
                     {steps.map((step, index) => (
                         <div key={step.id} className="flex items-center">
                             <div
-                                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${currentStep === step.id
-                                    ? 'bg-blue-600 text-white scale-110'
+                                onClick={() => {
+                                    if (wizardData.completedSteps.includes(step.id) || step.id <= currentStep) {
+                                        setCurrentStep(step.id);
+                                    } else {
+                                        toast.info(`Complete Step ${currentStep} to unlock Step ${step.id}`);
+                                    }
+                                }}
+                                className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 cursor-pointer ${currentStep === step.id
+                                    ? 'bg-blue-600 text-white scale-110 shadow-[0_0_12px_rgba(37,99,235,0.4)]'
                                     : wizardData.completedSteps.includes(step.id)
-                                        ? 'bg-green-600 text-white'
-                                        : 'bg-[#2a2a2a] text-slate-300'
+                                        ? 'bg-green-600/90 text-white'
+                                        : 'bg-[#252525] text-slate-400 border border-[#404040]'
                                     }`}
                             >
                                 {wizardData.completedSteps.includes(step.id) ? (
-                                    <div className="i-ph:check text-sm" />
+                                    <div className="i-ph:check-bold text-sm" />
                                 ) : (
                                     step.id
                                 )}
                             </div>
                             {index < steps.length - 1 && (
                                 <div
-                                    className={`w-12 h-0.5 mx-1 transition-all duration-300 ${wizardData.completedSteps.includes(step.id)
-                                        ? 'bg-green-600'
-                                        : 'bg-[#2a2a2a]'
+                                    className={`w-10 h-[1px] mx-1 transition-all duration-300 ${wizardData.completedSteps.includes(step.id)
+                                        ? 'bg-green-600/50'
+                                        : 'bg-[#333]'
                                         }`}
                                 />
                             )}
@@ -236,11 +347,11 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0 }: DesignWizar
                 {/* Clear Session Button */}
                 <button
                     onClick={() => setShowClearConfirm(true)}
-                    className="bg-[#1a1a1a] border border-[#333] rounded-full px-4 py-2 shadow-lg hover:bg-[#2a2a2a] transition-colors text-slate-200 hover:text-red-400 text-sm flex items-center gap-2"
+                    className="bg-[#1A1A1A] border border-[#333] rounded-full px-5 py-2.5 shadow-2xl hover:bg-[#252525] hover:border-[#444] transition-all group flex items-center gap-2"
                     title="Clear all progress and start over"
                 >
-                    <div className="i-ph:trash text-base" />
-                    Clear Session
+                    <div className="i-ph:trash-bold text-slate-400 group-hover:text-red-400 transition-colors text-base" />
+                    <span className="text-slate-200 group-hover:text-red-400 font-medium text-sm transition-colors">Clear Session</span>
                 </button>
             </div>
 
@@ -292,7 +403,7 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0 }: DesignWizar
                         return (
                             <div
                                 key={step.id}
-                                className="absolute top-[100px]"
+                                className="absolute top-[90px]"
                                 style={{
                                     left: `${xPosition}px`,
                                     opacity: isActive ? 1 : 0,
@@ -303,13 +414,13 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0 }: DesignWizar
                             >
                                 {/* Step Frame Container */}
                                 <div className="relative">
-                                    {/* Active Step Indicator */}
+                                    {/* Active Step Indicator - Integrated inside the card */}
                                     {isActive && (
-                                        <div className="absolute -top-16 left-0 right-0 text-center">
-                                            <div className="inline-flex items-center gap-2 bg-blue-600/20 border border-blue-600/50 rounded-full px-4 py-2">
+                                        <div className="absolute top-6 right-6 z-10 pointer-events-none">
+                                            <div className="inline-flex items-center gap-2 bg-blue-600/10 border border-blue-600/30 rounded-full px-3 py-1.5 shadow-sm">
                                                 <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-                                                <span className="text-blue-400 font-semibold text-sm">
-                                                    Current Step: {step.title}
+                                                <span className="text-blue-400 font-bold text-[10px] uppercase tracking-wider">
+                                                    Current Action
                                                 </span>
                                             </div>
                                         </div>
@@ -330,88 +441,102 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0 }: DesignWizar
                                         </div>
                                     )}
 
-                                    {/* Navigation Buttons */}
-                                    {isActive && (
-                                        <div className="absolute -bottom-20 left-0 right-0 flex justify-between items-center pointer-events-auto">
-                                            {/* Back Button - Hidden on Step 1 */}
-                                            {currentStep > 1 && (
-                                                <button
-                                                    onClick={handleBack}
-                                                    className="px-6 py-3 rounded-lg font-medium flex items-center gap-2 transition-all duration-200 bg-[#2a2a2a] hover:bg-[#333] text-white border border-[#444]"
-                                                >
-                                                    <div className="i-ph:arrow-left text-lg" />
-                                                    Back
-                                                </button>
-                                            )}
-                                            {currentStep <= 1 && <div className="w-32"></div>}
-
-                                            <div className="text-center text-gray-400 text-sm">
-                                                Step {currentStep} of {steps.length}
-                                            </div>
-
-                                            {/* Next Button - Hidden on Step 7 */}
-                                            {currentStep < 7 ? (
-                                                <button
-                                                    onClick={handleNext}
-                                                    disabled={
-                                                        !canProceedToNextStep() ||
-                                                        isExtracting ||
-                                                        (currentStep === 3 && awaitingLogoCompletion)
-                                                    }
-                                                    className={`px-6 py-3 rounded-lg font-medium flex items-center gap-2 transition-all duration-200 ${!canProceedToNextStep() ||
-                                                        isExtracting ||
-                                                        (currentStep === 3 && awaitingLogoCompletion)
-                                                        ? 'bg-[#2a2a2a] text-gray-600 cursor-not-allowed'
-                                                        : 'bg-blue-600 hover:bg-blue-700 text-white'
-                                                        }`}
-                                                    title={
-                                                        !canProceedToNextStep()
-                                                            ? 'Complete this step to continue'
-                                                            : ''
-                                                    }
-                                                >
-                                                    {currentStep === 2 && isExtracting
-                                                        ? 'Analyzing…'
-                                                        : currentStep === 3 && awaitingLogoCompletion
-                                                            ? (isLogoGenerating ? 'Generating logo…' : 'Waiting for logo…')
-                                                            : 'Next'}
-                                                    {!isExtracting && !(currentStep === 3 && awaitingLogoCompletion) && (
-                                                        <div className="i-ph:arrow-right text-lg" />
-                                                    )}
-                                                </button>
-                                            ) : (
-                                                <button
-                                                    onClick={handleFinish}
-                                                    disabled={!canProceedToNextStep() || isGenerating}
-                                                    className={`px-6 py-3 rounded-lg font-medium flex items-center gap-2 transition-all duration-200 ${!canProceedToNextStep() || isGenerating
-                                                        ? 'bg-[#2a2a2a] text-gray-600 cursor-not-allowed'
-                                                        : 'bg-green-600 hover:bg-green-700 text-white shadow-[0_0_20px_rgba(22,163,74,0.3)]'
-                                                        }`}
-                                                    title={
-                                                        !canProceedToNextStep()
-                                                            ? 'Complete this step to finish'
-                                                            : ''
-                                                    }
-                                                >
-                                                    {isGenerating ? (
-                                                        <>
-                                                            <div className="i-ph:circle-notch animate-spin text-lg" />
-                                                            Saving Project...
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <div className="i-ph:check-circle text-lg" />
-                                                            Generate App
-                                                        </>
-                                                    )}
-                                                </button>
-                                            )}
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                         );
                     })}
+                </div>
+            </div>
+
+            {/* Miro-style Sticky Navigation Tray */}
+            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none">
+                <div className="flex items-center gap-4 bg-[#11121D]/80 backdrop-blur-xl border border-[#1F243B] rounded-2xl px-6 py-4 shadow-[0_20px_50px_rgba(0,0,0,0.5)] pointer-events-auto">
+                    {/* Recenter Button (Miro style) */}
+                    <button
+                        onClick={() => {
+                            onRecenter?.();
+                            const scrollContainers = document.querySelectorAll('.overflow-y-auto');
+                            scrollContainers.forEach((container) => {
+                                container.scrollTo({ top: 0, behavior: 'instant' });
+                            });
+                        }}
+                        className="p-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-700 text-slate-400 hover:text-white transition-all border border-slate-700/50 group"
+                        title="Recenter Camera (Focus on Current Step)"
+                    >
+                        <div className="i-ph:crosshair-simple-bold text-xl group-hover:scale-110 transition-transform" />
+                    </button>
+
+                    <div className="w-[1px] h-8 bg-slate-800 mx-2" />
+
+                    {/* Back Button */}
+                    <button
+                        onClick={handleBack}
+                        disabled={currentStep <= 1 || isAnimating}
+                        className={`px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all border ${currentStep <= 1 || isAnimating
+                            ? 'opacity-30 cursor-not-allowed border-transparent text-slate-500'
+                            : 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700'
+                            }`}
+                    >
+                        <div className="i-ph:caret-left-bold" />
+                        Back
+                    </button>
+
+                    {/* Progress Info */}
+                    <div className="px-6 flex flex-col items-center">
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-0.5">Progress</span>
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-sm font-black text-blue-400">{currentStep}</span>
+                            <span className="text-xs font-bold text-slate-600">/</span>
+                            <span className="text-sm font-bold text-slate-400">{steps.length}</span>
+                        </div>
+                    </div>
+
+                    {/* Next / Finish Button */}
+                    {currentStep < 7 ? (
+                        <button
+                            onClick={handleNext}
+                            disabled={
+                                !canProceedToNextStep() ||
+                                isExtracting ||
+                                isAnimating ||
+                                (currentStep === 3 && awaitingLogoCompletion)
+                            }
+                            className={`px-8 py-2.5 rounded-xl font-black flex items-center gap-2 transition-all shadow-lg ${!canProceedToNextStep() || isExtracting || isAnimating || (currentStep === 3 && awaitingLogoCompletion)
+                                ? 'bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-700'
+                                : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/20'
+                                }`}
+                        >
+                            {currentStep === 2 && isExtracting
+                                ? 'Analyzing…'
+                                : currentStep === 3 && awaitingLogoCompletion
+                                    ? (isLogoGenerating ? 'Generating…' : 'Waiting…')
+                                    : 'Next Step'}
+                            {!isExtracting && !(currentStep === 3 && awaitingLogoCompletion) && (
+                                <div className="i-ph:caret-right-bold" />
+                            )}
+                        </button>
+                    ) : (
+                        <button
+                            onClick={handleFinish}
+                            disabled={!canProceedToNextStep() || isGenerating || isAnimating}
+                            className={`px-8 py-2.5 rounded-xl font-black flex items-center gap-2 transition-all shadow-lg ${!canProceedToNextStep() || isGenerating || isAnimating
+                                ? 'bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-700'
+                                : 'bg-green-600 hover:bg-green-500 text-white shadow-green-500/20'
+                                }`}
+                        >
+                            {isGenerating ? (
+                                <>
+                                    <div className="i-ph:circle-notch animate-spin" />
+                                    Generating...
+                                </>
+                            ) : (
+                                <>
+                                    <div className="i-ph:rocket-launch-bold" />
+                                    Generate PRD
+                                </>
+                            )}
+                        </button>
+                    )}
                 </div>
             </div>
 

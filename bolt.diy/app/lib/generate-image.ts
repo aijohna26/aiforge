@@ -132,6 +132,7 @@ class ImageGenerationService {
 
         if (!createResponse.ok) {
             const errorText = await createResponse.text();
+            const statusCode = createResponse.status;
             let errorMessage = createResponse.statusText;
             try {
                 const error = JSON.parse(errorText);
@@ -139,13 +140,24 @@ class ImageGenerationService {
             } catch (e) {
                 errorMessage = errorText;
             }
-            throw new Error(`Image generation task creation failed: ${errorMessage}`);
+
+            // Provide helpful error messages based on status code
+            if (statusCode === 500) {
+                throw new Error(`Image generation service error (500): ${errorMessage}. This usually means the service is temporarily overloaded. Please wait a moment and try again. If the issue persists, try simplifying your prompt or using a different model.`);
+            } else if (statusCode === 429) {
+                throw new Error(`Rate limit exceeded (429): ${errorMessage}. Please wait a few moments before trying again.`);
+            } else if (statusCode === 400) {
+                throw new Error(`Invalid request (400): ${errorMessage}. Please check your prompt and try again.`);
+            } else {
+                throw new Error(`Image generation task creation failed (${statusCode}): ${errorMessage}`);
+            }
         }
 
         const createData = await createResponse.json();
 
         if (createData.code !== 200) {
-            throw new Error(`Image generation task creation failed: ${createData.msg || 'Unknown error'}`);
+            const errorMsg = createData.msg || createData.message || 'Unknown error';
+            throw new Error(`Image generation task creation failed: ${errorMsg}. Please try again or use a different model.`);
         }
 
         const taskId = createData.data?.taskId;
@@ -154,7 +166,7 @@ class ImageGenerationService {
         }
 
         // Step 2: Poll for task completion
-        const maxAttempts = 60; // 5 minutes (5s interval)
+        const maxAttempts = 72; // 6 minutes (5s interval) - balanced timeout for complex requests
         const pollInterval = 5000; // 5 seconds
 
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -221,7 +233,7 @@ class ImageGenerationService {
             // Still generating (status === 0), continue polling
         }
 
-        throw new Error('Image generation timed out. Please try again.');
+        throw new Error(`Image generation timed out after ${(maxAttempts * pollInterval) / 1000} seconds. The task may still be processing. Please try again in a few moments, or try a simpler prompt.`);
     }
 
     private async generateWithOpenAI(
@@ -286,9 +298,16 @@ class ImageGenerationService {
         const enhancedPrompt = model === 'nano-banana-edit' ? options.prompt : this.enhancePromptForUI(options.prompt);
 
         // Validate reference images usage
-        if (options.referenceImages && options.referenceImages.length > 0) {
+        if (model === 'nano-banana-edit') {
+            // Edit model REQUIRES reference images
+            if (!options.referenceImages || options.referenceImages.length === 0) {
+                throw new Error('nano-banana-edit requires at least one reference image for editing. Please provide a reference image or use nano-banana for generation from text only.');
+            }
+        } else if (options.referenceImages && options.referenceImages.length > 0) {
+            // Other models: validate reference image support
             if (model === 'nano-banana') {
-                throw new Error('Reference images are not supported by nano-banana. Please use nano-banana-pro (for style references) or nano-banana-edit (for image editing).');
+                console.warn('[Image Service] Reference images are not supported by nano-banana. Proceeding without references.');
+                options.referenceImages = [];
             }
         }
 
@@ -313,7 +332,15 @@ class ImageGenerationService {
 
         console.log(`[Image Service] Creating task for model: ${modelName} with ${options.referenceImages?.length || 0} reference images`);
         if (options.referenceImages && options.referenceImages.length > 0) {
-            console.log('[Image Service] Reference images:', options.referenceImages);
+            options.referenceImages.forEach((img, idx) => {
+                if (img.startsWith('data:')) {
+                    console.warn(`[Image Service] Reference image ${idx} is a DATA URL (base64). This will likely fail with Kie.ai!`);
+                } else if (img.startsWith('blob:')) {
+                    console.warn(`[Image Service] Reference image ${idx} is a BLOB URL. This will likely fail with Kie.ai!`);
+                } else {
+                    console.log(`[Image Service] Reference image ${idx}: ${img.substring(0, 100)}...`);
+                }
+            });
         }
         console.log('[Image Service] Request body:', JSON.stringify(requestBody, null, 2));
 
@@ -329,6 +356,7 @@ class ImageGenerationService {
 
         if (!createResponse.ok) {
             const errorText = await createResponse.text();
+            const statusCode = createResponse.status;
             console.error('[Kie.ai] Create task error:', errorText);
             let errorMessage = createResponse.statusText;
             try {
@@ -337,7 +365,21 @@ class ImageGenerationService {
             } catch (e) {
                 errorMessage = errorText;
             }
-            throw new Error(`Image generation task creation failed: ${errorMessage}`);
+
+            // Provide helpful error messages based on status code
+            if (statusCode === 500) {
+                // Check if error is about missing image_urls
+                if (errorMessage.includes('image_urls is required') || errorMessage.includes('image_urls')) {
+                    throw new Error(`Image generation error: The selected model requires reference images. If you're trying to edit an image, please provide a reference image. If you're generating from text only, use 'nano-banana' model instead of 'nano-banana-edit'.`);
+                }
+                throw new Error(`Image generation service error (500): ${errorMessage}. The service is temporarily overloaded. Please wait a moment and try again. For complex requests with icons and text, try using GPT-Image-1 model instead.`);
+            } else if (statusCode === 429) {
+                throw new Error(`Rate limit exceeded (429): ${errorMessage}. Please wait a few moments before trying again.`);
+            } else if (statusCode === 400) {
+                throw new Error(`Invalid request (400): ${errorMessage}. Please check your prompt and reference images.`);
+            } else {
+                throw new Error(`Image generation task creation failed (${statusCode}): ${errorMessage}`);
+            }
         }
 
         const createData = await createResponse.json();
@@ -345,7 +387,7 @@ class ImageGenerationService {
 
         if (createData.code !== 200) {
             const message = createData.msg || createData.message || 'Unknown provider error';
-            throw new Error(`Image Service Error: ${message}`);
+            throw new Error(`Image Service Error: ${message}. Please try again or use a different model.`);
         }
 
         const taskId = createData.data?.taskId;
@@ -355,7 +397,7 @@ class ImageGenerationService {
 
         // Step 2: Poll for task completion
         // nano-banana-pro takes longer, so increase timeout
-        const maxAttempts = model === 'nano-banana-pro' ? 20 : 10; // 200s for pro, 100s for others
+        const maxAttempts = model === 'nano-banana-pro' ? 30 : 20; // 5 minutes for pro, 3.3 minutes for others
         const pollInterval = 10000; // 10 seconds
 
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -414,7 +456,7 @@ class ImageGenerationService {
             }
         }
 
-        throw new Error('Image generation timed out. Please try again.');
+        throw new Error(`Image generation timed out after ${(maxAttempts * pollInterval) / 1000} seconds using model ${model}. The task may still be processing. Please try again in a few moments, or try a simpler prompt. For complex requests with icons and text, consider using GPT-Image-1 model which handles text better.`);
     }
 
     private async generateWithQwen(options: ImageGenerationOptions): Promise<ImageGenerationResult> {

@@ -57,11 +57,15 @@ export async function action({ request }: ActionFunctionArgs) {
                 );
             }
 
+            // Persist image to Supabase Storage
+            const { uploadImageToSupabase } = await import("~/lib/utils/imageUpload");
+            const finalizedImageUrl = await uploadImageToSupabase(supabase, image_url, 'images', 'screens');
+
             const { data: screen, error } = await supabase
                 .from('saved_screens')
                 .insert({
                     user_id: user.id,
-                    image_url,
+                    image_url: finalizedImageUrl,
                     prompt,
                     model,
                     output_format,

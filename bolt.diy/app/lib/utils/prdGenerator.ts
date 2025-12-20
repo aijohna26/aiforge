@@ -1,11 +1,18 @@
 import type { DesignWizardData } from "../stores/designWizard";
 
 export function generatePRD(data: DesignWizardData): string {
-    const { step1, step3, step4, step5, step6, step7 } = data;
-    const selectedScreens = step5.generatedScreens.filter(s => s.selected);
-    const enabledIntegrations = step6.integrations.filter(i => i.enabled);
+  const { step1, step3, step4, step5, step6, step7 } = data;
+  const selectedScreens = step5.generatedScreens.filter(s => s.selected);
+  const enabledIntegrations = step6.integrations.filter(i => i.enabled);
 
-    return `# ${step1.appName || 'Untitled App'} - Product Requirements Document
+  const integrationsPrompt = enabledIntegrations.map(i => {
+    if (i.id === 'supabase') return 'Implement Supabase for the backend (Database, Auth, Storage). Use @supabase/supabase-js.';
+    if (i.id === 'supabase-auth') return 'Enable Supabase Authentication (Email/Password, Social).';
+    if (i.id === 'ai-features') return 'Implement AI-powered features using the provided LLM context.';
+    return `Implement ${i.id} integration.`;
+  }).join('\n');
+
+  return `# ${step1.appName || 'Untitled App'} - Product Requirements Document
 
 ## 1. Overview
 **Project Name:** ${step1.appName}
@@ -38,25 +45,25 @@ ${step1.description}
 
 ### 2.3 Typography Scale
 - **Font Family:** ${step3.typography?.fontFamily || 'Inter'}
-- **H1:** ${step3.typography?.scale.h1.size}px / ${step3.typography?.scale.h1.weight}
-- **Body:** ${step3.typography?.scale.body.size}px / ${step3.typography?.scale.body.weight}
+- **H1:** ${step3.typography?.scale?.h1?.size || 32}px / ${step3.typography?.scale?.h1?.weight || 'bold'}
+- **Body:** ${step3.typography?.scale?.body?.size || 16}px / ${step3.typography?.scale?.body?.weight || 'normal'}
 
 ---
 
 ## 3. Application Architecture
 
 ### 3.1 Screen Inventory
-Total screens: ${step4.screens.length}
+Total screens: ${step4.screens?.length || 0}
 
-${step4.screens.map(s => `
-#### ${s.name} (${s.type})
-- **Purpose:** ${s.purpose}
-- **Key Elements:** ${s.keyElements.join(', ')}
+${(step4.screens || []).map(s => `
+#### ${s.name || 'Untitled Screen'} (${s.type || 'standard'})
+- **Purpose:** ${s.purpose || 'N/A'}
+- **Key Elements:** ${(s.keyElements || []).join(', ')}
 `).join('\n')}
 
 ### 3.2 Navigation
-- **Navigation Type:** ${step4.navigation.type === 'bottom' ? 'Bottom Tab Bar' : 'None'}
-${step4.navigation.items.length > 0 ? `- **Tabs:** ${step4.navigation.items.join(', ')}` : ''}
+- **Navigation Type:** ${step4.navigation?.type === 'bottom' ? 'Bottom Tab Bar' : 'None'}
+${step4.navigation?.items?.length > 0 ? `- **Tabs:** ${step4.navigation.items.join(', ')}` : ''}
 
 ---
 
@@ -73,13 +80,8 @@ ${selectedScreens.map(s => `
 
 ## 5. Technical Configuration & Integrations
 
-### 5.1 Integrations
-${enabledIntegrations.length > 0
-            ? enabledIntegrations.map(i => `- **${i.id}**: Enabled`).join('\n')
-            : 'No external integrations configured.'}
-
-### 5.2 Project Settings
-- **Framework:** Expo SDK 50 (Managed Workflow)
+### 5.1 Project Settings
+- **Framework:** Expo SDK 54 (Managed Workflow)
 - **Routing:** Expo Router (File-based)
 - **Styling:** NativeWind (Tailwind CSS for React Native)
 - **Project Name:** ${step7.projectName}
@@ -106,6 +108,6 @@ The app should include ${step4.screens.length} screens: ${step4.screens.map(s =>
 ${step4.navigation.type === 'bottom' ? `Implement a bottom navigation bar with: ${step4.navigation.items.join(', ')}.` : ''}
 
 **Integrations:**
-${enabledIntegrations.map(i => `Implement ${i.id} integration.`).join('\n')}
+${integrationsPrompt}
 `;
 }

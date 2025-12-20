@@ -1,5 +1,7 @@
 import { useStore } from '@nanostores/react';
-import { designWizardStore, updateStep1Data } from '~/lib/stores/designWizard';
+import { designWizardStore, updateStep1Data, loadWizardData } from '~/lib/stores/designWizard';
+import { useState, useEffect } from 'react';
+import { toast } from 'react-toastify';
 
 interface WizardStep1FormProps {
     zoom?: number;
@@ -10,18 +12,103 @@ interface WizardStep1FormProps {
 export function WizardStep1Form({ zoom = 1, panX = 0, panY = 0 }: WizardStep1FormProps) {
     const wizardData = useStore(designWizardStore);
     const { step1 } = wizardData;
+    const [recentProjects, setRecentProjects] = useState<any[]>([]);
+    const [isLoadingProjects, setIsLoadingProjects] = useState(false);
+    const [showProjects, setShowProjects] = useState(false);
+
+    useEffect(() => {
+        if (showProjects) {
+            fetchRecentProjects();
+        }
+    }, [showProjects]);
+
+    const fetchRecentProjects = async () => {
+        setIsLoadingProjects(true);
+        try {
+            const response = await fetch('/api/get-projects');
+            const data = await response.json();
+            if (data.success) {
+                setRecentProjects(data.projects);
+            }
+        } catch (error) {
+            console.error('Failed to fetch projects:', error);
+        } finally {
+            setIsLoadingProjects(false);
+        }
+    };
+
+    const handleRestore = (project: any) => {
+        try {
+            loadWizardData(project.data);
+            toast.success(`Restored ${project.name}!`);
+            setShowProjects(false);
+        } catch (error) {
+            toast.error('Failed to restore project');
+        }
+    };
 
     const handleChange = (field: keyof typeof step1, value: string) => {
         updateStep1Data({ [field]: value });
     };
 
     return (
-        <div className="w-[700px] pointer-events-auto bg-[#1a1a1a] border-2 border-[#333] rounded-xl p-10 shadow-2xl">
+        <div className="w-[770px] max-h-[85vh] overflow-y-auto custom-scrollbar pointer-events-auto bg-[#1a1a1a] border-2 border-[#333] rounded-xl p-10 pb-60 shadow-2xl">
             {/* Header */}
-            <div className="mb-8">
-                <h2 className="text-2xl font-bold text-white mb-2">Step 1: App Information</h2>
-                <p className="text-sm text-slate-200 font-medium">Tell me about the app you want to build</p>
+            <div className="mb-8 flex justify-between items-start">
+                <div>
+                    <h2 className="text-2xl font-bold text-white mb-2">Step 1: App Information</h2>
+                    <p className="text-sm text-slate-200 font-medium">Tell me about the app you want to build</p>
+                </div>
+                <button
+                    onClick={() => setShowProjects(!showProjects)}
+                    className="mt-10 flex items-center gap-2 px-3 py-1.5 bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 border border-blue-500/30 rounded-lg text-xs font-bold transition-all"
+                >
+                    <div className="i-ph:clock-counter-clockwise-bold text-sm" />
+                    RECOUP SAVED DESIGN
+                </button>
             </div>
+
+            {/* Recent Projects Modal/Dropdown */}
+            {showProjects && (
+                <div className="mb-8 p-4 bg-[#111] border border-[#333] rounded-lg animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">Saved Projects in Database</h3>
+                        <button onClick={() => setShowProjects(false)} className="text-slate-500 hover:text-white">
+                            <div className="i-ph:x-bold" />
+                        </button>
+                    </div>
+
+                    {isLoadingProjects ? (
+                        <div className="flex flex-col items-center py-8 gap-3">
+                            <div className="i-svg-spinners:90-ring-with-bg text-blue-500 text-2xl animate-spin" />
+                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Accessing Brain...</p>
+                        </div>
+                    ) : recentProjects.length > 0 ? (
+                        <div className="grid grid-cols-1 gap-2 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
+                            {recentProjects.map((project) => (
+                                <button
+                                    key={project.id}
+                                    onClick={() => handleRestore(project)}
+                                    className="flex items-center justify-between p-3 bg-[#1a1a1a] hover:bg-[#222] border border-[#333] hover:border-[#444] rounded-lg text-left transition-all group"
+                                >
+                                    <div className="flex flex-col">
+                                        <span className="text-sm font-bold text-white group-hover:text-blue-400">{project.name}</span>
+                                        <span className="text-[10px] text-slate-500 font-medium truncate max-w-[300px]">{project.description}</span>
+                                    </div>
+                                    <div className="flex flex-col items-end">
+                                        <span className="text-[9px] text-slate-600 font-bold uppercase">{new Date(project.created_at).toLocaleDateString()}</span>
+                                        <div className="i-ph:arrow-right-bold text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-center py-8">
+                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">No saved projects found</p>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Form Fields */}
             <div className="space-y-6">

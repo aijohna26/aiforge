@@ -11,43 +11,18 @@ export async function action({ request }: ActionFunctionArgs) {
 
     try {
         const { logoUrl, screens } = await request.json();
+        const { uploadImageToSupabase } = await import("~/lib/utils/imageUpload");
 
-        const processUrl = async (url: string, pathPrefix: string) => {
-            if (!url || url.includes('supabase.co')) return url;
+        const urlObj = new URL(request.url);
+        const origin = urlObj.origin;
 
-            try {
-                const response = await fetch(url);
-                if (!response.ok) throw new Error(`Failed to fetch image: ${url}`);
-                const arrayBuffer = await response.arrayBuffer();
-                const buffer = Buffer.from(arrayBuffer);
+        const getAbsoluteUrl = (u: string) => (u && u.startsWith('/') ? `${origin}${u}` : u);
 
-                const generateId = () => Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-                const fileName = `${pathPrefix}/${generateId()}.png`;
-                const { data, error } = await supabase.storage
-                    .from('images')
-                    .upload(fileName, buffer, {
-                        contentType: 'image/png',
-                        upsert: true
-                    });
-
-                if (error) throw error;
-
-                const { data: { publicUrl } } = supabase.storage
-                    .from('images')
-                    .getPublicUrl(fileName);
-
-                return publicUrl;
-            } catch (error) {
-                console.error(`Error processing image ${url}:`, error);
-                return url;
-            }
-        };
-
-        const newLogoUrl = logoUrl ? await processUrl(logoUrl, 'logos') : null;
+        const newLogoUrl = logoUrl ? await uploadImageToSupabase(supabase, getAbsoluteUrl(logoUrl), 'images', 'logos') : null;
 
         const newScreens = await Promise.all(screens.map(async (screen: any) => ({
             ...screen,
-            url: await processUrl(screen.url, 'screens')
+            url: await uploadImageToSupabase(supabase, getAbsoluteUrl(screen.url), 'images', 'screens')
         })));
 
         return json({

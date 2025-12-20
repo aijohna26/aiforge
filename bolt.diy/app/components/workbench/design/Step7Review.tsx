@@ -35,19 +35,19 @@ export function Step7Review() {
     };
 
     return (
-        <div className="pointer-events-auto bg-[#06080F] border-2 border-[#1E2533] rounded-3xl p-10 shadow-2xl w-[900px] max-h-[80vh] overflow-y-auto custom-scrollbar">
-            <div className="mb-8">
-                <h2 className="text-3xl font-black text-white mb-2 flex items-center gap-3">
+        <div className="w-[880px] max-h-[85vh] overflow-y-auto custom-scrollbar bg-[#06080F] border-2 border-[#1E2533] rounded-3xl p-8 pb-60 shadow-2xl pointer-events-auto">
+            <div className="mb-6">
+                <h2 className="text-3xl font-black text-white mb-1 flex items-center gap-3">
                     <div className="i-ph:rocket-launch-duotone text-blue-500" />
                     Review & Generate
                 </h2>
                 <div className="flex justify-between items-center">
-                    <p className="text-slate-400 font-medium italic">
+                    <p className="text-slate-400 text-sm font-medium italic">
                         Final review of your application architecture and design system.
                     </p>
                     <button
                         onClick={handleDownloadPRD}
-                        className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all border border-slate-700"
+                        className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all border border-slate-700"
                     >
                         <div className="i-ph:file-text text-base" />
                         Download PRD
@@ -62,14 +62,14 @@ export function Step7Review() {
                         <div className="i-ph:identification-card text-6xl text-blue-400" />
                     </div>
 
-                    <h3 className="text-xs font-black text-blue-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                    <h3 className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-4 flex items-center gap-2">
                         <div className="w-1.5 h-1.5 bg-blue-500 rounded-full" />
                         App Identity
                     </h3>
 
-                    <div className="grid grid-cols-12 gap-8">
+                    <div className="flex flex-col gap-8">
                         {/* Logo & NavBar Preview */}
-                        <div className="col-span-5 space-y-3">
+                        <div className="w-full space-y-3">
                             <div className="flex gap-3">
                                 <div className="w-24 h-24 flex-shrink-0 rounded-2xl bg-[#06080F] border-2 border-[#1E2533] p-4 flex items-center justify-center shadow-inner relative group/logo">
                                     {step3.logo ? (
@@ -101,7 +101,7 @@ export function Step7Review() {
                             </div>
                         </div>
 
-                        <div className="col-span-7 space-y-4">
+                        <div className="w-full space-y-4">
                             <div>
                                 <h4 className="text-2xl font-black text-white leading-tight">{step7.projectName || step1.appName || 'Untitled Project'}</h4>
                                 <div>
@@ -111,7 +111,7 @@ export function Step7Review() {
                                     {step1.description && step1.description.length > 120 && (
                                         <button
                                             onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
-                                            className="text-blue-400 hover:text-blue-300 text-xs font-bold mt-1 transition-colors"
+                                            className="bg-transparent border-none p-0 h-auto text-blue-400 hover:text-blue-300 text-xs font-bold mt-1 transition-colors hover:underline"
                                         >
                                             {isDescriptionExpanded ? 'Show less' : 'Show more'}
                                         </button>
@@ -129,7 +129,7 @@ export function Step7Review() {
                 </section>
 
                 {/* Design System Section */}
-                <section className="grid grid-cols-2 gap-6">
+                <section className="grid grid-cols-1 gap-6">
                     <div className="bg-[#0B0F1C] border border-[#1E2533] rounded-2xl p-6">
                         <h3 className="text-xs font-black text-blue-400 uppercase tracking-widest mb-4 flex items-center gap-2">
                             <div className="w-1.5 h-1.5 bg-blue-500 rounded-full" />
@@ -231,7 +231,7 @@ export function Step7Review() {
                             Final Project Configuration
                         </h3>
 
-                        <div className="grid grid-cols-2 gap-8">
+                        <div className="grid grid-cols-1 gap-8">
                             <div className="space-y-4">
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-500 uppercase mb-2">Internal Project Name</label>
@@ -315,11 +315,11 @@ export function Step7Review() {
                     background: transparent;
                 }
                 .custom-scrollbar::-webkit-scrollbar-thumb {
-                    background: #1E2533;
+                    background: #3B82F6;
                     border-radius: 10px;
                 }
                 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-                    background: #2D364D;
+                    background: #2563EB;
                 }
             `}</style>
         </div>

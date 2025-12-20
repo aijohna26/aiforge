@@ -467,7 +467,7 @@ export function MoodBoardFrame({ zoom = 1, panX = 0, panY = 0, onImagesChange }:
             `}</style>
 
             <div
-                className="w-[700px] pointer-events-auto bg-[#1a1a1a] border-2 border-[#333] rounded-xl p-10 shadow-2xl"
+                className="w-[770px] max-h-[85vh] overflow-y-auto custom-scrollbar pointer-events-auto bg-[#1a1a1a] border-2 border-[#333] rounded-xl p-10 pb-60 shadow-2xl"
             >
                 {/* Header */}
                 <div className="mb-6">
@@ -699,7 +699,7 @@ export function MoodBoardFrame({ zoom = 1, panX = 0, panY = 0, onImagesChange }:
                                                 className="w-full px-3 py-2.5 bg-[#2a2a2a] border border-[#444] rounded-md text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                                                 disabled={isGenerating}
                                             >
-                                                <option value="nano-banana" className="bg-[#2a2a2a]">Nano Banana (Fast)</option>
+                                                <option value="nano-banana" className="bg-[#2a2a2a]">Nano Banana Standard (Fast)</option>
                                                 <option value="nano-banana-pro" className="bg-[#2a2a2a]">Nano Banana Pro (Quality)</option>
                                             </select>
                                         </div>
@@ -806,8 +806,8 @@ export function MoodBoardFrame({ zoom = 1, panX = 0, panY = 0, onImagesChange }:
                                         <button
                                             onClick={() => setManualTab('presets')}
                                             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${manualTab === 'presets'
-                                                    ? 'bg-blue-600 text-white'
-                                                    : 'bg-[#2a2a2a] text-gray-400 hover:bg-[#333]'
+                                                ? 'bg-blue-600 text-white'
+                                                : 'bg-[#2a2a2a] text-gray-400 hover:bg-[#333]'
                                                 }`}
                                         >
                                             Popular Schemes
@@ -815,8 +815,8 @@ export function MoodBoardFrame({ zoom = 1, panX = 0, panY = 0, onImagesChange }:
                                         <button
                                             onClick={() => setManualTab('custom')}
                                             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${manualTab === 'custom'
-                                                    ? 'bg-blue-600 text-white'
-                                                    : 'bg-[#2a2a2a] text-gray-400 hover:bg-[#333]'
+                                                ? 'bg-blue-600 text-white'
+                                                : 'bg-[#2a2a2a] text-gray-400 hover:bg-[#333]'
                                                 }`}
                                         >
                                             Custom Colors
@@ -830,8 +830,8 @@ export function MoodBoardFrame({ zoom = 1, panX = 0, panY = 0, onImagesChange }:
                                                     key={scheme.id}
                                                     onClick={() => setSelectedColorScheme(scheme.id)}
                                                     className={`p-4 rounded-xl border-2 text-left transition-all ${selectedColorScheme === scheme.id
-                                                            ? 'border-blue-500 bg-[#1e3a5f] text-white'
-                                                            : 'border-[#444] bg-[#e5e7eb] hover:bg-[#d1d5db] text-gray-900'
+                                                        ? 'border-blue-500 bg-[#1e3a5f] text-white'
+                                                        : 'border-[#444] bg-[#e5e7eb] hover:bg-[#d1d5db] text-gray-900'
                                                         }`}
                                                 >
                                                     <div className="flex justify-between items-start mb-3">
@@ -896,8 +896,8 @@ export function MoodBoardFrame({ zoom = 1, panX = 0, panY = 0, onImagesChange }:
                                                 key={preset.id}
                                                 onClick={() => setSelectedTypography(preset.id)}
                                                 className={`p-4 rounded-xl border-2 text-left transition-all ${selectedTypography === preset.id
-                                                        ? 'border-blue-500 bg-blue-500/10'
-                                                        : 'border-[#444] bg-[#0a0a0a] hover:border-[#555]'
+                                                    ? 'border-blue-500 bg-blue-500/10'
+                                                    : 'border-[#444] bg-[#0a0a0a] hover:border-[#555]'
                                                     }`}
                                             >
                                                 <div className="flex justify-between items-start">
@@ -925,8 +925,8 @@ export function MoodBoardFrame({ zoom = 1, panX = 0, panY = 0, onImagesChange }:
                                                 key={preset.id}
                                                 onClick={() => setSelectedStyle(preset.id)}
                                                 className={`p-4 rounded-xl border-2 text-left transition-all ${selectedStyle === preset.id
-                                                        ? 'border-blue-500 bg-blue-500/10'
-                                                        : 'border-[#444] bg-[#0a0a0a] hover:border-[#555]'
+                                                    ? 'border-blue-500 bg-blue-500/10'
+                                                    : 'border-[#444] bg-[#0a0a0a] hover:border-[#555]'
                                                     }`}
                                             >
                                                 <p className="font-semibold text-white">{preset.name}</p>

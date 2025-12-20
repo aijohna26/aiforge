@@ -60,7 +60,7 @@ export const IMAGE_GENERATION_PRICING = {
     'nano-banana': {
         kieCredits: 4,          // Kie.ai cost: ~$0.02
         platformCredits: 6,     // Our cost: $0.06 (3x markup)
-        description: 'Basic image generation',
+        description: 'Nano Banana Standard - Basic generation',
         supportsReferenceImages: false,
     },
     'nano-banana-pro': {

@@ -4,9 +4,10 @@ import { Canvas, util, Point } from 'fabric';
 interface DesignCanvasProps {
     className?: string;
     onTransformChange?: (zoom: number, panX: number, panY: number) => void;
+    forceReset?: number; // timestamp to trigger reset
 }
 
-export const DesignCanvas = ({ className, onTransformChange }: DesignCanvasProps) => {
+export const DesignCanvas = ({ className, onTransformChange, forceReset }: DesignCanvasProps) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const fabricCanvasRef = useRef<Canvas | null>(null);
@@ -23,6 +24,28 @@ export const DesignCanvas = ({ className, onTransformChange }: DesignCanvasProps
             onTransformChange(canvas.getZoom(), vpt[4], vpt[5]);
         }
     }, [onTransformChange]);
+
+    // Handle programmatic reset
+    useEffect(() => {
+        if (forceReset && fabricCanvasRef.current) {
+            const canvas = fabricCanvasRef.current;
+            const vpt = canvas.viewportTransform;
+            if (vpt) {
+                // Full view reset
+                canvas.setZoom(1);
+                vpt[4] = 0; // panX
+                vpt[5] = 0; // panY
+                canvas.requestRenderAll();
+                setZoomLevel(100);
+
+                // Use a non-memoized version or just direct call if possible to avoid dependency loops
+                const currentVpt = canvas.viewportTransform;
+                if (onTransformChange && currentVpt) {
+                    onTransformChange(1, 0, 0);
+                }
+            }
+        }
+    }, [forceReset]); // Only trigger when forceReset timestamp changes
 
     const handleZoom = useCallback((direction: 'in' | 'out') => {
         const canvas = fabricCanvasRef.current;
@@ -153,7 +176,7 @@ export const DesignCanvas = ({ className, onTransformChange }: DesignCanvasProps
         let isDragging = false;
         let lastPosX = 0;
         let lastPosY = 0;
-        let isSpacePressed = false;
+        let spacePressedInternal = false;
 
         // We need to attach keydown to window because canvas might not have focus initially
         // But better to attach to document or window and check if hovering canvas? 
@@ -162,8 +185,8 @@ export const DesignCanvas = ({ className, onTransformChange }: DesignCanvasProps
 
         canvas.on('mouse:down', (opt: any) => {
             const evt = opt.e;
-            // Middle Button (button 1) or Space Key (handled via isSpacePressed check)
-            if (evt.button === 1 || isSpacePressed) {
+            // Middle Button (button 1) or Space Key (handled via spacePressedInternal check)
+            if (evt.button === 1 || spacePressedInternal) {
                 isDragging = true;
                 canvas.selection = false;
                 lastPosX = evt.clientX;
@@ -199,8 +222,9 @@ export const DesignCanvas = ({ className, onTransformChange }: DesignCanvasProps
 
         // Keyboard event listeners for Space Key
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.code === 'Space' && !isSpacePressed && !e.repeat && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
-                isSpacePressed = true;
+            if (e.code === 'Space' && !spacePressedInternal && !e.repeat && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+                spacePressedInternal = true;
+                setIsSpacePressed(true); // Sync with React state for potential UI usage
                 canvas.selection = false; // Disable selection while holding space
                 canvas.defaultCursor = 'grab';
                 canvas.setCursor('grab');
@@ -209,7 +233,8 @@ export const DesignCanvas = ({ className, onTransformChange }: DesignCanvasProps
 
         const handleKeyUp = (e: KeyboardEvent) => {
             if (e.code === 'Space') {
-                isSpacePressed = false;
+                spacePressedInternal = false;
+                setIsSpacePressed(false); // Sync with React state
                 if (!isDragging) {
                     canvas.selection = true;
                     canvas.defaultCursor = 'default';

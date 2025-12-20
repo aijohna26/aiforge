@@ -61,6 +61,9 @@ export default function SupabaseTab() {
   const [connectionTest, setConnectionTest] = useState<ConnectionTestResult | null>(null);
   const [isProjectActionLoading, setIsProjectActionLoading] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [isMigratingLogos, setIsMigratingLogos] = useState(false);
+  const [isMigratingScreens, setIsMigratingScreens] = useState(false);
+  const [migrationStatus, setMigrationStatus] = useState<{ table: string; status: string } | null>(null);
 
   // Connection testing function - uses server-side API to test environment token
   const testConnection = async () => {
@@ -606,6 +609,44 @@ export default function SupabaseTab() {
     );
   };
 
+  const handleMigrateImages = async (table: 'saved_logos' | 'saved_screens') => {
+    const isLogos = table === 'saved_logos';
+
+    if (isLogos) setIsMigratingLogos(true);
+    else setIsMigratingScreens(true);
+
+    setMigrationStatus({ table: isLogos ? 'Logos' : 'Screens', status: 'Migrating...' });
+
+    try {
+      const response = await fetch('/api/admin/migrate-images', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success(`Migration complete for ${isLogos ? 'Logos' : 'Screens'}!`);
+        if (data.summary) {
+          setMigrationStatus({
+            table: isLogos ? 'Logos' : 'Screens',
+            status: `Done: ${data.summary.migrated} migrated, ${data.summary.errors} errors`
+          });
+        }
+      } else {
+        toast.error(`Migration failed: ${data.error}`);
+        setMigrationStatus({ table: isLogos ? 'Logos' : 'Screens', status: 'Failed' });
+      }
+    } catch (error) {
+      toast.error('Failed to trigger migration');
+      setMigrationStatus({ table: isLogos ? 'Logos' : 'Screens', status: 'Error' });
+    } finally {
+      if (isLogos) setIsMigratingLogos(false);
+      else setIsMigratingScreens(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -839,11 +880,11 @@ export default function SupabaseTab() {
                             const avgTablesPerProject =
                               totalProjects > 0
                                 ? Math.round(
-                                    (connection.stats?.projects?.reduce(
-                                      (sum, p) => sum + (p.stats?.database?.tables || 0),
-                                      0,
-                                    ) || 0) / totalProjects,
-                                  )
+                                  (connection.stats?.projects?.reduce(
+                                    (sum, p) => sum + (p.stats?.database?.tables || 0),
+                                    0,
+                                  ) || 0) / totalProjects,
+                                )
                                 : 0;
 
                             return [
@@ -1080,6 +1121,64 @@ export default function SupabaseTab() {
               )}
 
               {renderProjects()}
+
+              {/* Maintenance Tools */}
+              <div className="mt-8 pt-6 border-t border-bolt-elements-borderColor space-y-4">
+                <h4 className="text-sm font-medium text-bolt-elements-textPrimary flex items-center gap-2">
+                  <div className="i-ph:wrench w-4 h-4 text-bolt-elements-item-contentAccent" />
+                  Maintenance Tools
+                </h4>
+                <p className="text-xs text-bolt-elements-textSecondary">
+                  Manage and optimize your Supabase infrastructure.
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 bg-bolt-elements-background-depth-1 border border-bolt-elements-borderColor rounded-lg space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="i-ph:image w-4 h-4 text-bolt-elements-item-contentAccent" />
+                        <span className="text-sm font-medium text-bolt-elements-textPrimary">Image Migration</span>
+                      </div>
+                      {migrationStatus && (
+                        <span className="text-[10px] font-bold text-blue-500 uppercase tracking-widest px-2 py-0.5 bg-blue-500/10 rounded">
+                          {migrationStatus.status}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-bolt-elements-textSecondary">
+                      Move images from temporary URLs to Supabase Storage to prevent data loss.
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleMigrateImages('saved_logos')}
+                        disabled={isMigratingLogos || isMigratingScreens}
+                        className="flex-1 text-xs"
+                      >
+                        {isMigratingLogos ? (
+                          <div className="i-ph:spinner-gap animate-spin" />
+                        ) : (
+                          'Migrate Logos'
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleMigrateImages('saved_screens')}
+                        disabled={isMigratingLogos || isMigratingScreens}
+                        className="flex-1 text-xs"
+                      >
+                        {isMigratingScreens ? (
+                          <div className="i-ph:spinner-gap animate-spin" />
+                        ) : (
+                          'Migrate Screens'
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>

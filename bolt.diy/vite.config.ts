@@ -33,14 +33,14 @@ export default defineConfig((config) => {
         name: 'exclude-templates',
         resolveId(id) {
           // Don't process template files
-          if (id.includes('/templates/bolt-expo-template/')) {
+          if (id.includes('/templates/af-expo-template/')) {
             return { id, external: false, moduleSideEffects: false };
           }
           return null;
         },
         transform(code, id) {
           // Skip processing template files loaded with ?raw
-          if (id.includes('/templates/bolt-expo-template/') && id.includes('?raw')) {
+          if (id.includes('/templates/af-expo-template/') && id.includes('?raw')) {
             return { code, map: null };
           }
           return null;

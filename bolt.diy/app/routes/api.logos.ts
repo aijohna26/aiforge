@@ -57,11 +57,15 @@ export async function action({ request }: ActionFunctionArgs) {
                 );
             }
 
+            // Persist image to Supabase Storage
+            const { uploadImageToSupabase } = await import("~/lib/utils/imageUpload");
+            const finalizedImageUrl = await uploadImageToSupabase(supabase, image_url, 'images', 'logos');
+
             const { data: logo, error } = await supabase
                 .from('saved_logos')
                 .insert({
                     user_id: user.id,
-                    image_url,
+                    image_url: finalizedImageUrl,
                     app_name,
                     prompt,
                 })

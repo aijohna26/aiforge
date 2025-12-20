@@ -9,7 +9,7 @@ interface ExtractionResponse {
     error?: string;
 }
 
-export async function extractStyleGuideFromMoodboard(referenceImages: string[]) {
+export async function extractStyleGuideFromMoodboard(referenceImages: string[], imageIds: string[]) {
     if (!referenceImages.length) {
         toast.error('Add at least one inspiration image before continuing.');
         return;
@@ -40,6 +40,7 @@ export async function extractStyleGuideFromMoodboard(referenceImages: string[]) 
             extractionStatus: 'complete',
             extractionError: undefined,
             lastExtractedAt: new Date().toISOString(),
+            lastExtractedImageIds: imageIds, // Store which images were used for this extraction
             selectedPaletteId: null,
             selectedTypographyId: null,
             selectedStyleId: null,

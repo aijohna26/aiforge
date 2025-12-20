@@ -101,6 +101,14 @@ export const ChatImpl = memo(
     );
     const supabaseAlert = useStore(workbenchStore.supabaseAlert);
     const { activeProviders, promptId, autoSelectTemplate, contextOptimizationEnabled } = useSettings();
+    const [seedPrompt] = useState(() => {
+      if (typeof window !== 'undefined') {
+        const seed = localStorage.getItem('bolt_seed_prompt');
+        return seed || null;
+      }
+      return null;
+    });
+
     const [llmErrorAlert, setLlmErrorAlert] = useState<LlmErrorAlertType | undefined>(undefined);
     const [model, setModel] = useState(() => {
       const savedModel = Cookies.get('selectedModel');
@@ -185,22 +193,31 @@ export const ChatImpl = memo(
         logger.debug('Finished streaming');
       },
       initialMessages,
-      initialInput: Cookies.get(PROMPT_COOKIE_KEY) || '',
+      initialInput: seedPrompt || searchParams.get('seedPrompt') || Cookies.get(PROMPT_COOKIE_KEY) || '',
     });
     useEffect(() => {
-      const prompt = searchParams.get('prompt');
+      if (typeof window === 'undefined') {
+        return;
+      }
 
-      // console.log(prompt, searchParams, model, provider);
+      const prompt = searchParams.get('prompt');
 
       if (prompt) {
         setSearchParams({});
         runAnimation();
+        workbenchStore.currentView.set('code');
         append({
           role: 'user',
           content: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${prompt}`,
         });
+      } else if (seedPrompt) {
+        setSearchParams({});
+        workbenchStore.currentView.set('code');
+
+        // Clear it so it doesn't persist on refresh
+        localStorage.removeItem('bolt_seed_prompt');
       }
-    }, [model, provider, searchParams]);
+    }, [model, provider, searchParams, seedPrompt]);
 
     const { enhancingPrompt, promptEnhanced, enhancePrompt, resetEnhancer } = usePromptEnhancer();
     const { parsedMessages, parseMessages } = useMessageParser();
