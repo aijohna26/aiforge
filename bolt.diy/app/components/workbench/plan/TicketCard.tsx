@@ -48,6 +48,11 @@ export function TicketCard({ ticket, onDragStart, onClick }: TicketCardProps) {
                 <div className={classNames("flex items-center justify-center w-5 h-5 rounded-md bg-opacity-10", priority.color)}>
                     <div className={classNames(priority.icon, "text-xs")} title={priority.label} />
                 </div>
+                {ticket.parallel && (
+                    <div className="flex items-center justify-center w-5 h-5 rounded-md bg-emerald-500/10 text-emerald-500" title="Parallel Ready">
+                        <div className="i-ph:intersect-bold text-[10px]" />
+                    </div>
+                )}
             </div>
 
             {/* Title */}

@@ -282,6 +282,7 @@ class ImageGenerationService {
     }
 
     private async generateWithKie(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
+        console.log(`[Image Service] Entering generateWithKie...`);
         const apiKey = process.env.KIE_API_KEY;
 
         if (!apiKey) {
@@ -344,6 +345,7 @@ class ImageGenerationService {
         }
         console.log('[Image Service] Request body:', JSON.stringify(requestBody, null, 2));
 
+        console.log('[Image Service] Sending request to Kie.ai createTask...');
         // Step 1: Create task
         const createResponse = await fetch('https://api.kie.ai/api/v1/jobs/createTask', {
             method: 'POST',
@@ -353,6 +355,7 @@ class ImageGenerationService {
             },
             body: JSON.stringify(requestBody),
         });
+        console.log('[Image Service] createTask response received');
 
         if (!createResponse.ok) {
             const errorText = await createResponse.text();

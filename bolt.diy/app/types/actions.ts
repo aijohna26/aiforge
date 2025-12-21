@@ -1,6 +1,6 @@
 import type { Change } from 'diff';
 
-export type ActionType = 'file' | 'shell' | 'supabase';
+export type ActionType = 'file' | 'shell' | 'supabase' | 'design-sync' | 'qa-pass';
 
 export interface BaseAction {
   content: string;
@@ -30,7 +30,16 @@ export interface SupabaseAction extends BaseAction {
   projectId?: string;
 }
 
-export type BoltAction = FileAction | ShellAction | StartAction | BuildAction | SupabaseAction;
+export interface DesignSyncAction extends BaseAction {
+  type: 'design-sync';
+}
+
+export interface QAPassAction extends BaseAction {
+  type: 'qa-pass';
+  ticketId: string;
+}
+
+export type BoltAction = FileAction | ShellAction | StartAction | BuildAction | SupabaseAction | DesignSyncAction | QAPassAction;
 
 export type BoltActionData = BoltAction | BaseAction;
 

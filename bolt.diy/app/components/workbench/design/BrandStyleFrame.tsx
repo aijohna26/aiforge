@@ -6,6 +6,7 @@ import type { Step3Data } from '~/lib/stores/designWizard';
 import {
     designWizardStore,
     updateStep3Data,
+    setIsProcessing,
 } from '~/lib/stores/designWizard';
 import { extractStyleGuideFromMoodboard } from '~/lib/styleGuideExtraction';
 
@@ -143,11 +144,13 @@ export function BrandStyleFrame() {
         try {
             setLocalError(null);
             setIsLoading(true);
-            await extractStyleGuideFromMoodboard(step2.referenceImages.map((img) => img.url));
+            setIsProcessing(true);
+            await extractStyleGuideFromMoodboard(step2.referenceImages.map((img) => img.url), step2.referenceImages.map((img) => img.id));
         } catch (error: any) {
             setLocalError(error.message || 'Failed to analyze mood board');
         } finally {
             setIsLoading(false);
+            setIsProcessing(false);
         }
     }, [step2.referenceImages]);
 
@@ -226,6 +229,7 @@ export function BrandStyleFrame() {
         }
 
         setIsGeneratingLogo(true);
+        setIsProcessing(true);
         setLocalError(null);
         updateStep3Data({ logoProcessStatus: 'generating' });
 
@@ -295,6 +299,7 @@ export function BrandStyleFrame() {
             updateStep3Data({ logoProcessStatus: 'error' });
         } finally {
             setIsGeneratingLogo(false);
+            setIsProcessing(false);
         }
     }, [logoPrompt, provider, googleModel, quantity]);
 
@@ -764,7 +769,7 @@ export function BrandStyleFrame() {
                                 <div className="flex gap-3 justify-end">
                                     <button
                                         onClick={() => setIsEditModalOpen(false)}
-                                        className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white transition-colors"
+                                        className="px-4 py-2 rounded-lg bg-[#2a2a2a] border border-[#333] text-white hover:bg-[#333] transition-colors"
                                     >
                                         Cancel
                                     </button>

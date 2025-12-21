@@ -5,11 +5,13 @@ import { toast } from 'sonner';
 import {
     designWizardStore,
     updateStep5Data,
+    setIsProcessing,
     type Step5Data,
     type Step4Data,
 } from '~/lib/stores/designWizard';
 import { ImageEditor } from './ImageEditor';
 import { migrateImageToSupabase } from './utils/migrateImages';
+import { showAlert } from '~/lib/stores/alertStore';
 
 
 type ProviderOption = 'gemini' | 'openai';
@@ -248,6 +250,11 @@ export function Step5Frame() {
         }
     }, [provider, availableGeminiModels, googleModel]);
 
+    // Sync isProcessing with active requests to avoid stale closures
+    useEffect(() => {
+        setIsProcessing(activeRequests > 0 || isEditingScreen);
+    }, [activeRequests, isEditingScreen]);
+
     const buildScreenPrompt = useCallback(
         (screen: (typeof screens)[number], includeNavOverride?: boolean, includeLogoOverride?: boolean) => {
             const appName = step1.appName || 'the app';
@@ -320,6 +327,7 @@ export function Step5Frame() {
 
     const handleGenerateScreen = useCallback(
         async (screenId: string, quantityOverride?: number) => {
+            console.log(`[Step5] handleGenerateScreen called for: ${screenId}`);
             const screen = screens.find((s) => s.id === screenId);
             if (!screen) return;
             if (navigationType === 'bottom' && !hasNavigationBar && getIncludeNav(screenId)) {
@@ -355,6 +363,7 @@ export function Step5Frame() {
             const includeLogo = getIncludeLogo(screenId);
             const prompt = buildScreenPrompt(screen, includeNav, includeLogo);
 
+            toast.loading(`Drafting ${screen.name}...`, { id: `gen-${screenId}` });
             setActiveRequests((count) => count + 1);
             setGeneratingScreens((prev) => ({ ...prev, [screenId]: true }));
 
@@ -422,7 +431,9 @@ export function Step5Frame() {
 
                     const data: GenerationResponse | null = await response.json().catch(() => null);
                     if (!response.ok || !data?.success || !data?.imageUrl) {
-                        throw new Error(data?.error || 'Failed to generate screen image');
+                        const error: any = new Error(data?.error || 'Failed to generate screen image');
+                        error.status = response.status;
+                        throw error;
                     }
 
                     newVariations.push({
@@ -501,20 +512,38 @@ export function Step5Frame() {
             } catch (error) {
                 console.error('[Screen Generation]', error);
 
+                // Dismiss the loading toast first
+                toast.dismiss(`gen-${screenId}`);
+
                 let message = 'Your request cannot be processed right now. Please try again in a few moments.';
+                let description = 'The design engine may be busy';
 
                 if (error instanceof Error) {
-                    if (error.message.includes('Image Service Error') || error.message.includes('failed') || error.message.includes('500')) {
+                    // Check for insufficient credits error (402 status or message contains "insufficient credits")
+                    const isCreditError = (error as any)?.status === 402 ||
+                        error.message.toLowerCase().includes('insufficient credits');
+
+                    if (isCreditError) {
+                        console.warn('[Screen Generation] Insufficient credits detected');
+                        // Show global alert
+                        showAlert({
+                            message: 'Insufficient Credits',
+                            description: error.message || 'You need more credits to generate this screen. Please add credits or choose a cheaper model.',
+                        });
+                        return; // Exit early
+                    } else if (error.message.includes('Image Service Error') || error.message.includes('failed') || error.message.includes('500')) {
                         // Keep the friendly message but log the technical detail for developers
                         console.error('Technical Error:', error.message);
+                        message = `Design Engine unreachable. ${error.message}`;
                     } else {
                         message = error.message;
                     }
                 }
 
                 toast.error(message, {
+                    id: `gen-${screenId}`,
                     duration: 5000,
-                    description: 'The design engine may be busy'
+                    description
                 });
             } finally {
                 setGeneratingScreens((prev) => {
@@ -640,6 +669,7 @@ export function Step5Frame() {
             return;
         }
 
+        toast.loading('Applying AI changes...', { id: `edit-${screenToEdit.id}` });
         setActiveRequests((count) => count + 1);
         try {
             const modelConfig = EDIT_MODELS.find(m => m.value === editModel);
@@ -662,7 +692,9 @@ export function Step5Frame() {
 
             const data = await response.json();
             if (!response.ok || !data?.success || !data?.imageUrl) {
-                throw new Error(data?.error || 'Failed to edit screen');
+                const error: any = new Error(data?.error || 'Failed to edit screen');
+                error.status = response.status;
+                throw error;
             }
 
             const providerName =
@@ -700,15 +732,43 @@ export function Step5Frame() {
                 totalCreditsUsed: step5.totalCreditsUsed + (newVariation.creditsUsed || 0),
             });
 
-            toast.success('Screen edited successfully');
+            toast.success('Design updated successfully', { id: `edit-${screenToEdit.id}` });
+        } catch (error) {
+            console.error('[Screen Edit Error]', error);
+
+            // Dismiss the loading toast first
+            toast.dismiss(`edit-${screenToEdit.id}`);
+
+            let message = 'Failed to edit screen';
+            let description: string | undefined = undefined;
+
+            if (error instanceof Error) {
+                // Check for insufficient credits error (402 status or message contains "insufficient credits")
+                const isCreditError = (error as any)?.status === 402 ||
+                    error.message.toLowerCase().includes('insufficient credits');
+
+                if (isCreditError) {
+                    console.warn('[Screen Edit] Insufficient credits detected');
+                    // Show global alert
+                    showAlert({
+                        message: 'Insufficient Credits',
+                        description: error.message || 'You need more credits to edit this screen. Please add credits or choose a cheaper model.',
+                    });
+                    return; // Exit early
+                } else {
+                    message = error.message;
+                }
+            }
+
+            toast.error(message, {
+                id: `edit-${screenToEdit.id}`,
+                description,
+                duration: 5000
+            });
+        } finally {
             setIsEditingScreen(false);
             setEditPrompt('');
             setScreenToEdit(null);
-        } catch (error) {
-            const message = error instanceof Error ? error.message : 'Failed to edit screen';
-            console.error('[Screen Edit]', error);
-            toast.error(message);
-        } finally {
             setActiveRequests((count) => Math.max(0, count - 1));
         }
     }, [screenToEdit, editPrompt, editModel, aspectRatio, step5.generatedScreens, step5.totalCreditsUsed]);
@@ -774,6 +834,13 @@ export function Step5Frame() {
                             <p className="text-2xl font-black text-blue-400">{step5.totalCreditsUsed}</p>
                         </div>
                         <button
+                            onClick={() => window.open("/credits", "_blank")}
+                            className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-500 text-sm font-medium transition-colors flex items-center gap-2"
+                            title="Top up your credits"
+                        >
+                            <div className="i-ph:coins text-lg" />
+                            Top Up Credits
+                        </button>                        <button
                             onClick={handleGenerateAll}
                             disabled={isBusy || !screensMissingGeneration.length}
                             className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 text-sm font-medium transition-colors flex items-center gap-2"
@@ -1212,6 +1279,7 @@ export function Step5Frame() {
                                                     </p>
                                                 </div>
                                             </div>
+
                                         </>
                                     )
                                 ) : (
@@ -1308,7 +1376,7 @@ export function Step5Frame() {
                             <div className="flex justify-end gap-3">
                                 <button
                                     onClick={() => setScreenPendingDelete(null)}
-                                    className="px-4 py-2 rounded-lg border border-slate-600 text-sm text-white hover:bg-slate-700 transition-colors"
+                                    className="px-4 py-2 rounded-lg bg-[#2a2a2a] border border-[#333] text-sm text-white hover:bg-[#333] transition-colors"
                                 >
                                     Cancel
                                 </button>
@@ -1401,7 +1469,7 @@ export function Step5Frame() {
                                         setIsEditingScreen(false);
                                         setScreenToEdit(null);
                                     }}
-                                    className="px-4 py-2 rounded-lg border border-slate-600 text-sm text-white hover:bg-slate-700 transition-colors disabled:opacity-50"
+                                    className="px-4 py-2 rounded-lg bg-[#2a2a2a] border border-[#333] text-sm text-white hover:bg-[#333] transition-colors disabled:opacity-50"
                                     disabled={isBusy}
                                 >
                                     Cancel
@@ -1415,11 +1483,13 @@ export function Step5Frame() {
                                         <>
                                             <div className="i-ph:circle-notch animate-spin" />
                                             Updating Design...
+
                                         </>
                                     ) : (
                                         <>
                                             <div className="i-ph:sparkle" />
                                             Apply AI Edits
+
                                         </>
                                     )}
                                 </button>

@@ -21,6 +21,7 @@ export interface PlanTicket {
     relatedDataModels: string[];
     dependencies: string[];
     labels: string[];
+    parallel?: boolean;
     orderIndex: number;
     createdAt: string;
     updatedAt: string;
@@ -91,14 +92,27 @@ export function updateTicket(ticketId: string, updates: Partial<PlanTicket>) {
 }
 
 export function updateTicketStatus(ticketId: string, newStatus: TicketStatus) {
+    const current = planStore.get();
+
+    // Constraint: Only one ticket in-progress at a time
+    if (newStatus === 'in-progress') {
+        current.tickets.forEach(t => {
+            if (t.status === 'in-progress' && t.id !== ticketId) {
+                updateTicket(t.id, { status: 'todo' });
+            }
+        });
+    }
+
     updateTicket(ticketId, { status: newStatus });
 
-    // If moving to in-progress, trigger coding bot
+    // Triggers
+    const ticket = planStore.get().tickets.find(t => t.id === ticketId);
+    if (!ticket) return;
+
     if (newStatus === 'in-progress') {
-        const ticket = planStore.get().tickets.find(t => t.id === ticketId);
-        if (ticket) {
-            triggerCodingBot(ticket);
-        }
+        triggerCodingBot(ticket);
+    } else if (newStatus === 'testing') {
+        triggerQABot(ticket);
     }
 }
 
@@ -151,7 +165,8 @@ export function generateTicketsFromPRD(wizardData: DesignWizardData): PlanTicket
         relatedDataModels: string[] = [],
         dependencies: string[] = [],
         labels: string[] = [],
-        estimatedHours?: number
+        estimatedHours?: number,
+        parallel: boolean = false
     ): PlanTicket => ({
         id: `${projectKey}-${ticketNumber}`,
         key: `${projectKey}-${ticketNumber++}`,
@@ -166,6 +181,7 @@ export function generateTicketsFromPRD(wizardData: DesignWizardData): PlanTicket
         relatedDataModels,
         dependencies,
         labels,
+        parallel,
         orderIndex: orderIndex++,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -180,9 +196,10 @@ export function generateTicketsFromPRD(wizardData: DesignWizardData): PlanTicket
         [
             'Expo project initialized with SDK version specified',
             'All required dependencies installed',
-            'Environment variables template created',
             'Project runs successfully on both iOS and Android',
             'Git repository initialized with .gitignore',
+            'Assets folder created at `assets/images/`',
+            'Remote logo and splash screen downloaded into `assets/images/` using `curl`',
         ],
         [],
         [],
@@ -238,7 +255,8 @@ export function generateTicketsFromPRD(wizardData: DesignWizardData): PlanTicket
                     [],
                     [designSystemTicket.id],
                     ['screen', screenData?.type || 'custom'],
-                    6
+                    6,
+                    true // Screens can often be built in parallel
                 )
             );
         });
@@ -283,7 +301,8 @@ export function generateTicketsFromPRD(wizardData: DesignWizardData): PlanTicket
                 [model.id],
                 [],
                 ['backend', 'data-model'],
-                4
+                4,
+                true // Data models can be built in parallel
             )
         );
     });
@@ -309,7 +328,8 @@ export function generateTicketsFromPRD(wizardData: DesignWizardData): PlanTicket
                     [],
                     [],
                     ['integration', integration.id],
-                    3
+                    3,
+                    wizardData.step1.parallelReady === true
                 )
             );
         });
@@ -359,6 +379,36 @@ function triggerCodingBot(ticket: PlanTicket) {
             detail: { ticket, prompt }
         }));
     }
+}
+
+// Trigger QA bot when ticket moves to testing
+function triggerQABot(ticket: PlanTicket) {
+    const prompt = generateQAPrompt(ticket);
+
+    if (typeof window !== 'undefined') {
+        // Dispatch custom event to notify chat
+        window.dispatchEvent(new CustomEvent('ticket-to-qa', {
+            detail: { ticket, prompt }
+        }));
+    }
+}
+
+function generateQAPrompt(ticket: PlanTicket): string {
+    return `
+# 🔍 QA Request: ${ticket.key} - ${ticket.title}
+
+Please QA the changes for this ticket against the following acceptance criteria:
+
+## Acceptance Criteria
+${ticket.acceptanceCriteria.map((c, i) => `${i + 1}. 📄 ${c}`).join('\n')}
+
+**Instructions**:
+1. Review the code changes made in the previous turns.
+2. Verify that each acceptance criterion is met.
+3. If everything is correct, clearly state "QA Pass" and output the following action:
+   <boltAction type="qa-pass" ticketId="${ticket.id}" />
+4. If there are issues, list them and do not output the action.
+`.trim();
 }
 
 function generateCodingPrompt(ticket: PlanTicket): string {

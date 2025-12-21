@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '@nanostores/react';
 import { toast } from 'sonner';
-import { designWizardStore, updateStep4Data } from '~/lib/stores/designWizard';
+import { designWizardStore, updateStep4Data, setIsProcessing } from '~/lib/stores/designWizard';
 import type { Step4Data } from '~/lib/stores/designWizard';
 import { ImageEditor } from './ImageEditor';
 import { migrateImageToSupabase } from './utils/migrateImages';
@@ -140,6 +140,7 @@ export function ScreenFlowFrame() {
         if (filteredNav.length !== navigation.items.length) {
             updateStep4Data({
                 navigation: {
+                    ...navigation,
                     items: filteredNav,
                     confirmed: false,
                 },
@@ -253,6 +254,7 @@ export function ScreenFlowFrame() {
         }
 
         setIsGeneratingNav(true);
+        setIsProcessing(true);
         try {
             const prompt = buildNavigationPrompt();
             const newVariations: typeof navBarVariations = [];
@@ -319,6 +321,7 @@ export function ScreenFlowFrame() {
             toast.error(message);
         } finally {
             setIsGeneratingNav(false);
+            setIsProcessing(false);
         }
     }, [navItems, buildNavigationPrompt, selectedModel, navVariationCount, navAspectRatio, navBarVariations, navigation]);
 
@@ -384,6 +387,7 @@ export function ScreenFlowFrame() {
         }
 
         setIsGeneratingNav(true);
+        setIsProcessing(true);
         setNavError(null);
         try {
             console.log('[Nav Edit] Reference image URL:', navToEditOriginal);
@@ -457,6 +461,7 @@ export function ScreenFlowFrame() {
             toast.error(message);
         } finally {
             setIsGeneratingNav(false);
+            setIsProcessing(false);
         }
     }, [editNavPrompt, editNavModel, navToEditOriginal, navAspectRatio, navBarVariations, navigation]);
 
@@ -668,6 +673,7 @@ export function ScreenFlowFrame() {
 
         if (updatedNavItems.length !== navItems.length) {
             payload.navigation = {
+                ...navigation,
                 items: updatedNavItems,
                 confirmed: false,
             };
@@ -1465,7 +1471,7 @@ export function ScreenFlowFrame() {
                                         setNavToEditOriginal(null);
                                     }}
                                     disabled={isGeneratingNav}
-                                    className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="px-4 py-2 rounded-lg bg-[#2a2a2a] border border-[#333] text-white hover:bg-[#333] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     Cancel
                                 </button>
@@ -1522,7 +1528,7 @@ export function ScreenFlowFrame() {
                             <div className="flex gap-3">
                                 <button
                                     onClick={() => setNavPendingDelete(null)}
-                                    className="flex-1 px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white transition-colors"
+                                    className="flex-1 px-4 py-2 rounded-lg bg-[#2a2a2a] border border-[#333] text-white hover:bg-[#333] transition-colors"
                                 >
                                     Cancel
                                 </button>

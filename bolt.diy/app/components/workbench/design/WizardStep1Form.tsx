@@ -225,6 +225,24 @@ export function WizardStep1Form({ zoom = 1, panX = 0, panY = 0 }: WizardStep1For
                     />
                     <p className="text-[10px] text-slate-500 mt-1.5 italic">This helps AI prepare your database structure in later steps.</p>
                 </div>
+
+                {/* Additional Details (Optional) */}
+                <div>
+                    <div className="flex items-center justify-between mb-2">
+                        <label className="block text-xs font-bold text-slate-200 uppercase tracking-wide">
+                            Additional Details / Context
+                        </label>
+                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Optional</span>
+                    </div>
+                    <textarea
+                        value={step1.additionalDetails || ''}
+                        onChange={(e) => handleChange('additionalDetails', e.target.value)}
+                        placeholder="Any other specific requirements, edge cases, or preferences mentioned during the chat?"
+                        rows={4}
+                        className="w-full px-3 py-2.5 bg-[#2a2a2a] border border-[#444] rounded-md text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 overflow-y-auto custom-scrollbar font-medium"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-1.5 italic">Use this for any extra information the LLM gathered that doesn't fit the fields above.</p>
+                </div>
             </div>
 
             {/* Helper Text */}

@@ -13,6 +13,7 @@ import { extractStyleGuideFromMoodboard } from '~/lib/styleGuideExtraction';
 import { updateStep7Data } from '~/lib/stores/designWizard';
 import { generateBootstrapPrompt } from '~/lib/utils/bootstrapPromptGenerator';
 import { generatePRD } from '~/lib/utils/prdGenerator';
+import { chatStore } from '~/lib/stores/chat';
 
 interface DesignWizardCanvasProps {
     zoom?: number;
@@ -23,7 +24,7 @@ interface DesignWizardCanvasProps {
 
 export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }: DesignWizardCanvasProps) {
     const wizardData = useStore(designWizardStore);
-    const { currentStep } = wizardData;
+    const { currentStep, isProcessing: globalIsProcessing } = wizardData;
     const [isAnimating, setIsAnimating] = useState(false);
     const [isExtracting, setIsExtracting] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -32,6 +33,8 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }:
     const isLogoGenerating = logoProcessStatus === 'generating';
     const awaitsLogo = currentStep === 3 && !wizardData.step3.logo;
     const awaitingLogoCompletion = awaitsLogo;
+
+    const isProcessing = globalIsProcessing || isExtracting || isGenerating || isAnimating || isLogoGenerating;
 
     // Force internal scroll reset to top when step changes
     useEffect(() => {
@@ -43,6 +46,8 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }:
 
     const handleClearSession = () => {
         resetDesignWizard();
+        chatStore.setKey('handedOver', false);
+        chatStore.setKey('showChat', true);
         setShowClearConfirm(false);
     };
 
@@ -227,6 +232,8 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }:
 
             // Clear the local wizard state ONLY AFTER SUCCESSFUL DB SAVE
             resetDesignWizard();
+            chatStore.setKey('handedOver', false);
+            chatStore.setKey('showChat', true);
 
             // Navigate to Plan view
             if (typeof window !== 'undefined') {
@@ -313,13 +320,14 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }:
                         <div key={step.id} className="flex items-center">
                             <div
                                 onClick={() => {
+                                    if (isProcessing) return;
                                     if (wizardData.completedSteps.includes(step.id) || step.id <= currentStep) {
                                         setCurrentStep(step.id);
                                     } else {
                                         toast.info(`Complete Step ${currentStep} to unlock Step ${step.id}`);
                                     }
                                 }}
-                                className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 cursor-pointer ${currentStep === step.id
+                                className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${isProcessing ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} ${currentStep === step.id
                                     ? 'bg-blue-600 text-white scale-110 shadow-[0_0_12px_rgba(37,99,235,0.4)]'
                                     : wizardData.completedSteps.includes(step.id)
                                         ? 'bg-green-600/90 text-white'
@@ -346,9 +354,10 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }:
 
                 {/* Clear Session Button */}
                 <button
-                    onClick={() => setShowClearConfirm(true)}
-                    className="bg-[#1A1A1A] border border-[#333] rounded-full px-5 py-2.5 shadow-2xl hover:bg-[#252525] hover:border-[#444] transition-all group flex items-center gap-2"
-                    title="Clear all progress and start over"
+                    onClick={() => !isProcessing && setShowClearConfirm(true)}
+                    disabled={isProcessing}
+                    className={`bg-[#1A1A1A] border border-[#333] rounded-full px-5 py-2.5 shadow-2xl transition-all group flex items-center gap-2 ${isProcessing ? 'opacity-30 cursor-not-allowed' : 'hover:bg-[#252525] hover:border-[#444]'}`}
+                    title={isProcessing ? "Disabled during generation" : "Clear all progress and start over"}
                 >
                     <div className="i-ph:trash-bold text-slate-400 group-hover:text-red-400 transition-colors text-base" />
                     <span className="text-slate-200 group-hover:text-red-400 font-medium text-sm transition-colors">Clear Session</span>
@@ -454,14 +463,18 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }:
                     {/* Recenter Button (Miro style) */}
                     <button
                         onClick={() => {
+                            if (isProcessing) return;
                             onRecenter?.();
                             const scrollContainers = document.querySelectorAll('.overflow-y-auto');
                             scrollContainers.forEach((container) => {
                                 container.scrollTo({ top: 0, behavior: 'instant' });
                             });
                         }}
-                        className="p-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-700 text-slate-400 hover:text-white transition-all border border-slate-700/50 group"
-                        title="Recenter Camera (Focus on Current Step)"
+                        disabled={isProcessing}
+                        className={`p-2.5 rounded-xl transition-all border group ${isProcessing
+                            ? 'opacity-30 cursor-not-allowed border-transparent text-slate-500'
+                            : 'bg-slate-800/50 hover:bg-slate-700 text-slate-400 hover:text-white border-slate-700/50'}`}
+                        title={isProcessing ? "Disabled during generation" : "Recenter Camera (Focus on Current Step)"}
                     >
                         <div className="i-ph:crosshair-simple-bold text-xl group-hover:scale-110 transition-transform" />
                     </button>
@@ -471,8 +484,8 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }:
                     {/* Back Button */}
                     <button
                         onClick={handleBack}
-                        disabled={currentStep <= 1 || isAnimating}
-                        className={`px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all border ${currentStep <= 1 || isAnimating
+                        disabled={currentStep <= 1 || isProcessing}
+                        className={`px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all border ${currentStep <= 1 || isProcessing
                             ? 'opacity-30 cursor-not-allowed border-transparent text-slate-500'
                             : 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700'
                             }`}
@@ -497,11 +510,10 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }:
                             onClick={handleNext}
                             disabled={
                                 !canProceedToNextStep() ||
-                                isExtracting ||
-                                isAnimating ||
+                                isProcessing ||
                                 (currentStep === 3 && awaitingLogoCompletion)
                             }
-                            className={`px-8 py-2.5 rounded-xl font-black flex items-center gap-2 transition-all shadow-lg ${!canProceedToNextStep() || isExtracting || isAnimating || (currentStep === 3 && awaitingLogoCompletion)
+                            className={`px-8 py-2.5 rounded-xl font-black flex items-center gap-2 transition-all shadow-lg ${!canProceedToNextStep() || isProcessing || (currentStep === 3 && awaitingLogoCompletion)
                                 ? 'bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-700'
                                 : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/20'
                                 }`}

@@ -89,6 +89,7 @@ export const ChatImpl = memo(
     const [chatStarted, setChatStarted] = useState(initialMessages.length > 0);
     const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
     const [imageDataList, setImageDataList] = useState<string[]>([]);
+    const seedPromptProcessed = useRef(false);
     const [searchParams, setSearchParams] = useSearchParams();
     const [fakeLoading, setFakeLoading] = useState(false);
     const files = useStore(workbenchStore.files);
@@ -178,6 +179,36 @@ export const ChatImpl = memo(
         const usage = response.usage;
         setData(undefined);
 
+        // Handle automated ticket transitions
+        const activeTicketId = chatStore.get().activeTicketId;
+
+        if (activeTicketId) {
+          const { updateTicketStatus, getTicketById } = require('~/lib/stores/plan');
+          const { yoloModeStore } = require('~/lib/stores/settings');
+          const ticket = getTicketById(activeTicketId);
+
+          if (ticket && ticket.status === 'in-progress') {
+            if (yoloModeStore.get()) {
+              // YOLO: Auto-move to QA
+              console.log(`YOLO Mode: Auto-moving ticket ${ticket.key} to QA`);
+              updateTicketStatus(activeTicketId, 'testing');
+            } else {
+              // Non-YOLO: Alert user
+              toast.info(`Agent finished working on ${ticket.key}. You can ask for more changes, move it to 'Done' to complete, or to 'QA' for automated testing.`, {
+                autoClose: 15000,
+                position: 'bottom-right'
+              });
+
+              // Play subtle sound
+              const audio = new Audio('/notification.mp3');
+              audio.play().catch(e => console.error('Failed to play sound', e));
+            }
+          }
+
+          // Clear active ticket tracking for this coding phase
+          chatStore.setKey('activeTicketId', null);
+        }
+
         if (usage) {
           console.log('Token usage:', usage);
           logStore.logProvider('Chat response completed', {
@@ -193,8 +224,42 @@ export const ChatImpl = memo(
         logger.debug('Finished streaming');
       },
       initialMessages,
-      initialInput: seedPrompt || searchParams.get('seedPrompt') || Cookies.get(PROMPT_COOKIE_KEY) || '',
+      initialInput: searchParams.get('seedPrompt') || Cookies.get(PROMPT_COOKIE_KEY) || '',
     });
+    // Handle initial prompt from landing page (seedPrompt)
+    useEffect(() => {
+      if (typeof window === 'undefined' || !seedPrompt || seedPromptProcessed.current) {
+        return;
+      }
+
+      // 1. Ensure we are in design mode and on the design view
+      if (chatMode !== 'design' || currentView !== 'design') {
+        const timeout = setTimeout(() => {
+          setChatMode('design');
+          workbenchStore.currentView.set('design');
+        }, 50);
+        return () => clearTimeout(timeout);
+      }
+
+      // 2. Once state has settled, append the message
+      seedPromptProcessed.current = true;
+
+      const timer = setTimeout(() => {
+        setSearchParams({});
+
+        append({
+          role: 'user',
+          content: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${seedPrompt}`,
+        });
+
+        // 3. Clear the prompt
+        localStorage.removeItem('bolt_seed_prompt');
+      }, 100);
+
+      return () => clearTimeout(timer);
+    }, [seedPrompt, chatMode, currentView, model, provider, append, setSearchParams]);
+
+    // Handle URL ?prompt parameter (alternative to seedPrompt)
     useEffect(() => {
       if (typeof window === 'undefined') {
         return;
@@ -210,14 +275,66 @@ export const ChatImpl = memo(
           role: 'user',
           content: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${prompt}`,
         });
-      } else if (seedPrompt) {
-        setSearchParams({});
+      }
+    }, [model, provider, searchParams, append]);
+
+    // Handle automated ticket prompts (from Plan view)
+    useEffect(() => {
+      const handleTicketToCode = (event: any) => {
+        const { ticket, prompt } = event.detail;
+
+        // Wait for current execution to finish if any
+        if (isLoading) {
+          const checkLoading = setInterval(() => {
+            if (!isLoading) {
+              clearInterval(checkLoading);
+              startTicketWork(ticket, prompt);
+            }
+          }, 500);
+          return;
+        }
+
+        startTicketWork(ticket, prompt);
+      };
+
+      const handleTicketToQA = (event: any) => {
+        const { ticket, prompt } = event.detail;
+
+        if (isLoading) {
+          const checkLoading = setInterval(() => {
+            if (!isLoading) {
+              clearInterval(checkLoading);
+              startTicketWork(ticket, prompt);
+            }
+          }, 500);
+          return;
+        }
+
+        startTicketWork(ticket, prompt);
+      };
+
+      const startTicketWork = (ticket: any, prompt: string) => {
+        // Track active ticket
+        chatStore.setKey('activeTicketId', ticket.id);
+
+        // Switch to code view
         workbenchStore.currentView.set('code');
 
-        // Clear it so it doesn't persist on refresh
-        localStorage.removeItem('bolt_seed_prompt');
-      }
-    }, [model, provider, searchParams, seedPrompt]);
+        // Append message
+        append({
+          role: 'user',
+          content: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${prompt}`,
+        });
+      };
+
+      window.addEventListener('ticket-to-code', handleTicketToCode);
+      window.addEventListener('ticket-to-qa', handleTicketToQA);
+
+      return () => {
+        window.removeEventListener('ticket-to-code', handleTicketToCode);
+        window.removeEventListener('ticket-to-qa', handleTicketToQA);
+      };
+    }, [isLoading, append, model, provider]);
 
     const { enhancingPrompt, promptEnhanced, enhancePrompt, resetEnhancer } = usePromptEnhancer();
     const { parsedMessages, parseMessages } = useMessageParser();

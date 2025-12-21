@@ -24,6 +24,9 @@ export function generatePRD(data: DesignWizardData): string {
 ### Description
 ${step1.description}
 
+**Additional Context & Requirements:**
+${step1.additionalDetails || 'None provided.'}
+
 ---
 
 ## 2. Brand Identity & Design System
@@ -90,24 +93,43 @@ ${selectedScreens.map(s => `
 
 ---
 
-## 6. Development Prompt
+---
+## 6. Visual Assets (Remote)
+- **Logo:** ${step3.logo?.url || 'N/A'}
+- **Generated Screens:**
+${selectedScreens.map(s => `  - ${s.name}: ${s.url}`).join('\n')}
+
+---
+
+## 7. Development Prompt
 *Use this prompt to initialize the project in the code generator:*
 
 Build a mobile application called "${step1.appName}" using Expo React Native and NativeWind.
 
-**App Context:** 
+**App Context:**
 ${step1.description}
 
-**Design Specs:**
-- Primary Color: ${step3.colorPalette?.primary}
-- UI Style: ${data.step2.uiStyle}
-- Font Stack: ${step3.typography?.fontFamily}
+**Specific Requirements & Logic:**
+${step1.additionalDetails || 'Synthesize logic based on description.'}
 
-**Structure:**
+*Instruction for Assistant:*
+- **Synthesize Missing Logic**: Based on the description above, synthesize any missing application logic, edge cases, and state management requirements.
+- **Data Models**: Implement the data models defined in section 5.
+- **Integrations**: ${integrationsPrompt}
+
+**Asset Management (CRITICAL):**
+The following assets are available remotely. You MUST download them and place them into the project's **assets/images/** folder using **curl** before using them in the code:
+- **Logo**: ${step3.logo?.url ? `${step3.logo.url}` : 'N/A'} (Save as **assets/images/logo.png**)
+- **Generated Screens (Reference)**:
+${selectedScreens.map(s => `  - ${s.name}: ${s.url}`).join('\n')}
+
+**Structure & Navigation:**
 The app should include ${step4.screens.length} screens: ${step4.screens.map(s => s.name).join(', ')}.
 ${step4.navigation.type === 'bottom' ? `Implement a bottom navigation bar with: ${step4.navigation.items.join(', ')}.` : ''}
 
-**Integrations:**
-${integrationsPrompt}
+**Performance & Best Practices:**
+- Use clean, modular components.
+- Implement proper TypeScript types.
+- Ensure the app is responsive across different mobile screen sizes.
 `;
 }

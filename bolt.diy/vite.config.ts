@@ -18,6 +18,16 @@ export default defineConfig((config) => {
     },
     build: {
       target: 'esnext',
+      cssMinify: 'lightningcss',
+      cssCodeSplit: true,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            // Separate vendor CSS into its own chunk
+            'vendor-styles': ['react-toastify', '@xterm/xterm'],
+          },
+        },
+      },
     },
     server: {
       fs: {

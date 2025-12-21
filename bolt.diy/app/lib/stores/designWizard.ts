@@ -8,7 +8,9 @@ export interface Step1Data {
     targetAudience: string;
     platform: 'ios' | 'android' | 'both';
     primaryGoal: string;
-    dataDescription?: string; // New field for better data model generation
+    dataDescription?: string;
+    parallelReady?: boolean;
+    additionalDetails?: string;
 }
 
 // Step 2: Style & Personality (Inspiration Gathering)
@@ -242,6 +244,7 @@ export interface DesignWizardData {
     currentStep: number;
     completedSteps: number[];
     isComplete: boolean;
+    isProcessing?: boolean;
 }
 
 const initialDesignData: DesignWizardData = {
@@ -254,6 +257,7 @@ const initialDesignData: DesignWizardData = {
         platform: 'both',
         primaryGoal: '',
         dataDescription: '',
+        additionalDetails: '',
     },
     step2: {
         referenceImages: [],
@@ -326,6 +330,7 @@ const initialDesignData: DesignWizardData = {
     currentStep: 1,
     completedSteps: [],
     isComplete: false,
+    isProcessing: false,
 };
 
 const STORAGE_KEY = 'appforge_design_wizard_state';
@@ -428,7 +433,13 @@ function getInitialState(): DesignWizardData {
         if (saved) {
             const parsed = JSON.parse(saved);
             console.log('[DesignWizard] Restored state from localStorage');
-            return migrateStoredWizardData(parsed);
+            const migrated = migrateStoredWizardData(parsed);
+
+            // Critical: Never restore isProcessing as true
+            return {
+                ...migrated,
+                isProcessing: false
+            };
         }
     } catch (error) {
         console.error('[DesignWizard] Failed to load state from localStorage:', error);
@@ -710,4 +721,11 @@ export function getDesignSummary() {
         selectedPackage: data.step7.selectedPackage,
         completionPercentage: Math.round((data.completedSteps.length / 7) * 100),
     };
+}
+export function setIsProcessing(isProcessing: boolean) {
+    const current = designWizardStore.get();
+    designWizardStore.set({
+        ...current,
+        isProcessing,
+    });
 }

@@ -11,7 +11,7 @@ $code-font-size: 13px;
   line-height: 1.6;
   color: var(--bolt-elements-textPrimary);
 
-  > *:not(:last-child) {
+  >*:not(:last-child) {
     margin-block-end: 16px;
   }
 
@@ -77,7 +77,7 @@ $code-font-size: 13px;
     }
   }
 
-  :not(pre) > code {
+  :not(pre)>code {
     font-family: $font-mono;
     font-size: $code-font-size;
 
@@ -131,11 +131,11 @@ $code-font-size: 13px;
 
   li {
     @include not-inside-actions {
-      & + li {
+      &+li {
         margin-block-start: 8px;
       }
 
-      > *:not(:last-child) {
+      >*:not(:last-child) {
         margin-block-end: 16px;
       }
     }
@@ -161,11 +161,17 @@ $code-font-size: 13px;
 
     :is(th, td) {
       padding: 6px 13px;
-      border: 1px solid #dfe2e5;
+      border: 1px solid var(--bolt-elements-borderColor);
+    }
+
+    th {
+      background-color: var(--bolt-elements-bg-depth-4);
+      font-weight: 600;
+      text-align: left;
     }
 
     tr:nth-child(2n) {
-      background-color: #f6f8fa;
+      background-color: var(--bolt-elements-bg-depth-3);
     }
   }
 }

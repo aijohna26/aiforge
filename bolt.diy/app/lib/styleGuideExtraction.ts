@@ -1,5 +1,5 @@
 import { toast } from 'sonner';
-import { designWizardStore, updateStep3Data } from '~/lib/stores/designWizard';
+import { designWizardStore, updateStep3Data, setIsProcessing } from '~/lib/stores/designWizard';
 
 interface ExtractionResponse {
     success: boolean;
@@ -19,6 +19,8 @@ export async function extractStyleGuideFromMoodboard(referenceImages: string[], 
         extractionStatus: 'extracting',
         extractionError: undefined,
     });
+
+    setIsProcessing(true);
 
     try {
         const response = await fetch('/api/style-guide/extract', {
@@ -55,7 +57,10 @@ export async function extractStyleGuideFromMoodboard(referenceImages: string[], 
             extractionError: error.message || 'Failed to analyze mood board',
         });
         toast.error(error.message || 'Failed to analyze mood board');
+        setIsProcessing(false);
         throw error;
+    } finally {
+        setIsProcessing(false);
     }
 }
 

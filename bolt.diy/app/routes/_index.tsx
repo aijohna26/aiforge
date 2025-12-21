@@ -60,11 +60,16 @@ export default function LandingPage() {
     return () => document.removeEventListener('mousemove', handleMouseMove);
   }, []);
 
+  const handleAuth = () => {
+    if (prompt.trim()) {
+      localStorage.setItem('bolt_seed_prompt', prompt.trim());
+    }
+    setIsAuthModalOpen(true);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (prompt.trim()) {
-      setIsAuthModalOpen(true);
-    }
+    handleAuth();
   };
 
   return (
@@ -107,13 +112,13 @@ export default function LandingPage() {
             )}
           </button>
           <button
-            onClick={() => setIsAuthModalOpen(true)}
+            onClick={handleAuth}
             className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg transition-all hidden sm:block"
           >
             Open Editor
           </button>
           <button
-            onClick={() => setIsAuthModalOpen(true)}
+            onClick={handleAuth}
             className="px-4 py-2 text-sm font-medium bg-black/5 hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/20 border border-black/5 dark:border-white/10 rounded-lg transition-all"
           >
             Start Building
@@ -157,7 +162,7 @@ export default function LandingPage() {
               <button
                 type="submit"
                 disabled={!prompt.trim()}
-                className="flex items-center justify-center p-2 rounded-lg bg-gray-100 text-gray-900 dark:bg-white/10 dark:text-white hover:bg-accent-600 hover:text-white dark:hover:bg-purple-500 dark:hover:text-white transition-all disabled:opacity-50 disabled:hover:bg-gray-100 dark:disabled:hover:bg-white/10"
+                className="flex items-center justify-center p-2 rounded-lg bg-orange-500 text-white dark:bg-white/10 dark:text-white hover:bg-orange-600 dark:hover:bg-purple-500 dark:hover:text-white transition-all disabled:opacity-50 disabled:hover:bg-orange-500 dark:disabled:hover:bg-white/10"
               >
                 <div className="i-ph:arrow-up-bold text-lg" />
               </button>

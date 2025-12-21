@@ -11,6 +11,8 @@ import { ClientOnly } from 'remix-utils/client-only';
 import { cssTransition, ToastContainer } from 'react-toastify';
 import { createClient as createServerClient } from './lib/supabase/server';
 import { createClient as createBrowserClient } from './lib/supabase/browser';
+import { alertStore, hideAlert } from './lib/stores/alertStore';
+import { CreditAlert } from './components/workbench/design/CreditAlert';
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const response = new Headers();
@@ -37,6 +39,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 import reactToastifyStyles from 'react-toastify/dist/ReactToastify.css?url';
 import globalStyles from './styles/index.scss?url';
 import xtermStyles from '@xterm/xterm/css/xterm.css?url';
+import fontsStyles from './styles/fonts.css?url';
 
 import 'virtual:uno.css';
 
@@ -51,23 +54,23 @@ export const links: LinksFunction = () => [
     href: '/favicon.svg',
     type: 'image/svg+xml',
   },
-  { rel: 'stylesheet', href: reactToastifyStyles },
+  // Preload critical resources
+  {
+    rel: 'preload',
+    href: fontsStyles,
+    as: 'style'
+  },
+  {
+    rel: 'preload',
+    href: globalStyles,
+    as: 'style'
+  },
+  // Load stylesheets in order of importance
   { rel: 'stylesheet', href: tailwindReset },
+  { rel: 'stylesheet', href: fontsStyles },
   { rel: 'stylesheet', href: globalStyles },
+  { rel: 'stylesheet', href: reactToastifyStyles },
   { rel: 'stylesheet', href: xtermStyles },
-  {
-    rel: 'preconnect',
-    href: 'https://fonts.googleapis.com',
-  },
-  {
-    rel: 'preconnect',
-    href: 'https://fonts.gstatic.com',
-    crossOrigin: 'anonymous',
-  },
-  {
-    rel: 'stylesheet',
-    href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
-  },
 ];
 
 const inlineThemeCode = stripIndents`
@@ -131,7 +134,24 @@ export function Layout({ children }: { children: React.ReactNode }) {
       />
       <ScrollRestoration />
       <Scripts />
+      <GlobalAlert />
     </>
+  );
+}
+
+function GlobalAlert() {
+  const alert = useStore(alertStore);
+
+  if (!alert) {
+    return null;
+  }
+
+  return (
+    <CreditAlert
+      message={alert.message}
+      description={alert.description}
+      onClose={hideAlert}
+    />
   );
 }
 

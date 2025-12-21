@@ -33,6 +33,7 @@ import { StickToBottom, useStickToBottomContext } from '~/lib/hooks';
 import { ChatBox } from './ChatBox';
 import type { DesignScheme } from '~/types/design-scheme';
 import type { ElementInfo } from '~/components/workbench/Inspector';
+import { chatStore } from '~/lib/stores/chat';
 import LlmErrorAlert from './LLMApiAlert';
 
 const TEXTAREA_MIN_HEIGHT = 76;
@@ -447,7 +448,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                 setIsModelSettingsCollapsed={setIsModelSettingsCollapsed}
                 provider={provider}
                 setProvider={setProvider}
-                providerList={providerList || (PROVIDER_LIST as ProviderInfo[])}
+                providerList={(providerList && providerList.length > 0) ? providerList : (PROVIDER_LIST as ProviderInfo[])}
                 model={model}
                 setModel={setModel}
                 modelList={modelList}

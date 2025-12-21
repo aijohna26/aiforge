@@ -73,10 +73,13 @@ export async function action({ request }: ActionFunctionArgs) {
         const isDevelopmentMode = userId === 'dev-test-user';
 
         if (!isDevelopmentMode) {
+            console.log(`[Image Test] User ID: ${userId}, checking credits for cost: ${cost}`);
             // Check and reserve credits for authenticated users
             const hasCredits = await walletManager.reserve(userId, cost);
+            console.log(`[Image Test] hasCredits: ${hasCredits}`);
             if (!hasCredits) {
                 const balance = await walletManager.getBalance(userId);
+                console.log(`[Image Test] Insufficient credits. Balance: ${balance}`);
                 return json(
                     {
                         error: `Insufficient credits. Required: ${cost}, Available: ${balance}`,
@@ -103,6 +106,9 @@ export async function action({ request }: ActionFunctionArgs) {
 
                 console.log(`[Image Test] Migrating base64 image to Supabase: ${fileName} (${buffer.length} bytes)`);
 
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
+
                 const { data, error: uploadError } = await supabase.storage
                     .from('images')
                     .upload(fileName, buffer, {
@@ -110,6 +116,7 @@ export async function action({ request }: ActionFunctionArgs) {
                         upsert: true
                     });
 
+                clearTimeout(timeout);
                 if (uploadError) throw uploadError;
 
                 const { data: { publicUrl } } = supabase.storage.from('images').getPublicUrl(fileName);
@@ -121,10 +128,12 @@ export async function action({ request }: ActionFunctionArgs) {
         };
 
         try {
+            console.log(`[Image Test] Starting reference image migration...`);
             // Migrate all reference images if they are base64
             const migratedReferenceImages = referenceImages && Array.isArray(referenceImages)
                 ? await Promise.all(referenceImages.map(img => migrateImage(img)))
                 : referenceImages;
+            console.log(`[Image Test] Reference image migration complete. Count: ${migratedReferenceImages?.length || 0}`);
 
             const options: ImageGenerationOptions = {
                 prompt,
@@ -139,7 +148,9 @@ export async function action({ request }: ActionFunctionArgs) {
             };
 
             // Generate image
+            console.log(`[Image Test] Calling imageService.generateImage...`);
             const result = await imageService.generateImage(options);
+            console.log(`[Image Test] imageService.generateImage completed successfully`);
 
             // Settle the reserved credits (deduct the actual cost) - only for authenticated users
             if (!isDevelopmentMode) {

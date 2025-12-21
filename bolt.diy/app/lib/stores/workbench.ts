@@ -18,6 +18,10 @@ import { description } from '~/lib/persistence';
 import Cookies from 'js-cookie';
 import { createSampler } from '~/utils/sampler';
 import type { ActionAlert, DeployAlert, SupabaseAlert } from '~/types/actions';
+import { updateStep1Data } from './designWizard';
+import { chatStore } from './chat';
+import { planStore, updateTicketStatus, getTicketsByStatus } from './plan';
+import { yoloModeStore } from './settings';
 
 const { saveAs } = fileSaver;
 
@@ -594,6 +598,50 @@ export class WorkbenchStore {
       if (!isStreaming) {
         await artifact.runner.runAction(data);
         this.resetAllFileModifications();
+      }
+    } else if (data.action.type === 'design-sync') {
+      try {
+        const payload = JSON.parse(data.action.content);
+        updateStep1Data(payload);
+        chatStore.setKey('showChat', false);
+        chatStore.setKey('handedOver', true);
+
+        // We also mark the action as executed in the runner
+        await artifact.runner.runAction(data);
+      } catch (error) {
+        console.error('Failed to parse design-sync payload:', error);
+      }
+    } else if (data.action.type === 'qa-pass') {
+      try {
+        const ticketId = (data.action as any).ticketId;
+        console.log(`QA Pass received for ticket: ${ticketId}`);
+
+        // Move current ticket to done
+        updateTicketStatus(ticketId, 'done');
+
+        // Play sound if possible
+        if (typeof window !== 'undefined') {
+          const audio = new Audio('/notification.mp3'); // Assuming we have or will add this
+          audio.play().catch(e => console.error('Failed to play notification sound', e));
+        }
+
+        // YOLO Mode Automation: Start next ticket
+        if (yoloModeStore.get()) {
+          const todoTickets = getTicketsByStatus('todo');
+          if (todoTickets.length > 0) {
+            const nextTicket = todoTickets[0];
+            console.log(`YOLO Mode: Starting next ticket ${nextTicket.key}`);
+
+            // Short delay to avoid race conditions or overwhelming the UI
+            setTimeout(() => {
+              updateTicketStatus(nextTicket.id, 'in-progress');
+            }, 2000);
+          }
+        }
+
+        await artifact.runner.runAction(data);
+      } catch (error) {
+        console.error('Failed to handle qa-pass:', error);
       }
     } else {
       await artifact.runner.runAction(data);

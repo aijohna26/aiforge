@@ -117,6 +117,8 @@ export default function FeaturesTab() {
     setEventLogs,
     setPromptId,
     promptId,
+    yoloMode,
+    setYoloMode,
   } = useSettings();
 
   // Enable features by default on first load
@@ -170,6 +172,12 @@ export default function FeaturesTab() {
           break;
         }
 
+        case 'yoloMode': {
+          setYoloMode(enabled);
+          toast.success(`YOLO Mode ${enabled ? 'enabled' : 'disabled'}`);
+          break;
+        }
+
         default:
           break;
       }
@@ -210,6 +218,14 @@ export default function FeaturesTab() {
         icon: 'i-ph:list-bullets',
         enabled: eventLogs,
         tooltip: 'Enabled by default to record detailed logs of system events and user actions',
+      },
+      {
+        id: 'yoloMode',
+        title: 'YOLO Mode',
+        description: 'Fully automate the ticket lifecycle',
+        icon: 'i-ph:rocket-bold',
+        enabled: yoloMode,
+        tooltip: 'When enabled, the agent will automatically handle coding, QA, and then move to the next ticket',
       },
     ],
     beta: [],

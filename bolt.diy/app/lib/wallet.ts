@@ -3,11 +3,17 @@ import { createClient } from "@supabase/supabase-js";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+console.log(`[Wallet] Initializing Supabase: URL=${!!supabaseUrl}, Key=${!!supabaseServiceKey}`);
+
 // Use service role for server-side wallet operations
 const supabase =
     supabaseUrl && supabaseServiceKey
         ? createClient(supabaseUrl, supabaseServiceKey)
         : null;
+
+if (!supabase) {
+    console.warn('[Wallet] Supabase not configured. Using in-memory fallback.');
+}
 
 // In-memory fallback for development without Supabase
 const memoryBalances = new Map<string, { balance: number; reserved: number }>();
@@ -37,13 +43,19 @@ class WalletManager {
 
     async reserve(userId: string, amount: number): Promise<boolean> {
         if (supabase) {
+            console.log(`[Wallet] Reserving ${amount} for ${userId}`);
             await this.ensureWallet(userId);
 
-            const { data } = await supabase
+            const { data, error } = await supabase
                 .from("wallets")
                 .select("balance, reserved")
                 .eq("user_id", userId)
                 .single();
+
+            if (error) {
+                console.error(`[Wallet] Error fetching balance:`, error.message);
+                return false;
+            }
 
             if (!data || data.balance - data.reserved < amount) {
                 return false;
