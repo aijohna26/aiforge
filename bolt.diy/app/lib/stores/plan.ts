@@ -1,5 +1,6 @@
 import { atom } from 'nanostores';
 import type { DesignWizardData } from './designWizard';
+import { createClient } from '../supabase/browser';
 
 // Jira-style ticket types
 export type TicketPriority = 'highest' | 'high' | 'medium' | 'low' | 'lowest';
@@ -40,6 +41,7 @@ export interface PlanState {
         type?: TicketType[];
         assignedTo?: string[];
     };
+    loading?: boolean;
 }
 
 const initialPlanState: PlanState = {
@@ -50,11 +52,181 @@ const initialPlanState: PlanState = {
     currentTicket: null,
     viewMode: 'board',
     filterBy: {},
+    loading: false,
 };
 
-export const planStore = atom<PlanState>(initialPlanState);
+const PLAN_STORAGE_KEY = 'appforge_plan_state';
 
+function getInitialPlanState(): PlanState {
+    if (typeof window === 'undefined') {
+        return initialPlanState;
+    }
+
+    try {
+        const saved = localStorage.getItem(PLAN_STORAGE_KEY);
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            // We restore EVERYTHING from localStorage as a fast cache
+            // Including tickets, so the user sees them immediately while we sync
+            return {
+                ...initialPlanState,
+                ...parsed,
+                loading: !!parsed.projectId
+            };
+        }
+    } catch (e) {
+        console.error('[PlanStore] Failed to load from localStorage', e);
+    }
+
+    return initialPlanState;
+}
+
+export const planStore = atom<PlanState>(getInitialPlanState());
+
+// Subscribe to store changes and save to localStorage
+if (typeof window !== 'undefined') {
+    planStore.subscribe((state) => {
+        try {
+            // Now saving EVERYTHING including tickets as a local cache
+            const { loading, ...toSave } = state;
+            localStorage.setItem(PLAN_STORAGE_KEY, JSON.stringify(toSave));
+        } catch (error) {
+            console.error('[PlanStore] Failed to save to localStorage:', error);
+        }
+    });
+
+    // Handle initial sync if projectId exists
+    const initialState = planStore.get();
+    if (initialState.projectId) {
+        setTimeout(() => {
+            fetchTicketsFromDb(initialState.projectId!);
+        }, 0);
+    }
+}
+
+// Initialize Supabase Client
+const supabase = typeof window !== 'undefined' ? createClient() : null;
+
+// ============================================
+// DB SYNC FUNCTIONS
+// ============================================
+
+export async function fetchTicketsFromDb(projectId: string) {
+    if (!supabase) return;
+
+    planStore.set({ ...planStore.get(), loading: true });
+
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data, error } = await supabase
+            .from('plan_tickets')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('project_id', projectId)
+            .order('order_index', { ascending: true });
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+            const mappedTickets: PlanTicket[] = data.map(dbItem => ({
+                id: dbItem.id,
+                key: dbItem.key,
+                title: dbItem.title,
+                description: dbItem.description,
+                type: dbItem.type as TicketType,
+                status: dbItem.status as TicketStatus,
+                priority: dbItem.priority as TicketPriority,
+                acceptanceCriteria: dbItem.acceptance_criteria || [],
+                estimatedHours: dbItem.estimated_hours,
+                assignedTo: dbItem.assigned_to,
+                relatedScreens: dbItem.related_screens || [],
+                relatedDataModels: dbItem.related_data_models || [],
+                dependencies: dbItem.dependencies || [],
+                labels: dbItem.labels || [],
+                parallel: dbItem.parallel,
+                orderIndex: dbItem.order_index,
+                createdAt: dbItem.created_at,
+                updatedAt: dbItem.updated_at
+            }));
+
+            planStore.set({
+                ...planStore.get(),
+                tickets: mappedTickets,
+                projectId,
+                loading: false
+            });
+        } else {
+            planStore.set({ ...planStore.get(), loading: false });
+        }
+    } catch (error) {
+        console.error('[PlanStore] Failed to fetch tickets:', error);
+        planStore.set({ ...planStore.get(), loading: false });
+    }
+}
+
+async function upsertTicketToDb(ticket: PlanTicket) {
+    if (!supabase) return;
+
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const current = planStore.get();
+        if (!current.projectId) return;
+
+        const dbItem = {
+            id: ticket.id.includes('-') && ticket.id.split('-').length === 2 ? undefined : ticket.id, // If it's a temp ID like PROJ-1, let DB generate UUID
+            user_id: user.id,
+            project_id: current.projectId,
+            key: ticket.key,
+            title: ticket.title,
+            description: ticket.description,
+            type: ticket.type,
+            status: ticket.status,
+            priority: ticket.priority,
+            acceptance_criteria: ticket.acceptanceCriteria,
+            estimated_hours: ticket.estimatedHours,
+            assigned_to: ticket.assignedTo,
+            related_screens: ticket.relatedScreens,
+            related_data_models: ticket.relatedDataModels,
+            dependencies: ticket.dependencies,
+            labels: ticket.labels,
+            parallel: ticket.parallel,
+            order_index: ticket.orderIndex,
+            updated_at: new Date().toISOString()
+        };
+
+        const { data, error } = await supabase
+            .from('plan_tickets')
+            .upsert(dbItem)
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        // If it was a new ticket, we might need to update the local ID from temp to real UUID
+        if (data && data.id !== ticket.id) {
+            updateLocalTicketId(ticket.id, data.id);
+        }
+    } catch (error) {
+        console.error('[PlanStore] Failed to upsert ticket:', error);
+    }
+}
+
+function updateLocalTicketId(oldId: string, newId: string) {
+    const current = planStore.get();
+    planStore.set({
+        ...current,
+        tickets: current.tickets.map(t => t.id === oldId ? { ...t, id: newId } : t)
+    });
+}
+
+// ============================================
 // Helper functions
+// ============================================
+
 export function setPlanProject(projectId: string, projectKey: string, prdUrl?: string) {
     const current = planStore.get();
     planStore.set({
@@ -63,6 +235,11 @@ export function setPlanProject(projectId: string, projectKey: string, prdUrl?: s
         projectKey,
         prdUrl: prdUrl || null,
     });
+
+    // Auto-fetch if project changed
+    if (projectId) {
+        fetchTicketsFromDb(projectId);
+    }
 }
 
 export function setTickets(tickets: PlanTicket[]) {
@@ -71,6 +248,9 @@ export function setTickets(tickets: PlanTicket[]) {
         ...current,
         tickets,
     });
+
+    // Sync all tickets to DB (for initial generation)
+    tickets.forEach(t => upsertTicketToDb(t));
 }
 
 export function addTicket(ticket: PlanTicket) {
@@ -79,16 +259,25 @@ export function addTicket(ticket: PlanTicket) {
         ...current,
         tickets: [...current.tickets, ticket],
     });
+
+    upsertTicketToDb(ticket);
 }
 
 export function updateTicket(ticketId: string, updates: Partial<PlanTicket>) {
     const current = planStore.get();
+    const updatedTickets = current.tickets.map((t) =>
+        t.id === ticketId ? { ...t, ...updates, updatedAt: new Date().toISOString() } : t
+    );
+
     planStore.set({
         ...current,
-        tickets: current.tickets.map((t) =>
-            t.id === ticketId ? { ...t, ...updates, updatedAt: new Date().toISOString() } : t
-        ),
+        tickets: updatedTickets,
     });
+
+    const updatedTicket = updatedTickets.find(t => t.id === ticketId);
+    if (updatedTicket) {
+        upsertTicketToDb(updatedTicket);
+    }
 }
 
 export function updateTicketStatus(ticketId: string, newStatus: TicketStatus) {

@@ -20,10 +20,22 @@ export async function action({ request }: ActionFunctionArgs) {
 
         const newLogoUrl = logoUrl ? await uploadImageToSupabase(supabase, getAbsoluteUrl(logoUrl), 'images', 'logos') : null;
 
-        const newScreens = await Promise.all(screens.map(async (screen: any) => ({
-            ...screen,
-            url: await uploadImageToSupabase(supabase, getAbsoluteUrl(screen.url), 'images', 'screens')
-        })));
+        const newScreens = await Promise.all(screens.map(async (screen: any) => {
+            // Mirror the main screen URL
+            const mainUrl = await uploadImageToSupabase(supabase, getAbsoluteUrl(screen.url), 'images', 'screens');
+
+            // NEW: Mirror all variation URLs
+            const variations = await Promise.all((screen.variations || []).map(async (v: any) => ({
+                ...v,
+                url: await uploadImageToSupabase(supabase, getAbsoluteUrl(v.url), 'images', 'variations')
+            })));
+
+            return {
+                ...screen,
+                url: mainUrl,
+                variations
+            };
+        }));
 
         return json({
             success: true,

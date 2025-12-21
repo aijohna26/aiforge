@@ -152,6 +152,18 @@ export async function action({ request }: ActionFunctionArgs) {
             const result = await imageService.generateImage(options);
             console.log(`[Image Test] imageService.generateImage completed successfully`);
 
+            // NEW: Mirror the generated image to Supabase immediately so it never expires
+            const { uploadImageToSupabase } = await import("~/lib/utils/imageUpload");
+            let permanentUrl = result.url;
+
+            try {
+                console.log(`[Image Test] Mirroring result to Supabase...`);
+                permanentUrl = await uploadImageToSupabase(supabase, result.url, 'images', 'generated');
+                console.log(`[Image Test] Mirrored successfully: ${permanentUrl}`);
+            } catch (mirrorError) {
+                console.error(`[Image Test] Mirroring failed, using original URL:`, mirrorError);
+            }
+
             // Settle the reserved credits (deduct the actual cost) - only for authenticated users
             if (!isDevelopmentMode) {
                 await walletManager.settle(userId, cost, cost);
@@ -161,8 +173,8 @@ export async function action({ request }: ActionFunctionArgs) {
 
             return json({
                 success: true,
-                prompt,
-                imageUrl: result.url,
+                prompt: (result as any).revisedPrompt || prompt,
+                imageUrl: permanentUrl, // Return the permanent Supabase URL
                 provider: result.provider,
                 revisedPrompt: result.revisedPrompt,
                 options: {

@@ -167,8 +167,17 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }:
                 step5: {
                     ...wizardData.step5,
                     generatedScreens: wizardData.step5.generatedScreens.map(screen => {
-                        const finalScreen = finalizeData.screens.find((s: any) => s.id === screen.screenId);
-                        return finalScreen ? { ...screen, url: finalScreen.url } : screen;
+                        const finalScreenData = finalizeData.screens.find((s: any) => s.id === screen.screenId);
+
+                        if (finalScreenData) {
+                            return {
+                                ...screen,
+                                url: finalScreenData.url,
+                                variations: finalScreenData.variations || screen.variations
+                            };
+                        }
+
+                        return screen;
                     })
                 }
             };
@@ -228,12 +237,12 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }:
 
             // 5. Success!
             setIsGenerating(false);
-            toast.success('PRD Generated! Tickets created in Plan view.');
 
-            // Clear the local wizard state ONLY AFTER SUCCESSFUL DB SAVE
-            resetDesignWizard();
+            // Re-enable chat immediately so it's available for implementation/debugging
             chatStore.setKey('handedOver', false);
             chatStore.setKey('showChat', true);
+
+            toast.success('PRD Generated! Tickets created in Plan view.');
 
             // Navigate to Plan view
             if (typeof window !== 'undefined') {
@@ -245,6 +254,11 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }:
         } catch (error) {
             console.error('Finalization error:', error);
             setIsGenerating(false);
+
+            // Re-enable chat on error too, so user can ask for help/debug
+            chatStore.setKey('handedOver', false);
+            chatStore.setKey('showChat', true);
+
             toast.error('Failed to generate PRD. Please try again.');
         }
     };

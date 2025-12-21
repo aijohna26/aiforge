@@ -1,5 +1,6 @@
 import type { PlanTicket } from '~/lib/stores/plan';
 import { classNames } from '~/utils/classNames';
+import { Tooltip } from '~/components/ui/Tooltip';
 
 interface TicketCardProps {
     ticket: PlanTicket;
@@ -9,18 +10,18 @@ interface TicketCardProps {
 
 export function TicketCard({ ticket, onDragStart, onClick }: TicketCardProps) {
     const priorityConfig = {
-        highest: { color: 'text-rose-500', icon: 'i-ph:caret-double-up-bold', label: 'Highest' },
-        high: { color: 'text-orange-500', icon: 'i-ph:caret-up-bold', label: 'High' },
-        medium: { color: 'text-amber-500', icon: 'i-ph:minus-bold', label: 'Medium' },
-        low: { color: 'text-emerald-500', icon: 'i-ph:caret-down-bold', label: 'Low' },
-        lowest: { color: 'text-slate-500', icon: 'i-ph:caret-double-down-bold', label: 'Lowest' },
+        highest: { color: 'text-rose-500', icon: 'i-ph:caret-double-up-bold', label: 'Highest Priority' },
+        high: { color: 'text-orange-500', icon: 'i-ph:caret-up-bold', label: 'High Priority' },
+        medium: { color: 'text-amber-500', icon: 'i-ph:minus-bold', label: 'Medium Priority' },
+        low: { color: 'text-emerald-500', icon: 'i-ph:caret-down-bold', label: 'Low Priority' },
+        lowest: { color: 'text-slate-500', icon: 'i-ph:caret-double-down-bold', label: 'Lowest Priority' },
     };
 
     const typeConfig = {
-        epic: { icon: 'i-ph:lightning-bold', color: 'text-orange-500 dark:text-purple-500', bg: 'bg-orange-500/10 dark:bg-purple-500/10' },
-        story: { icon: 'i-ph:book-open-bold', color: 'text-blue-500', bg: 'bg-blue-500/10' },
-        task: { icon: 'i-ph:circle-fill', color: 'text-slate-400', bg: 'bg-slate-400/10' },
-        bug: { icon: 'i-ph:bug-bold', color: 'text-rose-500', bg: 'bg-rose-500/10' },
+        epic: { icon: 'i-ph:lightning-bold', color: 'text-orange-500 dark:text-purple-500', bg: 'bg-orange-500/10 dark:bg-purple-500/10', label: 'Epic' },
+        story: { icon: 'i-ph:book-open-bold', color: 'text-blue-500', bg: 'bg-blue-500/10', label: 'User Story' },
+        task: { icon: 'i-ph:circle-fill', color: 'text-slate-400', bg: 'bg-slate-400/10', label: 'Task' },
+        bug: { icon: 'i-ph:bug-bold', color: 'text-rose-500', bg: 'bg-rose-500/10', label: 'Bug' },
     };
 
     const priority = priorityConfig[ticket.priority];
@@ -45,14 +46,20 @@ export function TicketCard({ ticket, onDragStart, onClick }: TicketCardProps) {
                         {ticket.key}
                     </span>
                 </div>
-                <div className={classNames("flex items-center justify-center w-5 h-5 rounded-md bg-opacity-10", priority.color)}>
-                    <div className={classNames(priority.icon, "text-xs")} title={priority.label} />
+                <div className="flex items-center gap-1.5">
+                    {ticket.parallel && (
+                        <Tooltip content="Can be developed in parallel">
+                            <div className="flex items-center justify-center w-5 h-5 rounded-md bg-emerald-500/10 text-emerald-500">
+                                <div className="i-ph:intersect-bold text-[10px]" />
+                            </div>
+                        </Tooltip>
+                    )}
+                    <Tooltip content={priority.label}>
+                        <div className={classNames("flex items-center justify-center w-5 h-5 rounded-md bg-opacity-10", priority.color)}>
+                            <div className={classNames(priority.icon, "text-xs")} />
+                        </div>
+                    </Tooltip>
                 </div>
-                {ticket.parallel && (
-                    <div className="flex items-center justify-center w-5 h-5 rounded-md bg-emerald-500/10 text-emerald-500" title="Parallel Ready">
-                        <div className="i-ph:intersect-bold text-[10px]" />
-                    </div>
-                )}
             </div>
 
             {/* Title */}
@@ -77,27 +84,33 @@ export function TicketCard({ ticket, onDragStart, onClick }: TicketCardProps) {
             {/* Footer */}
             <div className="flex items-center justify-between mt-auto pt-3 border-t border-gray-100 dark:border-white/5">
                 <div className="flex items-center gap-2">
-                    <div className={classNames("flex items-center gap-1.5 px-2 py-0.5 rounded-md", type.bg)}>
-                        <div className={classNames(type.icon, type.color, "text-[10px]")} />
-                        <span className={classNames(type.color, "capitalize text-[10px] font-bold tracking-tight")}>
-                            {ticket.type}
-                        </span>
-                    </div>
+                    <Tooltip content={`Type: ${type.label}`}>
+                        <div className={classNames("flex items-center gap-1.5 px-2 py-0.5 rounded-md", type.bg)}>
+                            <div className={classNames(type.icon, type.color, "text-[10px]")} />
+                            <span className={classNames(type.color, "capitalize text-[10px] font-bold tracking-tight")}>
+                                {ticket.type}
+                            </span>
+                        </div>
+                    </Tooltip>
                 </div>
 
                 {/* Meta details */}
                 <div className="flex items-center gap-3">
                     {ticket.acceptanceCriteria.length > 0 && (
-                        <div className="flex items-center gap-1 text-[10px] font-medium text-gray-400 dark:text-gray-500">
-                            <div className="i-ph:list-checks-bold" />
-                            <span>{ticket.acceptanceCriteria.length}</span>
-                        </div>
+                        <Tooltip content={`${ticket.acceptanceCriteria.length} Acceptance Criteria`}>
+                            <div className="flex items-center gap-1 text-[10px] font-medium text-gray-400 dark:text-gray-500">
+                                <div className="i-ph:list-checks-bold" />
+                                <span>{ticket.acceptanceCriteria.length}</span>
+                            </div>
+                        </Tooltip>
                     )}
                     {ticket.estimatedHours && (
-                        <div className="flex items-center gap-1 text-[10px] font-medium text-gray-400 dark:text-gray-500">
-                            <div className="i-ph:timer-bold" />
-                            <span>{ticket.estimatedHours}h</span>
-                        </div>
+                        <Tooltip content={`Estimated time: ${ticket.estimatedHours} hours`}>
+                            <div className="flex items-center gap-1 text-[10px] font-medium text-gray-400 dark:text-gray-500">
+                                <div className="i-ph:timer-bold" />
+                                <span>{ticket.estimatedHours}h</span>
+                            </div>
+                        </Tooltip>
                     )}
                 </div>
             </div>

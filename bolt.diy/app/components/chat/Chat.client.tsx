@@ -28,6 +28,8 @@ import type { ElementInfo } from '~/components/workbench/Inspector';
 import type { TextUIPart, FileUIPart, Attachment } from '@ai-sdk/ui-utils';
 import { useMCPStore } from '~/lib/stores/mcp';
 import type { LlmErrorAlertType } from '~/types/actions';
+import { updateTicketStatus, getTicketById } from '~/lib/stores/plan';
+import { yoloModeStore } from '~/lib/stores/settings';
 
 const logger = createScopedLogger('Chat');
 
@@ -131,9 +133,14 @@ export const ChatImpl = memo(
     useEffect(() => {
       if (currentView === 'design') {
         setChatMode('design');
-      } else if (chatMode === 'design') {
-        // Switch back to build if leaving design mode
-        setChatMode('build');
+      } else {
+        // If we leave design view, we should definitely NOT be in "handed over" state anymore
+        chatStore.setKey('handedOver', false);
+        chatStore.setKey('showChat', true);
+
+        if (chatMode === 'design') {
+          setChatMode('build');
+        }
       }
     }, [currentView]);
 
@@ -183,8 +190,6 @@ export const ChatImpl = memo(
         const activeTicketId = chatStore.get().activeTicketId;
 
         if (activeTicketId) {
-          const { updateTicketStatus, getTicketById } = require('~/lib/stores/plan');
-          const { yoloModeStore } = require('~/lib/stores/settings');
           const ticket = getTicketById(activeTicketId);
 
           if (ticket && ticket.status === 'in-progress') {

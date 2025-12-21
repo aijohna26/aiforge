@@ -289,14 +289,13 @@ class ImageGenerationService {
             throw new Error('KIE_API_KEY environment variable is required');
         }
 
-        // Default to nano-banana for Gemini 3
-        const model = options.googleModel || 'nano-banana';
+        // Default to nano-banana-pro for Gemini
+        const model = options.googleModel || 'nano-banana-pro';
         const outputFormat = options.outputFormat || 'png';
         const aspectRatio = options.aspectRatio || '1:1';
 
-        // Enhance prompt for UI/screen generation
-        // Skip enhancement for edit model to allow specific instructions
-        const enhancedPrompt = model === 'nano-banana-edit' ? options.prompt : this.enhancePromptForUI(options.prompt);
+        // Enhance prompt for UI/screen generation (applied to all models for consistency)
+        const enhancedPrompt = this.enhancePromptForUI(options.prompt);
 
         // Validate reference images usage
         if (model === 'nano-banana-edit') {
@@ -445,12 +444,11 @@ class ImageGenerationService {
                     }
                 }
 
-                if (imageUrl) {
-                    return {
-                        url: imageUrl,
-                        provider: 'kie',
-                    };
-                }
+                return {
+                    url: imageUrl,
+                    provider: 'kie',
+                    revisedPrompt: enhancedPrompt,
+                };
             }
 
             // Check for failure
@@ -718,15 +716,28 @@ class ImageGenerationService {
 
     // Helper to enhance prompts for UI/screen generation
     private enhancePromptForUI(originalPrompt: string): string {
+        // High-priority keywords that force models to fill the canvas
+        const EDGE_RULES = "FULL-BLEED DESIGN: The background MUST touch all 4 square edges of the image file. NO white borders, NO rounded screen corners, NO white gaps. IGNORE any borders in the reference image and bleed the background to the absolute edges.";
+
+        const UI_SYSTEM_RULES = [
+            "ATTENTION: THIS IS A 9:16 FLAT DIGITAL WALLPAPER DESIGN, NOT A CARD.",
+            "1. FULL-BLEED: The background color/gradient MUST bleed to the absolute periphery of the image file (all 4 corners).",
+            "2. NO MARGINS: Absolutely NO white padding, NO white outer frames, and NO device mockups.",
+            "3. BACKGROUND HEALING: Erase any white corners or gaps from the reference image. Replace them by extending the design to the edges.",
+            "4. NO PHONES: Draw only the digital interface. Do not show a phone, hands, or a 3D frame."
+        ].join("\n");
+
+        // "Bookending" the prompt: Rules at the start AND the end for maximum weight
+        const header = `### MANDATORY: ${EDGE_RULES} ###\n\n${UI_SYSTEM_RULES}\n\n`;
+        const footer = `\n\n### REMINDER: NO WHITE CORNERS. FILL THE ENTIRE 9:16 RECTANGLE PIXEL-TO-PIXEL WITH SQUARE CORNERS. ###`;
+
         // Check if prompt already mentions UI/screen/interface
         const hasUIContext = /\b(ui|interface|screen|app|mobile|wireframe|mockup|design)\b/i.test(originalPrompt);
 
         if (hasUIContext) {
-            // Already UI-focused, add strict interface-only constraints
-            return `${originalPrompt}. IMPORTANT: Show ONLY the user interface design, flat 2D screen layout, no phone mockup, no device frame, no background scenery, no 3D elements. Pure UI interface only, clean modern app screen design, professional digital interface`;
+            return `${header}${originalPrompt}${footer}`;
         } else {
-            // Transform generic prompt into strict UI-only prompt
-            return `Mobile app user interface screen for: ${originalPrompt}. IMPORTANT: Show ONLY the flat UI interface design, no phone device, no mockup frame, no background scenery, no hands holding phone, no 3D elements. Pure 2D screen interface only with modern clean design and detailed UI elements`;
+            return `${header}High-fidelity mobile app user interface screen for: ${originalPrompt}${footer}`;
         }
     }
 

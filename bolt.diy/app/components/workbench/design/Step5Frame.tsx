@@ -124,7 +124,7 @@ export function Step5Frame() {
     const { step1, step2, step3, step4, step5 } = wizardData;
 
     const [provider, setProvider] = useState<ProviderOption>('gemini');
-    const [googleModel, setGoogleModel] = useState<string>('nano-banana-edit');
+    const [googleModel, setGoogleModel] = useState<string>('nano-banana-pro');
     const [openaiModel, setOpenaiModel] = useState<string>('gpt-image-1');
     const [imageCount, setImageCount] = useState<number>(2);
     const [aspectRatio, setAspectRatio] = useState<string>('9:16');
@@ -137,7 +137,7 @@ export function Step5Frame() {
     const [screenLogoSettings, setScreenLogoSettings] = useState<Record<string, boolean>>({});
     const [isEditingScreen, setIsEditingScreen] = useState(false);
     const [editPrompt, setEditPrompt] = useState('');
-    const [editModel, setEditModel] = useState('nano-banana-edit');
+    const [editModel, setEditModel] = useState('nano-banana-pro');
     const [screenToEdit, setScreenToEdit] = useState<{ id: string; url: string; variationId: string } | null>(null);
     const [isManualEditing, setIsManualEditing] = useState(false);
     const [screenToManualEdit, setScreenToManualEdit] = useState<{ id: string; url: string; variationId: string } | null>(null);

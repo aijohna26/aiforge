@@ -146,7 +146,7 @@ export function PlanPanel() {
 
                                     {/* Column Content */}
                                     <div className={classNames(
-                                        "flex-1 overflow-y-auto space-y-3 min-h-[400px] p-2 rounded-2xl transition-colors duration-200",
+                                        "flex-1 overflow-y-auto space-y-3 min-h-[400px] p-2 pt-6 rounded-2xl transition-colors duration-200",
                                         "bg-gray-50/50 dark:bg-white/[0.02] border border-gray-200/50 dark:border-white/[0.03]",
                                         "group-hover/column:bg-gray-100/50 dark:group-hover/column:bg-white/[0.04]"
                                     )}>
