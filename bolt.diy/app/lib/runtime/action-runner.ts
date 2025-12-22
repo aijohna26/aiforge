@@ -653,6 +653,68 @@ export class ActionRunner {
       }
     }
 
+    // Handle curl commands (robust version)
+    if (trimmedCommand.includes('curl ')) {
+      const curlParts = trimmedCommand.split('&&').map(p => p.trim());
+      let modified = false;
+      let targetDirToCreate = null;
+
+      const enhancedParts = curlParts.map(part => {
+        if (part.startsWith('curl ')) {
+          let enhancedPart = part;
+
+          // Inject User-Agent if missing
+          if (!enhancedPart.includes('-H') && !enhancedPart.includes('--header')) {
+            enhancedPart = enhancedPart.replace('curl ', 'curl -H "User-Agent: Mozilla/5.0 (AppForge)" ');
+            modified = true;
+          }
+
+          // Injected -L flag for location following if missing
+          if (!enhancedPart.includes(' -L ') && !enhancedPart.startsWith('curl -L ')) {
+            enhancedPart = enhancedPart.replace('curl ', 'curl -L ');
+            modified = true;
+          }
+
+          // Check for output path to pre-create directory
+          const outputMatch = enhancedPart.match(/-o\s+([^\s"']+)|--output\s+([^\s"']+)/);
+          if (outputMatch) {
+            let outputPath = outputMatch[1] || outputMatch[2];
+            outputPath = outputPath.replace(/['"]/g, '');
+            if (outputPath.includes('/')) {
+              targetDirToCreate = outputPath.substring(0, outputPath.lastIndexOf('/'));
+            }
+          }
+
+          return enhancedPart;
+        }
+        return part;
+      });
+
+      if (modified || targetDirToCreate) {
+        let finalCommand = enhancedParts.join(' && ');
+        if (targetDirToCreate) {
+          finalCommand = `mkdir -p ${targetDirToCreate} && ${finalCommand}`;
+        }
+
+        return {
+          shouldModify: true,
+          modifiedCommand: finalCommand,
+          warning: modified ? 'Enhanced curl command with required headers and flags' : undefined
+        };
+      }
+    }
+
+    // Handle npm install to add --legacy-peer-deps (critical for React 19 / Expo 54)
+    if (trimmedCommand.startsWith('npm install') || trimmedCommand === 'npm i') {
+      if (!trimmedCommand.includes('--legacy-peer-deps') && !trimmedCommand.includes('--force')) {
+        return {
+          shouldModify: true,
+          modifiedCommand: `${trimmedCommand} --legacy-peer-deps`,
+          warning: 'Added --legacy-peer-deps to handle React 19 peer dependency conflicts'
+        };
+      }
+    }
+
     return { shouldModify: false };
   }
 

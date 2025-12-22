@@ -120,14 +120,12 @@ const styles = StyleSheet.create({
 ❌ \`AsyncStorage\` from 'react-native' (use expo-secure-store or expo-sqlite)
 ❌ \`Image\` from 'react-native' (use expo-image)
 ❌ \`Alert\` (create custom modal components)
-❌ \`Linking.openURL()\` without expo-web-browser
 ❌ Direct access to \`Dimensions\` (use useWindowDimensions hook)
 
 ### Use Modern Alternatives
 ✅ \`expo-secure-store\` for sensitive data
 ✅ \`expo-image\` for images
 ✅ Custom modal components for alerts
-✅ \`expo-web-browser\` for opening URLs
 ✅ \`useWindowDimensions()\` hook for dimensions
 
 ## Web-Only APIs to AVOID

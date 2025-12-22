@@ -15,9 +15,14 @@ export async function uploadImageToSupabase(
     }
 
     try {
-        const response = await fetch(url);
+        const response = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (AppForge)'
+            },
+            redirect: 'follow'
+        });
         if (!response.ok) {
-            throw new Error(`Failed to fetch image from URL: ${url}`);
+            throw new Error(`Failed to fetch image from URL: ${url} (Status: ${response.status})`);
         }
 
         const arrayBuffer = await response.arrayBuffer();

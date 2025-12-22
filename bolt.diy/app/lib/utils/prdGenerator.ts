@@ -91,6 +91,15 @@ ${selectedScreens.map(s => `
 - **Bundle Identifier:** ${step7.bundleIdentifier}
 - **Typescript:** Enabled
 
+### 5.2 Locked Dependencies (CRITICAL)
+**DO NOT DOWNGRADE the following versions.** Even if an installation error occurs, fix the package version instead of reverting the SDK.
+- \`expo\`: \`~54.0.0\`
+- \`react-native\`: \`~0.81.0\`
+- \`react\`: \`~19.1.0\`
+- \`@types/react\`: \`~19.0.0\`
+- \`expo-av\`: \`~15.0.1\`
+- \`expo-router\`: \`~6.0.0\`
+
 ---
 
 ---
@@ -118,8 +127,13 @@ ${step1.additionalDetails || 'Synthesize logic based on description.'}
 - **Integrations**: ${integrationsPrompt}
 
 **Asset Management (CRITICAL):**
-The following assets are available remotely. You MUST download them and place them into the project's **assets/images/** folder using **curl** before using them in the code:
+The following assets have been mirrored to **Supabase Storage** for permanence. You MUST download them and place them into the project's **assets/images/** folder using **curl** before using them in the code. 
+
+**DO NOT USE EXTERNAL PLACEHOLDERS (like Pexels or Unsplash) for these core assets.**
+
 - **Logo**: ${step3.logo?.url ? `${step3.logo.url}` : 'N/A'} (Save as **assets/images/logo.png**)
+- **App Icons**: Reuse the Logo URL (${step3.logo?.url}) for **assets/images/icon.png**, **assets/images/favicon.png**, and **assets/images/adaptive-icon.png**.
+- **Splash Screen**: Reuse the Logo URL (${step3.logo?.url}) for **assets/images/splash.png**.
 - **Generated Screens (Reference)**:
 ${selectedScreens.map(s => `  - ${s.name}: ${s.url}`).join('\n')}
 

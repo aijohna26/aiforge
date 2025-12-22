@@ -731,13 +731,16 @@ export class FilesStore {
            * The reason we do this is because we don't want to display binary files
            * in the editor nor allow to edit them.
            */
+          const isImage = /\.(jpe?g|png|gif|svg|webp|ico)$/i.test(sanitizedPath);
           const isBinary = isBinaryFile(buffer);
 
-          if (!isBinary) {
+          if (isImage && buffer) {
+            content = Buffer.from(buffer).toString('base64');
+          } else if (!isBinary) {
             content = this.#decodeFileContent(buffer);
           }
 
-          this.files.setKey(sanitizedPath, { type: 'file', content, isBinary });
+          this.files.setKey(sanitizedPath, { type: 'file', content, isBinary: isBinary || isImage });
 
           break;
         }
