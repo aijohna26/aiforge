@@ -11,6 +11,20 @@ export interface Step1Data {
     dataDescription?: string;
     parallelReady?: boolean;
     additionalDetails?: string;
+    dataModels: DataModel[];
+}
+
+export interface DataModel {
+    id: string;
+    name: string;
+    description: string;
+    fields: Array<{
+        name: string;
+        type: 'string' | 'number' | 'boolean' | 'date' | 'array' | 'object' | 'reference';
+        required: boolean;
+        description?: string;
+        referenceModel?: string;
+    }>;
 }
 
 // Step 2: Style & Personality (Inspiration Gathering)
@@ -202,19 +216,8 @@ export interface Step6Data {
         enabled: boolean;
         config?: Record<string, any>;
     }>;
-    dataModels: Array<{
-        id: string;
-        name: string;
-        description: string;
-        fields: Array<{
-            name: string;
-            type: 'string' | 'number' | 'boolean' | 'date' | 'array' | 'object' | 'reference';
-            required: boolean;
-            description?: string;
-            referenceModel?: string; // For reference type
-        }>;
-    }>;
 }
+
 
 // Step 7: Review & Package Selection
 export interface Step7Data {
@@ -233,6 +236,7 @@ export interface Step7Data {
 }
 
 export interface DesignWizardData {
+    projectId: string | null;
     sessionId: string | null;
     step1: Step1Data;
     step2: Step2Data;
@@ -248,6 +252,7 @@ export interface DesignWizardData {
 }
 
 const initialDesignData: DesignWizardData = {
+    projectId: null,
     sessionId: null,
     step1: {
         appName: '',
@@ -258,6 +263,7 @@ const initialDesignData: DesignWizardData = {
         primaryGoal: '',
         dataDescription: '',
         additionalDetails: '',
+        dataModels: [],
     },
     step2: {
         referenceImages: [],
@@ -311,7 +317,6 @@ const initialDesignData: DesignWizardData = {
     },
     step6: {
         integrations: [],
-        dataModels: [],
     },
     step7: {
         selectedPackage: '',
@@ -400,11 +405,19 @@ const migrateStoredWizardData = (data: DesignWizardData): DesignWizardData => {
     if (!migrated.step6) {
         migrated.step6 = {
             integrations: [],
-            dataModels: []
         };
     } else {
         if (!migrated.step6.integrations) migrated.step6.integrations = [];
-        if (!migrated.step6.dataModels) migrated.step6.dataModels = [];
+        // Migration: Move dataModels from step6 to step1 if present (and step1 doesn't have them)
+        if ((migrated.step6 as any).dataModels && (!migrated.step1.dataModels || migrated.step1.dataModels.length === 0)) {
+            migrated.step1.dataModels = (migrated.step6 as any).dataModels;
+            delete (migrated.step6 as any).dataModels;
+        }
+    }
+
+    // Ensure step1 has dataModels
+    if (!migrated.step1.dataModels) {
+        migrated.step1.dataModels = [];
     }
 
     // Migrate step3 to include lastExtractedImageIds
@@ -571,6 +584,14 @@ export function canProceedToNextStep(): boolean {
 }
 
 // Session management
+export function setProjectId(projectId: string | null) {
+    const current = designWizardStore.get();
+    designWizardStore.set({
+        ...current,
+        projectId,
+    });
+}
+
 export function setSessionId(sessionId: string) {
     const current = designWizardStore.get();
     designWizardStore.set({

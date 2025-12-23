@@ -16,7 +16,7 @@ import Cookies from 'js-cookie';
 import { debounce } from '~/utils/debounce';
 import { useSettings } from '~/lib/hooks/useSettings';
 import type { ProviderInfo } from '~/types/model';
-import { useSearchParams } from '@remix-run/react';
+import { useSearchParams, useParams } from '@remix-run/react';
 import { createSampler } from '~/utils/sampler';
 import { getTemplates, selectStarterTemplate } from '~/utils/selectStarterTemplate';
 import { logStore } from '~/lib/stores/logs';
@@ -30,6 +30,7 @@ import { useMCPStore } from '~/lib/stores/mcp';
 import type { LlmErrorAlertType } from '~/types/actions';
 import { updateTicketStatus, getTicketById } from '~/lib/stores/plan';
 import { yoloModeStore } from '~/lib/stores/settings';
+import { loadWizardData } from '~/lib/stores/designWizard';
 
 const logger = createScopedLogger('Chat');
 
@@ -87,6 +88,7 @@ export const ChatImpl = memo(
   ({ description, initialMessages, storeMessageHistory, importChat, exportChat }: ChatProps) => {
     useShortcuts();
 
+    const { id: projectId } = useParams();
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [chatStarted, setChatStarted] = useState(initialMessages.length > 0);
     const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
@@ -124,11 +126,57 @@ export const ChatImpl = memo(
     const { showChat } = useStore(chatStore);
     const [animationScope] = useAnimate();
     const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
-    const [chatMode, setChatMode] = useState<'discuss' | 'build' | 'design'>('build');
+    const [chatMode, setChatMode] = useState<'discuss' | 'build' | 'design'>(() => {
+      if (typeof window !== 'undefined' && localStorage.getItem('bolt_seed_prompt')) {
+        return 'design';
+      }
+      return 'build';
+    });
     const [selectedElement, setSelectedElement] = useState<ElementInfo | null>(null);
     const mcpSettings = useMCPStore((state) => state.settings);
 
     const currentView = useStore(workbenchStore.currentView);
+
+    // Project Hydration Logic
+    useEffect(() => {
+      if (projectId && typeof window !== 'undefined') {
+        const hydrateProject = async () => {
+          try {
+            const response = await fetch(`/api/get-project/${projectId}`);
+            if (!response.ok) throw new Error('Failed to fetch project');
+
+            const data = await response.json();
+            if (data.success && data.project?.data) {
+              console.log('[Chat] Hydrating design wizard state from project:', projectId);
+              loadWizardData(data.project.data);
+
+              // Update the supabase connection store with the active project ID
+              const { updateSupabaseConnection } = await import('~/lib/stores/supabase');
+              updateSupabaseConnection({ selectedProjectId: projectId });
+
+              // Initialize Plan Store to fetch tickets
+              const { setPlanProject } = await import('~/lib/stores/plan');
+              // Derive a simple key from name or default to PROJ
+              const projectKey = data.project.name
+                ? data.project.name.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 4)
+                : 'PROJ';
+
+              setPlanProject(projectId, projectKey);
+
+              // If the project is finalized, switch to Plan view to show next steps
+              if (data.project.status === 'finalized' && workbenchStore.currentView.get() !== 'plan') {
+                // workbenchStore.currentView.set('plan');
+              }
+            }
+          } catch (error) {
+            console.error('[Chat] Project hydration failed:', error);
+            toast.error('Could not sync project data');
+          }
+        };
+
+        hydrateProject();
+      }
+    }, [projectId]);
 
     useEffect(() => {
       if (currentView === 'design') {
@@ -229,7 +277,7 @@ export const ChatImpl = memo(
         logger.debug('Finished streaming');
       },
       initialMessages,
-      initialInput: searchParams.get('seedPrompt') || Cookies.get(PROMPT_COOKIE_KEY) || '',
+      initialInput: Cookies.get(PROMPT_COOKIE_KEY) || '',
     });
     // Handle initial prompt from landing page (seedPrompt)
     useEffect(() => {
@@ -237,32 +285,72 @@ export const ChatImpl = memo(
         return;
       }
 
-      // 1. Ensure we are in design mode and on the design view
-      if (chatMode !== 'design' || currentView !== 'design') {
-        const timeout = setTimeout(() => {
-          setChatMode('design');
+      const processSeedPrompt = async () => {
+        // 1. Ensure we are on the design view
+        if (currentView !== 'design') {
           workbenchStore.currentView.set('design');
-        }, 50);
-        return () => clearTimeout(timeout);
-      }
+          return;
+        }
 
-      // 2. Once state has settled, append the message
-      seedPromptProcessed.current = true;
+        // Also ensure chatMode is in design
+        if (chatMode !== 'design') {
+          setChatMode('design');
+          return;
+        }
 
-      const timer = setTimeout(() => {
-        setSearchParams({});
+        // 2. Once state has settled, hydrate the wizard and append the message
+        seedPromptProcessed.current = true;
 
-        append({
-          role: 'user',
-          content: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${seedPrompt}`,
-        });
+        // Hydrate the wizard with the initial prompt description
+        const { setCurrentStep, resetDesignWizard } = await import('~/lib/stores/designWizard');
+        resetDesignWizard();
+        // updateStep1Data({ description: seedPrompt }); // Removed as per user request
+        setCurrentStep(1);
 
-        // 3. Clear the prompt
-        localStorage.removeItem('bolt_seed_prompt');
-      }, 100);
+        const timer = setTimeout(() => {
+          setSearchParams({});
 
-      return () => clearTimeout(timer);
-    }, [seedPrompt, chatMode, currentView, model, provider, append, setSearchParams]);
+          append({
+            role: 'user',
+            content: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${seedPrompt}`,
+          });
+
+          // 3. Clear the prompt so it doesn't trigger again (e.g. on navigation back)
+          localStorage.removeItem('bolt_seed_prompt');
+
+          // 4. Clear the input box and cookie as we've consumed the prompt
+          setInput('');
+          Cookies.remove(PROMPT_COOKIE_KEY);
+        }, 100);
+      };
+
+      processSeedPrompt();
+    }, [seedPrompt, chatMode, currentView, model, provider, append, setSearchParams, setInput]);
+
+    // Handle automated bootstrap prompt (after PRD generation)
+    useEffect(() => {
+      const checkBootstrap = () => {
+        const { bootstrapPrompt } = chatStore.get();
+        if (bootstrapPrompt) {
+          console.log('[Chat] Received bootstrap prompt, initiating build...');
+
+          // Switch to build mode
+          setChatMode('build');
+          workbenchStore.currentView.set('code');
+
+          append({
+            role: 'user',
+            content: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${bootstrapPrompt}`,
+          });
+
+          // Clear from store
+          chatStore.setKey('bootstrapPrompt', null);
+        }
+      };
+
+      const unsubscribe = chatStore.subscribe(checkBootstrap);
+      return () => unsubscribe();
+    }, [model, provider, append]);
 
     // Handle URL ?prompt parameter (alternative to seedPrompt)
     useEffect(() => {
@@ -426,6 +514,11 @@ export const ChatImpl = memo(
         } else if (errorInfo.statusCode >= 500) {
           errorType = 'network';
           title = 'Server Error';
+        }
+
+        if (errorInfo.message.includes('Overloaded')) {
+          errorType = 'network'; // Or a new 'overloaded' type if LlmErrorAlertType supports it. 'network' is safe fallback.
+          title = 'Model Overloaded';
         }
 
         logStore.logError(`${context} request failed`, error, {

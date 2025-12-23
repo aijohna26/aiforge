@@ -244,7 +244,10 @@ export function ScreenFlowFrame() {
             : '';
         const personality = step2.personality ? `${step2.personality} mood` : '';
 
-        return `iOS bottom navigation bar component for "${appName}" with ${selectedScreens.length} tabs: ${selectedScreens.join(', ')}. ${palette ? `Use brand colors: ${palette}.` : ''} ${personality ? `${personality} style.` : ''} Modern iOS design with icons and labels. IMPORTANT: Transparent or solid background, navigation bar should fill the entire width with NO white space or margins around it. The navigation bar component should occupy the full image area. Include tab icons, labels, and active state indicator. Clean, professional design.`;
+        return `iOS bottom navigation bar UI component for "${appName}". Create ONLY the horizontal tab bar strip at the bottom. The image should NOT show the full app screen, NO headers, NO "ABC Flash" title, NO big empty background. Focus strictly on the navigation bar itself.
+        Tabs: ${selectedScreens.join(', ')}.
+        Visual Style: ${palette ? `Brand colors: ${palette}.` : ''} ${personality ? `${personality} style.` : ''} Modern iOS design.
+        Layout: Horizontal strip with icons and labels. The navigation bar should fill the width. Background should be transparent or solid neutral color, cropped tight to the bar.`;
     }, [step1.appName, navItems, screens, step3.colorPalette, step2.personality]);
 
     const handleGenerateNavigation = useCallback(async () => {
@@ -318,7 +321,16 @@ export function ScreenFlowFrame() {
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to generate navigation';
             console.error('[Navigation Generation]', error);
-            toast.error(message);
+
+            if (message.includes('Insufficient credits')) {
+                const { showAlert } = await import('~/lib/stores/alertStore');
+                showAlert({
+                    message: 'Insufficient Credits',
+                    description: 'You do not have enough credits to perform this action. Please top up your wallet.'
+                });
+            } else {
+                toast.error(message);
+            }
         } finally {
             setIsGeneratingNav(false);
             setIsProcessing(false);
@@ -1208,6 +1220,7 @@ export function ScreenFlowFrame() {
                                                         src={generatedNavBar.url}
                                                         alt="Navigation Bar"
                                                         className="w-full h-full object-cover cursor-pointer"
+                                                        crossOrigin="anonymous"
                                                         onClick={() => setViewingNavVariation(generatedNavBar.url)}
                                                         onError={(e) => {
                                                             console.error('[Nav Image] Failed to load:', generatedNavBar.url);
@@ -1242,6 +1255,7 @@ export function ScreenFlowFrame() {
                                                                 src={variation.url}
                                                                 alt="Variation"
                                                                 className="w-full h-full object-cover"
+                                                                crossOrigin="anonymous"
                                                                 onError={(e) => {
                                                                     console.error('[Nav Variation] Failed to load:', variation.url);
                                                                 }}
@@ -1351,6 +1365,7 @@ export function ScreenFlowFrame() {
                                     src={viewingNavVariation}
                                     alt="Navigation Bar"
                                     className="max-h-full max-w-full rounded-xl border border-[#1F243B] object-contain"
+                                    crossOrigin="anonymous"
                                 />
                             </div>
                         </div>
@@ -1407,6 +1422,7 @@ export function ScreenFlowFrame() {
                                                 src={navToEdit}
                                                 alt="Navigation bar to edit"
                                                 className="w-full h-full object-contain"
+                                                crossOrigin="anonymous"
                                             />
                                             <div className="absolute inset-0 bg-black/10 pointer-events-none" />
                                         </div>

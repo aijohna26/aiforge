@@ -137,6 +137,14 @@ These APIs don't exist in React Native:
 ❌ HTML elements (\`<div>\`, \`<span>\`, \`<a>\`)
 ❌ \`className\` prop (use \`style\` prop)
 
+## External Assets & Placeholders (CRITICAL)
+
+- ❌ **NEVER** use \`pexels.com\`, \`unsplash.com\`, or \`picsum.photos\` for core app assets (logos, icons, splash screens).
+- ❌ **NEVER** use \`curl\` to download from these domains in background tasks.
+- ✅ **ALWAYS** use the provided **Supabase Storage URLs** for brand assets.
+- ✅ **ALWAYS** use local assets once downloaded to \`assets/images/\`.
+- ✅ Use \`lucide-react-native\` or \`expo-symbols\` for generic icons instead of image placeholders.
+
 ## Performance Requirements
 
 ### Bundle Size
@@ -170,6 +178,13 @@ These APIs don't exist in React Native:
 >
   <Text>Submit</Text>
 </Pressable>
+
+## FINAL FORBIDDEN DOMAIN LIST
+- pexels.com
+- unsplash.com
+- picsum.photos
+- via.placeholder.com
+- placeholder.com
 \`\`\`
 `;
 }

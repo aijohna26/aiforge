@@ -23,15 +23,17 @@ export async function action({ request }: ActionFunctionArgs) {
         const wizardData = await request.json();
 
         // We'll save the whole design state to a projects table
-        // We assume a 'projects' table exists with a 'data' jsonb column
+        // We use upsert so that multiple "Finishes" update the same record
         const { data, error } = await supabase
             .from('projects')
-            .insert({
+            .upsert({
+                ...(wizardData.projectId ? { id: wizardData.projectId } : {}),
                 user_id: user.id,
                 name: wizardData.step1.appName,
                 description: wizardData.step1.description,
                 data: wizardData,
-                status: 'finalized'
+                status: 'finalized',
+                updated_at: new Date().toISOString()
             })
             .select()
             .single();
@@ -114,7 +116,52 @@ CREATE POLICY "Users can view own" ON projects FOR SELECT TO authenticated USING
             return json({ success: false, error: error.message, details: error }, { status: 500, headers });
         }
 
-        return json({ success: true, project: data }, { headers });
+        // If validation passes and project is saved...
+        const projectId = data.id;
+
+        // Process tickets if they exist in the payload
+        if (wizardData.tickets && Array.isArray(wizardData.tickets)) {
+            // First, delete existing tickets for this project to ensure a clean generation slate
+            // This prevents duplicates if the user clicks "Generate" multiple times
+            await supabase
+                .from('plan_tickets')
+                .delete()
+                .eq('project_id', projectId);
+
+            // Prepare tickets for insertion
+            const ticketsToInsert = wizardData.tickets.map((t: any, index: number) => ({
+                user_id: user.id,
+                project_id: projectId,
+                key: t.key,
+                title: t.title,
+                description: t.description,
+                type: t.type,
+                status: t.status,
+                priority: t.priority,
+                acceptance_criteria: t.acceptanceCriteria,
+                estimated_hours: t.estimatedHours,
+                assigned_to: t.assignedTo,
+                related_screens: t.relatedScreens,
+                related_data_models: t.relatedDataModels,
+                dependencies: t.dependencies,
+                labels: t.labels,
+                parallel: t.parallel,
+                order_index: index, // Ensure order is preserved
+                updated_at: new Date().toISOString()
+            }));
+
+            const { error: ticketError } = await supabase
+                .from('plan_tickets')
+                .insert(ticketsToInsert);
+
+            if (ticketError) {
+                console.error('[Save Wizard] Failed to save tickets:', ticketError);
+                // We don't block the whole response, but we log the error
+                // The client might retry or rely on client-side sync as backup
+            }
+        }
+
+        return json({ success: true, project: data, projectId }, { headers });
     } catch (error) {
         console.error('[Save Wizard] Error:', error);
         return json({ success: false, error: 'Failed to save project' }, { status: 500, headers });

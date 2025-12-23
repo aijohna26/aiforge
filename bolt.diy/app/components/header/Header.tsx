@@ -18,6 +18,10 @@ export function Header() {
           <span className="text-bolt-elements-textPrimary font-bold tracking-wider">APPFORGE AI</span>
           <span className="text-bolt-elements-textSecondary font-normal">Editor</span>
         </a>
+        <div className="h-4 w-px bg-bolt-elements-borderColor mx-2 hidden sm:block" />
+        <a href="/dashboard" className="text-xs font-black uppercase tracking-widest text-bolt-elements-textSecondary hover:text-accent transition-colors hidden sm:block">
+          Dashboard
+        </a>
       </div>
       <span className="flex-1 px-4 truncate text-center text-bolt-elements-textPrimary">
         <ClientOnly>{() => <ChatDescription />}</ClientOnly>

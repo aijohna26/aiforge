@@ -13,6 +13,8 @@ import { extractStyleGuideFromMoodboard } from '~/lib/styleGuideExtraction';
 import { updateStep7Data } from '~/lib/stores/designWizard';
 import { generateBootstrapPrompt } from '~/lib/utils/bootstrapPromptGenerator';
 import { generatePRD } from '~/lib/utils/prdGenerator';
+import { Step5Interactive } from './Step5Interactive';
+import { isFeatureEnabled, FEATURES } from '~/utils/featureFlags';
 import { chatStore } from '~/lib/stores/chat';
 
 interface DesignWizardCanvasProps {
@@ -227,27 +229,38 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }:
             }
 
             // 4. Initialize Plan store with tickets
+            const { resetPlan } = await import('~/lib/stores/plan');
+            resetPlan(); // Ensure clean slate before setting new project context
+
             const projectKey = finalizedWizardData.step7.projectName
                 .toUpperCase()
                 .replace(/[^A-Z0-9]/g, '')
                 .substring(0, 4) || 'PROJ';
 
-            setPlanProject(saveData.projectId, projectKey, saveData.prdUrl);
+            setPlanProject(saveData.project?.id || saveData.projectId, projectKey, saveData.prdUrl);
             setTickets(tickets);
 
-            // 5. Success!
+            // 5. Store the project ID so future saves are upserts
+            const { setProjectId } = await import('~/lib/stores/designWizard');
+            setProjectId(saveData.project?.id || saveData.projectId);
+
+            // 6. Success!
             setIsGenerating(false);
 
-            // Re-enable chat immediately so it's available for implementation/debugging
+            // Trigger AI Scaffolding automatically
+            const bootstrapPrompt = generateBootstrapPrompt(finalizedWizardData);
+            chatStore.setKey('bootstrapPrompt', bootstrapPrompt);
+
+            // Re-enable chat immediately
             chatStore.setKey('handedOver', false);
             chatStore.setKey('showChat', true);
 
-            toast.success('PRD Generated! Tickets created in Plan view.');
+            toast.success('PRD Generated! AI is now scaffolding your project baseline...');
 
-            // Navigate to Plan view
+            // Navigate to Code view instead of Plan (since we are bootstrapping)
             if (typeof window !== 'undefined') {
                 const { workbenchStore } = await import('~/lib/stores/workbench');
-                workbenchStore.currentView.set('plan');
+                workbenchStore.currentView.set('code');
                 workbenchStore.showWorkbench.set(true);
             }
 
@@ -266,7 +279,15 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }:
     // Calculate horizontal offset for current step (each step is 1000px apart)
     const stepOffset = -(currentStep - 1) * 1000;
 
-    const steps = [
+    interface WizardStep {
+        id: number;
+        title: string;
+        description: string;
+        component: React.ReactNode;
+        width: number;
+    }
+
+    const steps: WizardStep[] = [
         {
             id: 1,
             title: 'App Information',
@@ -299,7 +320,7 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }:
             id: 5,
             title: 'Screen Generation',
             description: 'Generate screen designs with AI',
-            component: <Step5Frame />,
+            component: isFeatureEnabled(FEATURES.DUBS_INTERACTIVE_MOCKS) ? <Step5Interactive /> : <Step5Frame />,
             width: 1100
         },
         {
@@ -309,8 +330,7 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }:
             component: (
                 <Step6Features
                     selectedIntegrations={wizardData.step6.integrations}
-                    dataModels={wizardData.step6.dataModels}
-                    onUpdate={(integrations, dataModels) => updateStep6Data({ integrations, dataModels })}
+                    onUpdate={(integrations) => updateStep6Data({ integrations })}
                     onComplete={() => triggerStepAdvance()}
                 />
             ),

@@ -6,4 +6,5 @@ export const chatStore = map({
   showChat: true,
   handedOver: false,
   activeTicketId: null as string | null,
+  bootstrapPrompt: null as string | null,
 });

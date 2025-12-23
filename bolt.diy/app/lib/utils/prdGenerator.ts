@@ -126,15 +126,15 @@ ${step1.additionalDetails || 'Synthesize logic based on description.'}
 - **Data Models**: Implement the data models defined in section 5.
 - **Integrations**: ${integrationsPrompt}
 
-**Asset Management (CRITICAL):**
+**Asset Management (STRICT ZERO-PLACEHOLDER POLICY):**
 The following assets have been mirrored to **Supabase Storage** for permanence. You MUST download them and place them into the project's **assets/images/** folder using **curl** before using them in the code. 
 
-**DO NOT USE EXTERNAL PLACEHOLDERS (like Pexels or Unsplash) for these core assets.**
+🔴 **FORBIDDEN DOMAINS**: Any use of \`pexels.com\`, \`unsplash.com\`, or \`picsum.photos\` is a **TASK FAILURE**.
 
 - **Logo**: ${step3.logo?.url ? `${step3.logo.url}` : 'N/A'} (Save as **assets/images/logo.png**)
 - **App Icons**: Reuse the Logo URL (${step3.logo?.url}) for **assets/images/icon.png**, **assets/images/favicon.png**, and **assets/images/adaptive-icon.png**.
 - **Splash Screen**: Reuse the Logo URL (${step3.logo?.url}) for **assets/images/splash.png**.
-- **Generated Screens (Reference)**:
+- **Generated Screens (Reference Only)**:
 ${selectedScreens.map(s => `  - ${s.name}: ${s.url}`).join('\n')}
 
 **Structure & Navigation:**

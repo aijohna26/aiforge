@@ -16,16 +16,25 @@ export default class GoogleProvider extends BaseProvider {
     // Gemini 3 Pro: Latest flagship model
     {
       name: 'gemini-3-pro-preview',
-      label: 'Gemini 3 Pro',
+      label: 'Gemini 3 Pro (1M context)',
       provider: 'Google',
-      maxTokenAllowed: 2000000,
+      maxTokenAllowed: 1000000,
       maxCompletionTokens: 8192,
     },
 
-    // Gemini 2.5 Flash: Fast model
+    // Gemini 3 Flash: High-speed, high-intelligence model
     {
-      name: 'gemini-2.5-flash',
-      label: 'Gemini 2.5 Flash',
+      name: 'gemini-3-flash-preview',
+      label: 'Gemini 3 Flash (1M context)',
+      provider: 'Google',
+      maxTokenAllowed: 1000000,
+      maxCompletionTokens: 8192,
+    },
+
+    // Gemini 2.0 Flash: Fast model
+    {
+      name: 'gemini-2.0-flash-exp',
+      label: 'Gemini 2.0 Flash',
       provider: 'Google',
       maxTokenAllowed: 1000000,
       maxCompletionTokens: 8192,
@@ -68,7 +77,7 @@ export default class GoogleProvider extends BaseProvider {
     // Filter out models with very low token limits and experimental/unstable models
     const data = res.models.filter((model: any) => {
       const hasGoodTokenLimit = (model.outputTokenLimit || 0) > 8000;
-      const isStable = !model.name.includes('exp') || model.name.includes('flash-exp');
+      const isStable = !model.name.includes('exp') || model.name.includes('flash-exp') || model.name.includes('gemini-3');
 
       return hasGoodTokenLimit && isStable;
     });
@@ -82,6 +91,8 @@ export default class GoogleProvider extends BaseProvider {
       if (m.inputTokenLimit && m.outputTokenLimit) {
         // Use the input limit as the primary context window (typically larger)
         contextWindow = m.inputTokenLimit;
+      } else if (modelName.includes('gemini-3')) {
+        contextWindow = 1000000; // Gemini 3 models have 1M context
       } else if (modelName.includes('gemini-1.5-pro')) {
         contextWindow = 2000000; // Gemini 1.5 Pro has 2M context
       } else if (modelName.includes('gemini-1.5-flash')) {
@@ -139,15 +150,6 @@ export default class GoogleProvider extends BaseProvider {
       apiKey,
     });
 
-    let modelId = model;
-
-    // Map fake future models to real existing models
-    if (model === 'gemini-3-pro-preview') {
-      modelId = 'gemini-1.5-pro-latest';
-    } else if (model === 'gemini-2.5-flash') {
-      modelId = 'gemini-1.5-flash-latest';
-    }
-
-    return google(modelId);
+    return google(model);
   }
 }

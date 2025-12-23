@@ -141,7 +141,7 @@ export function SavedItemsModal({ isOpen, onClose, savedLogo, savedScreens, onRe
                                 <div className="flex justify-center">
                                     <div className="relative group inline-block">
                                         <img
-                                            src={currentItem?.url}
+                                            src={currentItem?.url ? (currentItem.url.startsWith('http') ? `/api/image-proxy?url=${encodeURIComponent(currentItem.url)}` : currentItem.url) : ''}
                                             alt={currentItem?.name}
                                             className="max-w-full max-h-[400px] object-contain rounded-lg shadow-lg"
                                         />
@@ -226,7 +226,7 @@ export function SavedItemsModal({ isOpen, onClose, savedLogo, savedScreens, onRe
                                             }`}
                                     >
                                         <img
-                                            src={item.url}
+                                            src={item.url ? (item.url.startsWith('http') ? `/api/image-proxy?url=${encodeURIComponent(item.url)}` : item.url) : ''}
                                             alt={item.name}
                                             className="w-full h-full object-cover"
                                         />

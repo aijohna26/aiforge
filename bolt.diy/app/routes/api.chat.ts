@@ -378,6 +378,10 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           return 'Custom error: Network error. Please check your internet connection and try again.';
         }
 
+        if (errorMessage.includes('Overloaded')) {
+          return 'Custom error: The selected model is currently overloaded. Please try again later or switch to a different model (e.g., Claude 3.5 Sonnet).';
+        }
+
         return `Custom error: ${errorMessage}`;
       },
     }).pipeThrough(

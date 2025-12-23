@@ -74,7 +74,7 @@ export function Step7Review() {
                                 <div className="w-24 h-24 flex-shrink-0 rounded-2xl bg-[#06080F] border-2 border-[#1E2533] p-4 flex items-center justify-center shadow-inner relative group/logo">
                                     {step3.logo ? (
                                         <>
-                                            <img src={step3.logo.url} alt="Logo" className="w-full h-full object-contain" />
+                                            <img src={step3.logo.url} alt="Logo" className="w-full h-full object-contain" crossOrigin="anonymous" />
                                             <div className="absolute inset-0 bg-blue-500/10 opacity-0 group-hover/logo:opacity-100 transition-opacity rounded-2xl" />
                                         </>
                                     ) : (
@@ -84,7 +84,7 @@ export function Step7Review() {
                                 <div className="flex-1 h-24 rounded-2xl bg-[#06080F] border-2 border-[#1E2533] overflow-hidden flex items-center justify-center shadow-inner relative group/nav">
                                     {selectedNavBar ? (
                                         <>
-                                            <img src={selectedNavBar} alt="Navbar" className="w-full h-full object-cover" />
+                                            <img src={selectedNavBar} alt="Navbar" className="w-full h-full object-cover" crossOrigin="anonymous" />
                                             <div className="absolute inset-0 bg-blue-500/10 opacity-0 group-hover/nav:opacity-100 transition-opacity" />
                                         </>
                                     ) : (

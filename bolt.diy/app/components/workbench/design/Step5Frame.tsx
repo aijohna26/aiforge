@@ -865,7 +865,7 @@ export function Step5Frame() {
                         <div className="flex items-center gap-5">
                             <div className="relative w-20 h-20 rounded-xl bg-slate-900 border border-[#2F344B] group-hover:border-blue-500/40 flex items-center justify-center overflow-hidden transition-all duration-300">
                                 {splashLogoUrl ? (
-                                    <img src={splashLogoUrl} alt="Brand Logo" className="w-full h-full object-contain p-2" />
+                                    <img src={splashLogoUrl} alt="Brand Logo" className="w-full h-full object-contain p-2" crossOrigin="anonymous" />
                                 ) : (
                                     <div className="i-ph:image-square text-3xl text-slate-700" />
                                 )}

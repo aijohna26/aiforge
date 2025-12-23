@@ -35,7 +35,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
             status: 200,
             headers: {
                 'Content-Type': contentType,
-                'Cache-Control': 'private, max-age=0, must-revalidate',
+                'Cache-Control': 'public, max-age=31536000, immutable',
+                'Cross-Origin-Resource-Policy': 'cross-origin',
             },
         });
     } catch (error) {

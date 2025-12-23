@@ -47,6 +47,20 @@ export async function uploadImageToSupabase(
             .from(bucket)
             .getPublicUrl(fileName);
 
+        // Verify public URL accessibility
+        try {
+            const verifyResponse = await fetch(publicUrl, { method: 'HEAD' });
+            if (!verifyResponse.ok) {
+                console.warn(`[ImageUpload] Uploaded image is not publicly accessible (Status: ${verifyResponse.status}). Bucket '${bucket}' might not be public. Falling back to original URL.`);
+                // If the check fails, we presume the bucket is private or the file is missing. 
+                // We return the original URL so the user at least sees the image.
+                return url;
+            }
+        } catch (verifyError) {
+            console.warn(`[ImageUpload] Failed to verify public URL accessibility:`, verifyError);
+            return url;
+        }
+
         return publicUrl;
     } catch (error) {
         console.error(`[ImageUpload] Error processing image ${url}:`, error);

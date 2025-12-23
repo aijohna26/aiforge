@@ -28,6 +28,7 @@ ${prd}
 4. **Style Consistency**: Ensure all components strictly follow the Brand Colors and Typography defined in the PRD.
 5. **No Downgrades**: If a dependency error occurs (like ETARGET), fix the specific version in package.json (e.g. use expo-av@~15.0.1) instead of reverting the global SDK version.
 6. **Config Plugins (CRITICAL)**: Do NOT add \`expo-web-browser\` or \`expo-font\` to the \`plugins\` array in \`app.json\`. These packages do not have config plugins and will cause a \`PluginError\` on startup. Use only \`expo-router\` and other valid plugins.
+7. **CRITICAL ASSET RULE**: You are FORBIDDEN from using Pexels, Unsplash, or any other external placeholder domains. Using them will result in a failed build. You MUST use the Supabase URLs provided in the PRD for all brand assets (logo, splash, icon).
        
 ### Technical Stack:
 - Expo SDK (Managed Workflow)

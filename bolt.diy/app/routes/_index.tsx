@@ -1,4 +1,4 @@
-import { json, type MetaFunction } from '@remix-run/cloudflare';
+import { json, redirect, type MetaFunction, type LoaderFunctionArgs } from '@remix-run/cloudflare';
 import { Form, useNavigate, useSearchParams } from '@remix-run/react';
 import { useState, useEffect } from 'react';
 import { ClientOnly } from 'remix-utils/client-only';
@@ -6,6 +6,7 @@ import { useStore } from '@nanostores/react';
 import { toast } from 'react-toastify';
 import { themeStore, toggleTheme } from '~/lib/stores/theme';
 import { AuthModal } from '~/components/auth/AuthModal';
+import { createClient } from '~/lib/supabase/server';
 
 export const meta: MetaFunction = () => {
   return [
@@ -14,7 +15,17 @@ export const meta: MetaFunction = () => {
   ];
 };
 
-export const loader = () => json({});
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const headers = new Headers();
+  const supabase = createClient(request, headers);
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (user) {
+    return redirect('/dashboard', { headers });
+  }
+
+  return json({});
+};
 
 export default function LandingPage() {
   const navigate = useNavigate();
@@ -130,8 +141,13 @@ export default function LandingPage() {
       <main className="relative z-10 flex flex-col items-center justify-center pt-20 pb-32 px-6 text-center max-w-5xl mx-auto">
 
         {/* Headline */}
-        <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6 bg-clip-text text-transparent bg-gradient-to-b from-gray-900 to-gray-500 dark:from-white dark:to-white/60 pb-2">
-          Production ready mobile apps in minutes
+        <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6 bg-clip-text text-transparent bg-gradient-to-b from-gray-900 to-gray-500 dark:from-white dark:to-white/60 pb-2 leading-tight">
+          Production ready mobile apps in minutes <br className="sm:hidden" />
+          <span className="relative inline-block ml-2 group">
+            <span className="relative z-10 text-gray-400/50 dark:text-white/30 italic">not months</span>
+            <span className="absolute left-[-5%] top-[50%] w-[110%] h-[4px] bg-red-500/80 rounded-full -rotate-3 transition-transform duration-500 group-hover:rotate-1 group-hover:scale-x-110 origin-center z-20 shadow-[0_0_10px_rgba(239,68,68,0.4)]"></span>
+            <span className="absolute left-[-2%] top-[48%] w-[105%] h-[2px] bg-red-600/60 rounded-full rotate-2 transition-transform duration-700 group-hover:-rotate-2 group-hover:scale-x-105 origin-center z-20"></span>
+          </span>
         </h1>
 
         {/* Subhead */}

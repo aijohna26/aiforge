@@ -332,9 +332,9 @@ export const Workbench = memo(
     const expoUrl = useStore(expoUrlAtom);
 
     useEffect(() => {
-      // If we have a seed prompt waiting, we should be in code view
+      // If we have a seed prompt waiting, we should be in design view (Information Gathering)
       if (typeof window !== 'undefined' && localStorage.getItem('bolt_seed_prompt')) {
-        setSelectedView('code');
+        setSelectedView('design');
       }
     }, []);
 

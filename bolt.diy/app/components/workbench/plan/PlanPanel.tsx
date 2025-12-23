@@ -119,8 +119,8 @@ export function PlanPanel() {
 
             {/* Board View */}
             {planState.viewMode === 'board' && (
-                <div className="flex-1 overflow-x-auto overflow-y-hidden">
-                    <div className="h-full flex gap-6 p-8 min-w-max">
+                <div className="flex-1 overflow-x-auto overflow-y-hidden bg-[#F8F9FA] dark:bg-[#050505]">
+                    <div className="h-full flex gap-8 p-10 min-w-max">
                         {columns.map((column) => {
                             const tickets = getTicketsByStatus(column.status);
 
@@ -132,42 +132,46 @@ export function PlanPanel() {
                                     onDrop={() => handleDrop(column.status)}
                                 >
                                     {/* Column Header */}
-                                    <div className="flex items-center gap-3 mb-4 px-2">
-                                        <div className={classNames("w-8 h-8 rounded-lg flex items-center justify-center bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/5", column.color)}>
+                                    <div className="flex items-center gap-3 mb-6 px-4 py-3 rounded-2xl bg-white/50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/[0.05] shadow-sm">
+                                        <div className={classNames("w-8 h-8 rounded-xl flex items-center justify-center bg-white dark:bg-white/5 border border-gray-100 dark:border-white/10 shadow-sm", column.color)}>
                                             <div className={classNames(column.icon, "text-sm")} />
                                         </div>
-                                        <h3 className="font-bold text-gray-900 dark:text-white text-[11px] uppercase tracking-[0.1em]">
+                                        <h3 className="font-black text-gray-900 dark:text-white text-[10px] uppercase tracking-[0.2em]">
                                             {column.title}
                                         </h3>
-                                        <div className="ml-auto text-[10px] font-bold text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-white/5 w-6 h-6 flex items-center justify-center rounded-full border border-gray-200 dark:border-white/5">
+                                        <div className="ml-auto text-[10px] font-black text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-white/5 px-2.5 py-1 flex items-center justify-center rounded-full border border-gray-200 dark:border-white/5">
                                             {tickets.length}
                                         </div>
                                     </div>
 
                                     {/* Column Content */}
                                     <div className={classNames(
-                                        "flex-1 overflow-y-auto space-y-3 min-h-[400px] p-2 pt-6 rounded-2xl transition-colors duration-200",
-                                        "bg-gray-50/50 dark:bg-white/[0.02] border border-gray-200/50 dark:border-white/[0.03]",
-                                        "group-hover/column:bg-gray-100/50 dark:group-hover/column:bg-white/[0.04]"
+                                        "flex-1 overflow-y-auto space-y-4 min-h-[400px] p-2 rounded-3xl transition-all duration-300",
+                                        "bg-gray-100/30 dark:bg-white/[0.01] border border-transparent",
+                                        "group-hover/column:bg-gray-100/50 dark:group-hover/column:bg-white/[0.02] group-hover/column:border-gray-200/50 dark:group-hover/column:border-white/[0.05]"
                                     )}>
                                         {tickets.length === 0 ? (
-                                            <div className="flex flex-col items-center justify-center h-48 text-gray-400 dark:text-gray-600">
-                                                <div className="i-ph:tray-bold text-4xl mb-3 opacity-20" />
-                                                <span className="text-xs font-semibold tracking-wide opacity-50 uppercase">Empty Column</span>
+                                            <div className="flex flex-col items-center justify-center h-48 text-gray-300 dark:text-gray-700 select-none">
+                                                <div className="i-ph:tray-duotone text-5xl mb-4 opacity-10" />
+                                                <span className="text-[10px] font-black tracking-[0.2em] opacity-30 uppercase italic">Empty Queue</span>
                                             </div>
                                         ) : (
-                                            tickets.map((ticket) => (
-                                                <TicketCard
-                                                    key={ticket.id}
-                                                    ticket={ticket}
-                                                    onDragStart={handleDragStart}
-                                                    onClick={() => setSelectedTicket(ticket)}
-                                                />
-                                            ))
+                                            <div className="space-y-4 p-2">
+                                                {tickets.map((ticket) => (
+                                                    <TicketCard
+                                                        key={ticket.id}
+                                                        ticket={ticket}
+                                                        onDragStart={handleDragStart}
+                                                        onClick={() => setSelectedTicket(ticket)}
+                                                    />
+                                                ))}
+                                            </div>
                                         )}
 
                                         {/* Drop zone placeholder indicator */}
-                                        <div className="h-20 border-2 border-dashed border-gray-200 dark:border-white/5 rounded-xl opacity-0 hover:opacity-100 transition-opacity" />
+                                        <div className="mx-2 h-24 border-2 border-dashed border-gray-200 dark:border-white/[0.05] rounded-3xl opacity-0 group-hover/column:opacity-40 transition-opacity flex items-center justify-center">
+                                            <div className="i-ph:plus-circle-duotone text-2xl text-gray-400" />
+                                        </div>
                                     </div>
                                 </div>
                             );

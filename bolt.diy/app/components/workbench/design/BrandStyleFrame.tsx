@@ -387,7 +387,7 @@ export function BrandStyleFrame() {
                                             setLogoPrompt(generateLogoPrompt());
                                         }
                                     }}
-                                    className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${activeTab === tab ? 'bg-blue-600 shadow-lg' : 'text-slate-400'
+                                    className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${activeTab === tab ? 'bg-blue-600 shadow-lg text-white' : 'bg-slate-200 text-black hover:bg-slate-300'
                                         }`}
                                 >
                                     {tab === 'colors' ? 'Colours' :
@@ -579,7 +579,7 @@ export function BrandStyleFrame() {
                                                 onClick={() => updateStep3Data({ logoTextMode: option.value })}
                                                 className={`px-4 py-1.5 text-sm rounded-full transition-colors ${step3.logoTextMode === option.value
                                                     ? 'bg-blue-600 text-white'
-                                                    : 'text-slate-300'
+                                                    : 'text-slate-200 hover:text-white hover:bg-slate-700/50'
                                                     }`}
                                                 type="button"
                                             >
@@ -664,6 +664,7 @@ export function BrandStyleFrame() {
                                                         src={url}
                                                         alt={`Logo ${index + 1}`}
                                                         className="w-full h-auto aspect-square object-contain"
+                                                        crossOrigin="anonymous"
                                                     />
                                                     {selectedLogo === url && (
                                                         <div className="absolute top-2 right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded-full">
@@ -749,6 +750,7 @@ export function BrandStyleFrame() {
                                     src={logoToEdit}
                                     alt="Logo to edit"
                                     className="w-full max-w-sm mx-auto rounded-lg border border-[#1F243B]"
+                                    crossOrigin="anonymous"
                                 />
                             </div>
 
@@ -883,6 +885,7 @@ export function BrandStyleFrame() {
                                 alt="Logo Full Size"
                                 className="max-w-full max-h-[90vh] object-contain rounded-lg"
                                 onClick={(e) => e.stopPropagation()}
+                                crossOrigin="anonymous"
                             />
                         </div>
                     </div>,

@@ -9,6 +9,8 @@ import { CustomScreenGenerator } from '~/components/screens/CustomScreenGenerato
 import { AlertDialog } from '~/components/AlertDialog';
 import { toast } from 'react-toastify';
 import { useSearchParams, useNavigate } from "@remix-run/react";
+import { isFeatureEnabled, FEATURES } from '~/utils/featureFlags';
+import { DesignPanel } from '~/components/workbench/DesignPanel';
 
 type WizardStep = 1 | 2 | 3 | 4 | 5 | 6;
 
@@ -218,6 +220,7 @@ export default function WizardPage() {
     const sessionId = searchParams.get('sessionId');
     const navigate = useNavigate();
     const [isLoaded, setIsLoaded] = useState(false);
+    const isDubsEnabled = isFeatureEnabled(FEATURES.DUBS_WIZARD_MERGE);
 
     const [currentStep, setCurrentStep] = useState<WizardStep>(1);
     const [appInfo, setAppInfo] = useState<AppInfo>({
@@ -298,7 +301,14 @@ export default function WizardPage() {
         setLastActivity(Date.now());
     }, [isLoaded, currentStep, appInfo, savedLogo, savedScreens, styleBoard, packages, screenGeneratorState]);
 
-    const steps = [
+    const steps = isDubsEnabled ? [
+        { number: 1, title: 'Concept & Blueprints', icon: '📝' },
+        { number: 2, title: 'Inspiration', icon: '🖼️' },
+        { number: 3, title: 'Brand Aesthetics', icon: '🎨' },
+        { number: 4, title: 'Architecture', icon: '📐' },
+        { number: 5, title: 'Interactive Prototype', icon: '💻' },
+        { number: 6, title: 'Features & Export', icon: '🚀' },
+    ] : [
         { number: 1, title: 'App Info & Branding', icon: '📝' },
         { number: 2, title: 'Style & References', icon: '🖼️' },
         { number: 3, title: 'Logo Generation', icon: '🎨' },
@@ -740,6 +750,14 @@ Please generate a complete, working Expo React Native application that matches t
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
                     <p className="text-slate-600 dark:text-slate-400">Loading wizard...</p>
                 </div>
+            </div>
+        );
+    }
+
+    if (isDubsEnabled) {
+        return (
+            <div className="w-full h-screen bg-[#06080F] overflow-hidden text-white">
+                <DesignPanel />
             </div>
         );
     }

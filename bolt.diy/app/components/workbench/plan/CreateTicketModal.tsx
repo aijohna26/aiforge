@@ -88,145 +88,145 @@ export function CreateTicketModal({ ticket, onClose }: CreateTicketModalProps) {
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md p-4" onClick={onClose}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-300" onClick={onClose}>
             <div
-                className="bg-white dark:bg-[#0A0A0A] rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-gray-200 dark:border-white/10"
+                className="bg-white dark:bg-[#080808] rounded-3xl shadow-[0_32px_128px_rgba(0,0,0,0.4)] max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-gray-200 dark:border-white/[0.08]"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="flex items-center justify-between p-8 border-b border-gray-100 dark:border-white/5">
-                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
-                        {isEditing ? 'Edit Ticket' : 'Create New Ticket'}
-                    </h2>
+                <div className="flex items-center justify-between p-10 border-b border-gray-100 dark:border-white/[0.05]">
+                    <div>
+                        <h2 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">
+                            {isEditing ? 'Modify Ticket' : 'Initialize New Ticket'}
+                        </h2>
+                        <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-[0.2em] mt-1">
+                            Project Context: {projectKey}
+                        </p>
+                    </div>
                     <button
                         onClick={onClose}
-                        className="w-10 h-10 rounded-xl flex items-center justify-center bg-gray-50 dark:bg-white/5 text-gray-400 hover:text-gray-900 dark:hover:text-white transition-all hover:rotate-90"
+                        className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-100/50 dark:bg-white/5 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-all hover:scale-110 active:scale-95"
                     >
                         <div className="i-ph:x-bold text-xl" />
                     </button>
                 </div>
 
-                {/* Form */}
-                <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-8 space-y-8 scrollbar-thin">
+                {/* Form Content */}
+                <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-10 space-y-10 scrollbar-none">
                     {/* Title */}
-                    <div className="space-y-3">
-                        <label className="text-[10px] font-bold uppercase tracking-[0.1em] text-gray-500 dark:text-gray-500 flex items-center gap-2">
-                            <div className="i-ph:text-t-bold text-orange-500 dark:text-purple-500" />
-                            Title *
+                    <div className="space-y-4">
+                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500 flex items-center gap-2">
+                            <div className="i-ph:text-t-duotone text-orange-500 dark:text-purple-500 text-sm" />
+                            Objective Title *
                         </label>
                         <input
                             type="text"
                             value={formData.title}
                             onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                             placeholder="e.g. Implement User Authentication"
-                            className="w-full px-5 py-3 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 focus:ring-2 focus:ring-orange-500/50 dark:focus:ring-purple-500/50 outline-none transition-all font-medium"
+                            className="w-full px-6 py-4 rounded-2xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200/60 dark:border-white/10 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 focus:ring-2 focus:ring-orange-500/20 dark:focus:ring-purple-500/20 outline-none transition-all font-bold text-sm"
                             required
                         />
                     </div>
 
-                    {/* Type and Priority */}
-                    <div className="grid grid-cols-2 gap-6">
-                        <div className="space-y-3">
-                            <label className="text-[10px] font-bold uppercase tracking-[0.1em] text-gray-500 dark:text-gray-500 flex items-center gap-2">
-                                <div className="i-ph:stack-bold text-orange-500 dark:text-purple-500" />
-                                Type
+                    {/* Type and Priority Selection Grid */}
+                    <div className="grid grid-cols-2 gap-8">
+                        <div className="space-y-4">
+                            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500 flex items-center gap-2">
+                                <div className="i-ph:stack-duotone text-orange-500 dark:text-purple-500 text-sm" />
+                                Category
                             </label>
-                            <select
-                                value={formData.type}
-                                onChange={(e) => setFormData({ ...formData, type: e.target.value as TicketType })}
-                                className="w-full px-5 py-3 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white focus:ring-2 focus:ring-orange-500/50 dark:focus:ring-purple-500/50 outline-none transition-all font-semibold appearance-none cursor-pointer"
-                            >
-                                <option value="task">Task</option>
-                                <option value="story">Story</option>
-                                <option value="epic">Epic</option>
-                                <option value="bug">Bug</option>
-                            </select>
+                            <div className="relative group">
+                                <select
+                                    value={formData.type}
+                                    onChange={(e) => setFormData({ ...formData, type: e.target.value as TicketType })}
+                                    className="w-full pl-5 pr-10 py-4 rounded-2xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200/60 dark:border-white/10 text-gray-900 dark:text-white focus:ring-2 focus:ring-orange-500/20 dark:focus:ring-purple-500/20 outline-none transition-all font-bold text-xs appearance-none cursor-pointer group-hover:bg-gray-100 dark:group-hover:bg-white/5"
+                                >
+                                    <option value="task">Task</option>
+                                    <option value="story">Story</option>
+                                    <option value="epic">Epic</option>
+                                    <option value="bug">Bug</option>
+                                </select>
+                                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                    <div className="i-ph:caret-down-bold text-xs" />
+                                </div>
+                            </div>
                         </div>
-                        <div className="space-y-3">
-                            <label className="text-[10px] font-bold uppercase tracking-[0.1em] text-gray-500 dark:text-gray-500 flex items-center gap-2">
-                                <div className="i-ph:flag-bold text-orange-500 dark:text-purple-500" />
-                                Priority
+                        <div className="space-y-4">
+                            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500 flex items-center gap-2">
+                                <div className="i-ph:flag-duotone text-orange-500 dark:text-purple-500 text-sm" />
+                                Urgency
                             </label>
-                            <select
-                                value={formData.priority}
-                                onChange={(e) => setFormData({ ...formData, priority: e.target.value as TicketPriority })}
-                                className="w-full px-5 py-3 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white focus:ring-2 focus:ring-orange-500/50 dark:focus:ring-purple-500/50 outline-none transition-all font-semibold appearance-none cursor-pointer"
-                            >
-                                <option value="highest">Highest</option>
-                                <option value="high">High</option>
-                                <option value="medium">Medium</option>
-                                <option value="low">Low</option>
-                                <option value="lowest">Lowest</option>
-                            </select>
+                            <div className="relative group">
+                                <select
+                                    value={formData.priority}
+                                    onChange={(e) => setFormData({ ...formData, priority: e.target.value as TicketPriority })}
+                                    className="w-full pl-5 pr-10 py-4 rounded-2xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200/60 dark:border-white/10 text-gray-900 dark:text-white focus:ring-2 focus:ring-orange-500/20 dark:focus:ring-purple-500/20 outline-none transition-all font-bold text-xs appearance-none cursor-pointer group-hover:bg-gray-100 dark:group-hover:bg-white/5"
+                                >
+                                    <option value="highest">Highest</option>
+                                    <option value="high">High</option>
+                                    <option value="medium">Medium</option>
+                                    <option value="low">Low</option>
+                                    <option value="lowest">Lowest</option>
+                                </select>
+                                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                    <div className="i-ph:caret-down-bold text-xs" />
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    {/* Description */}
-                    <div className="space-y-3">
-                        <label className="text-[10px] font-bold uppercase tracking-[0.1em] text-gray-500 dark:text-gray-500 flex items-center gap-2">
-                            <div className="i-ph:text-align-left-bold text-orange-500 dark:text-purple-500" />
-                            Description
+                    {/* Description Area */}
+                    <div className="space-y-4">
+                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500 flex items-center gap-2">
+                            <div className="i-ph:text-align-left-duotone text-orange-500 dark:text-purple-500 text-base" />
+                            Detailed Description
                         </label>
                         <textarea
                             value={formData.description}
                             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                            placeholder="Describe the objective and requirements..."
+                            placeholder="Provide exhaustive context for the implementation..."
                             rows={4}
-                            className="w-full px-5 py-4 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 focus:ring-2 focus:ring-orange-500/50 dark:focus:ring-purple-500/50 outline-none transition-all font-medium resize-none leading-relaxed"
+                            className="w-full px-6 py-5 rounded-3xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200/60 dark:border-white/10 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 focus:ring-2 focus:ring-orange-500/20 dark:focus:ring-purple-500/20 outline-none transition-all font-medium text-sm resize-none leading-relaxed"
                         />
                     </div>
 
-                    {/* Estimated Hours */}
-                    <div className="space-y-3">
-                        <label className="text-[10px] font-bold uppercase tracking-[0.1em] text-gray-500 dark:text-gray-500 flex items-center gap-2">
-                            <div className="i-ph:timer-bold text-orange-500 dark:text-purple-500" />
-                            Allocation (Hours)
-                        </label>
-                        <input
-                            type="number"
-                            value={formData.estimatedHours || ''}
-                            onChange={(e) => setFormData({ ...formData, estimatedHours: e.target.value ? parseInt(e.target.value) : undefined })}
-                            placeholder="e.g. 8"
-                            min="0"
-                            className="w-full px-5 py-3 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 focus:ring-2 focus:ring-orange-500/50 dark:focus:ring-purple-500/50 outline-none transition-all font-semibold"
-                        />
-                    </div>
-
-                    {/* Acceptance Criteria */}
-                    <div className="space-y-4">
+                    {/* Acceptance Criteria Management */}
+                    <div className="space-y-5">
                         <div className="flex items-center justify-between">
-                            <label className="text-[10px] font-bold uppercase tracking-[0.1em] text-gray-500 dark:text-gray-500 flex items-center gap-2">
-                                <div className="i-ph:list-checks-bold text-orange-500 dark:text-purple-500" />
+                            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500 flex items-center gap-2">
+                                <div className="i-ph:list-checks-duotone text-orange-500 dark:text-purple-500 text-base" />
                                 Acceptance Criteria
                             </label>
                             <button
                                 type="button"
                                 onClick={addCriteria}
-                                className="text-[10px] font-bold uppercase tracking-widest text-orange-600 dark:text-purple-400 hover:text-orange-700 dark:hover:text-purple-700 flex items-center gap-1.5 transition-colors bg-transparent border-none appearance-none"
+                                className="text-[9px] font-black uppercase tracking-widest text-orange-600 dark:text-purple-400 hover:text-orange-700 dark:hover:text-purple-300 flex items-center gap-2 transition-all hover:scale-105"
                             >
-                                <div className="i-ph:plus-circle-bold text-sm" />
-                                New Criteria
+                                <div className="i-ph:plus-circle-duotone text-lg" />
+                                Add Requirement
                             </button>
                         </div>
-                        <div className="space-y-3">
+                        <div className="grid gap-4">
                             {formData.acceptanceCriteria.map((criteria, index) => (
-                                <div key={index} className="flex gap-3 animate-in fade-in duration-300">
-                                    <div className="flex-1 relative group">
+                                <div key={index} className="flex gap-4 group/item animate-in slide-in-from-left-2 duration-300">
+                                    <div className="flex-1 relative">
                                         <input
                                             type="text"
                                             value={criteria}
                                             onChange={(e) => updateCriteria(index, e.target.value)}
-                                            placeholder={`Requirement ${index + 1}`}
-                                            className="w-full px-5 py-3 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/10 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 focus:ring-2 focus:ring-orange-500/50 dark:focus:ring-purple-500/50 outline-none transition-all font-medium"
+                                            placeholder={`Specific requirement ${index + 1}`}
+                                            className="w-full px-6 py-4 rounded-2xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200/60 dark:border-white/10 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 focus:ring-2 focus:ring-orange-500/20 dark:focus:ring-purple-500/20 outline-none transition-all font-bold text-xs"
                                         />
                                     </div>
                                     {formData.acceptanceCriteria.length > 1 && (
                                         <button
                                             type="button"
                                             onClick={() => removeCriteria(index)}
-                                            className="w-12 h-12 flex items-center justify-center rounded-xl bg-rose-500/5 text-rose-500 border border-transparent hover:bg-rose-500 hover:text-white transition-all shadow-sm"
+                                            className="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-2xl bg-rose-500/5 text-rose-500 border border-rose-500/10 hover:bg-rose-500 hover:text-white transition-all shadow-sm active:scale-90"
+                                            title="Remove requirement"
                                         >
-                                            <div className="i-ph:trash-bold" />
+                                            <div className="i-ph:trash-duotone text-lg" />
                                         </button>
                                     )}
                                 </div>
@@ -235,20 +235,20 @@ export function CreateTicketModal({ ticket, onClose }: CreateTicketModalProps) {
                     </div>
                 </form>
 
-                {/* Footer */}
-                <div className="flex items-center justify-end gap-4 p-8 border-t border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.02]">
+                {/* Footer Actions Panel */}
+                <div className="flex items-center justify-end gap-5 p-10 border-t border-gray-100 dark:border-white/[0.05] bg-gray-50/50 dark:bg-white/[0.01]">
                     <button
                         type="button"
                         onClick={onClose}
-                        className="px-6 py-2.5 rounded-xl bg-white dark:bg-white/5 text-gray-700 dark:text-gray-300 text-sm font-bold border border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/10 transition-all font-bold"
+                        className="px-8 py-3.5 rounded-2xl bg-white dark:bg-white/5 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white text-sm font-bold border border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/10 transition-all font-black"
                     >
-                        Discard
+                        Cancel
                     </button>
                     <button
                         onClick={handleSubmit}
-                        className="px-8 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 dark:bg-purple-600 dark:hover:bg-purple-700 text-white text-sm font-extrabold transition-all shadow-lg shadow-orange-500/20 dark:shadow-purple-500/20 active:scale-[0.98]"
+                        className="px-10 py-3.5 rounded-2xl bg-orange-600 hover:bg-orange-700 dark:bg-purple-600 dark:hover:bg-purple-700 text-white text-sm font-black transition-all shadow-xl shadow-orange-500/20 dark:shadow-purple-700/30 active:scale-95"
                     >
-                        {isEditing ? 'Save Changes' : 'Initialize Ticket'}
+                        {isEditing ? 'Sync Changes' : 'Initialize Task'}
                     </button>
                 </div>
             </div>

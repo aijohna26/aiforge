@@ -1,7 +1,8 @@
 import { useStore } from '@nanostores/react';
-import { designWizardStore, updateStep1Data, loadWizardData } from '~/lib/stores/designWizard';
+import { designWizardStore, updateStep1Data, loadWizardData, type DataModel } from '~/lib/stores/designWizard';
 import { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface WizardStep1FormProps {
     zoom?: number;
@@ -15,6 +16,12 @@ export function WizardStep1Form({ zoom = 1, panX = 0, panY = 0 }: WizardStep1For
     const [recentProjects, setRecentProjects] = useState<any[]>([]);
     const [isLoadingProjects, setIsLoadingProjects] = useState(false);
     const [showProjects, setShowProjects] = useState(false);
+
+    // Data Model State
+    const [dataModelDescription, setDataModelDescription] = useState('');
+    const [isGeneratingModels, setIsGeneratingModels] = useState(false);
+    const [suggestedModels, setSuggestedModels] = useState<DataModel[]>([]);
+    const [showSuggestions, setShowSuggestions] = useState(false);
 
     useEffect(() => {
         if (showProjects) {
@@ -49,6 +56,142 @@ export function WizardStep1Form({ zoom = 1, panX = 0, panY = 0 }: WizardStep1For
 
     const handleChange = (field: keyof typeof step1, value: string) => {
         updateStep1Data({ [field]: value });
+    };
+
+    const generateModelSuggestions = async () => {
+        if (!step1.description) {
+            toast.error('App description is missing. Please provide one above first.');
+            return;
+        }
+
+        try {
+            setIsGeneratingModels(true);
+            setShowSuggestions(true);
+
+            const prompt = `
+                Based on this app description: "${step1.description}"
+                Primary goal: "${step1.primaryGoal}"
+                ${step1.dataDescription ? `User emphasized these data entities: "${step1.dataDescription}"` : ""}
+
+                Suggest a set of core data models needed for this mobile application.
+                Return ONLY a JSON array of objects with this structure:
+                {
+                  "id": "model-id",
+                  "name": "Model Name",
+                  "description": "Short description of what this model represents",
+                  "fields": [
+                    { "name": "field_name", "type": "string|number|boolean|date|array|object|reference", "required": true, "description": "purpose" }
+                  ]
+                }
+                
+                Keep it to the 3-5 most essential models.
+            `;
+
+            const response = await fetch('/api/llmcall', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    system: "You are an expert database architect. Return only valid JSON.",
+                    message: prompt,
+                    model: 'gpt-4o',
+                    provider: { name: 'OpenAI' }
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.error) throw new Error(result.message);
+
+            const content = result.text;
+            const cleanContent = content.replace(/```json|```/g, '').trim();
+            const models = JSON.parse(cleanContent);
+
+            setSuggestedModels(models);
+            toast.success('Generated data model suggestions');
+        } catch (error) {
+            console.error('Failed to generate models:', error);
+            toast.error('Failed to generate suggestions. Please try manual description.');
+        } finally {
+            setIsGeneratingModels(false);
+        }
+    };
+
+    const parseManualDescription = async () => {
+        if (!dataModelDescription || dataModelDescription.length < 10) {
+            toast.error('Please provide a more detailed description first.');
+            return;
+        }
+
+        try {
+            setIsGeneratingModels(true);
+            setShowSuggestions(true);
+
+            const prompt = `
+                Convert this description of data models into a structured JSON schema:
+                "${dataModelDescription}"
+
+                Return ONLY a JSON array of objects with this structure:
+                {
+                  "name": "Model Name",
+                  "description": "Short description",
+                  "fields": [
+                    { "name": "field_name", "type": "string|number|boolean|date|array|object|reference", "required": true, "description": "purpose" }
+                  ]
+                }
+            `;
+
+            const response = await fetch('/api/llmcall', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    system: "You are an expert database architect. Return only valid JSON.",
+                    message: prompt,
+                    model: 'gpt-4o',
+                    provider: { name: 'OpenAI' }
+                })
+            });
+
+            const result = await response.json();
+            if (result.error) throw new Error(result.message);
+
+            const content = result.text;
+            const cleanContent = content.replace(/```json|```/g, '').trim();
+            const models = JSON.parse(cleanContent);
+
+            setSuggestedModels(models);
+            toast.success('Description analyzed and models suggested');
+        } catch (error) {
+            console.error('Failed to parse description:', error);
+            toast.error('Failed to analyze description.');
+        } finally {
+            setIsGeneratingModels(false);
+        }
+    };
+
+    const acceptModel = (model: DataModel) => {
+        const currentModels = step1.dataModels || [];
+        const exists = currentModels.some(m => m.name === model.name);
+        if (exists) {
+            toast.warning(`${model.name} is already added.`);
+            return;
+        }
+
+        updateStep1Data({
+            dataModels: [...currentModels, { ...model, id: `model-${Date.now()}-${Math.random().toString(36).substr(2, 9)}` }]
+        });
+        toast.success(`Added ${model.name} model`);
+    };
+
+    const removeModel = (modelId: string) => {
+        const currentModels = step1.dataModels || [];
+        updateStep1Data({
+            dataModels: currentModels.filter(m => m.id !== modelId)
+        });
+    };
+
+    const clearAllModels = () => {
+        updateStep1Data({ dataModels: [] });
+        toast.success('Cleared all data models');
     };
 
     return (
@@ -245,12 +388,144 @@ export function WizardStep1Form({ zoom = 1, panX = 0, panY = 0 }: WizardStep1For
                 </div>
             </div>
 
+
+
+            {/* Data Models Section */}
+            <div className="pt-8 border-t border-[#333]">
+                <div className="mb-6">
+                    <h2 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+                        <div className="i-ph:database text-cyan-400" />
+                        Data Blueprints
+                    </h2>
+                    <p className="text-xs text-slate-400">
+                        Define the core data structures for your app. This helps the AI write better code.
+                    </p>
+                </div>
+
+                <div className="bg-[#111] border border-[#333] rounded-xl p-6">
+                    <div className="grid lg:grid-cols-2 gap-8">
+                        {/* Input Column */}
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-200 mb-2">
+                                    AI Suggestion
+                                </label>
+                                <button
+                                    onClick={generateModelSuggestions}
+                                    disabled={isGeneratingModels}
+                                    className="w-full py-3 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-400 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-2"
+                                >
+                                    {isGeneratingModels ? (
+                                        <div className="i-ph:circle-notch animate-spin" />
+                                    ) : (
+                                        <div className="i-ph:magic-wand-duotone" />
+                                    )}
+                                    {isGeneratingModels ? 'Designing Schema...' : 'Suggest Data Models from Description'}
+                                </button>
+                            </div>
+
+                            <div className="pt-4 border-t border-[#333]">
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="text-xs font-bold text-slate-200">Manual Input</label>
+                                    <button
+                                        onClick={parseManualDescription}
+                                        disabled={!dataModelDescription}
+                                        className="text-[10px] font-bold text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
+                                    >
+                                        <div className="i-ph:code" />
+                                        PARSE
+                                    </button>
+                                </div>
+                                <textarea
+                                    value={dataModelDescription}
+                                    onChange={(e) => setDataModelDescription(e.target.value)}
+                                    placeholder="e.g. User has name, email. Post has title, content, author."
+                                    rows={3}
+                                    className="w-full px-3 py-2 bg-[#2a2a2a] border border-[#444] rounded-md text-xs text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 resize-none"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Suggestions Column */}
+                        <div className="min-h-[200px] border-l border-[#333] pl-6">
+                            <AnimatePresence mode="wait">
+                                {!showSuggestions && (step1.dataModels || []).length === 0 && (
+                                    <div className="h-full flex flex-col items-center justify-center text-center opacity-50">
+                                        <div className="i-ph:database-duotone text-2xl mb-2" />
+                                        <p className="text-[10px]">No models defined yet</p>
+                                    </div>
+                                )}
+
+                                {showSuggestions && (
+                                    <motion.div
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        className="space-y-2 max-h-[250px] overflow-y-auto custom-scrollbar pr-2"
+                                    >
+                                        <h4 className="text-[10px] font-bold text-cyan-400 uppercase">Suggested Models</h4>
+                                        {suggestedModels.map((model, idx) => {
+                                            const alreadyAdded = (step1.dataModels || []).some(m => m.name === model.name);
+                                            return (
+                                                <div
+                                                    key={idx}
+                                                    className={`p-3 rounded-lg border text-left transition-all relative group ${alreadyAdded
+                                                        ? 'bg-green-500/10 border-green-500/30'
+                                                        : 'bg-[#2a2a2a] border-[#333] hover:border-cyan-500/50'}`}
+                                                >
+                                                    <div className="flex justify-between items-start">
+                                                        <div>
+                                                            <span className="text-xs font-bold text-white block">{model.name}</span>
+                                                            <span className="text-[10px] text-slate-400">{model.fields.length} fields</span>
+                                                        </div>
+                                                        <button
+                                                            onClick={() => acceptModel(model)}
+                                                            disabled={alreadyAdded}
+                                                            className={`p-1 rounded ${alreadyAdded ? 'text-green-500' : 'text-slate-400 hover:text-white'}`}
+                                                        >
+                                                            <div className={alreadyAdded ? "i-ph:check-bold" : "i-ph:plus-bold"} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
+                    </div>
+
+                    {/* Inventory of added models */}
+                    {(step1.dataModels || []).length > 0 && (
+                        <div className="mt-6 pt-4 border-t border-[#333]">
+                            <div className="flex items-center justify-between mb-3">
+                                <h4 className="text-[10px] font-bold text-slate-400 uppercase">Active Models</h4>
+                                <button onClick={clearAllModels} className="text-[10px] text-rose-500 hover:text-rose-400">Clear All</button>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {(step1.dataModels || []).map((model) => (
+                                    <div key={model.id} className="bg-[#1a1a1a] border border-[#333] rounded-lg px-3 py-2 flex items-center gap-2 group">
+                                        <div className="i-ph:table text-cyan-500" />
+                                        <span className="text-xs font-bold text-white">{model.name}</span>
+                                        <button
+                                            onClick={() => removeModel(model.id)}
+                                            className="text-slate-500 hover:text-rose-500 ml-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                        >
+                                            <div className="i-ph:x-bold" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+
             {/* Helper Text */}
             <div className="mt-6 pt-6 border-t border-[#333]">
                 <p className="text-xs text-gray-500 italic">
                     AI can help fill this out, or you can type directly
                 </p>
             </div>
-        </div>
+        </div >
     );
 }

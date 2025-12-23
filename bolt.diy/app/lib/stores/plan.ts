@@ -553,7 +553,7 @@ export function generateTicketsFromPRD(wizardData: DesignWizardData): PlanTicket
 }
 
 // Trigger coding bot when ticket moves to in-progress
-function triggerCodingBot(ticket: PlanTicket) {
+export function triggerCodingBot(ticket: PlanTicket) {
     const prompt = generateCodingPrompt(ticket);
 
     // Store the prompt to be picked up by the chat

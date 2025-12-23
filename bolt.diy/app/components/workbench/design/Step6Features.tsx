@@ -20,23 +20,11 @@ export interface SelectedIntegration {
     config?: Record<string, any>;
 }
 
-export interface DataModel {
-    id: string;
-    name: string;
-    description: string;
-    fields: Array<{
-        name: string;
-        type: 'string' | 'number' | 'boolean' | 'date' | 'array' | 'object' | 'reference';
-        required: boolean;
-        description?: string;
-        referenceModel?: string;
-    }>;
-}
+
 
 interface Step6FeaturesProps {
     selectedIntegrations: SelectedIntegration[];
-    dataModels: DataModel[];
-    onUpdate: (integrations: SelectedIntegration[], dataModels: DataModel[]) => void;
+    onUpdate: (integrations: SelectedIntegration[]) => void;
     onComplete: () => void;
 }
 
@@ -130,17 +118,8 @@ const CATEGORY_LABELS = {
     automation: 'Automation',
 };
 
-export function Step6Features({ selectedIntegrations, dataModels, onUpdate, onComplete }: Step6FeaturesProps) {
-    const wizardData = useStore(designWizardStore);
-    const { step1 } = wizardData;
-
+export function Step6Features({ selectedIntegrations, onUpdate, onComplete }: Step6FeaturesProps) {
     const [searchQuery, setSearchQuery] = useState('');
-    const [dataModelDescription, setDataModelDescription] = useState('');
-    const [isGeneratingModels, setIsGeneratingModels] = useState(false);
-    const [suggestedModels, setSuggestedModels] = useState<DataModel[]>([]);
-    const [showSuggestions, setShowSuggestions] = useState(false);
-
-    // Filter models from description if needed, but we'll use suggestedModels for the UI cards
 
     const isSelected = (integrationId: string) => {
         return (selectedIntegrations || []).some(i => i.id === integrationId && i.enabled);
@@ -154,15 +133,15 @@ export function Step6Features({ selectedIntegrations, dataModels, onUpdate, onCo
             onUpdate(
                 integrations.map(i =>
                     i.id === integrationId ? { ...i, enabled: !i.enabled } : i
-                ),
-                dataModels || []
+                )
             );
         } else {
             onUpdate([
                 ...integrations,
                 { id: integrationId, enabled: true },
-            ], dataModels || []);
+            ]);
         }
+
     };
 
     const selectAll = () => {
@@ -170,12 +149,12 @@ export function Step6Features({ selectedIntegrations, dataModels, onUpdate, onCo
             id: integration.id,
             enabled: true,
         }));
-        onUpdate(allIntegrations, dataModels || []);
+        onUpdate(allIntegrations);
         toast.success('All integrations selected');
     };
 
     const deselectAll = () => {
-        onUpdate([], dataModels || []);
+        onUpdate([]);
         toast.success('All integrations deselected');
     };
 
@@ -186,142 +165,11 @@ export function Step6Features({ selectedIntegrations, dataModels, onUpdate, onCo
                 id: integration.id,
                 enabled: true,
             }));
-        onUpdate(popularIntegrations, dataModels || []);
+        onUpdate(popularIntegrations);
         toast.success('Popular integrations selected');
     };
 
-    const generateModelSuggestions = async () => {
-        if (!step1.description) {
-            toast.error('App description is missing. Please go back to Step 1.');
-            return;
-        }
 
-        try {
-            setIsGeneratingModels(true);
-            setShowSuggestions(true);
-
-            const prompt = `
-                Based on this app description: "${step1.description}"
-                Primary goal: "${step1.primaryGoal}"
-                App Category: "${step1.category}"
-                ${step1.dataDescription ? `User emphasized these data entities: "${step1.dataDescription}"` : ""}
-
-                Suggest a set of core data models needed for this mobile application.
-                Return ONLY a JSON array of objects with this structure:
-                {
-                  "id": "model-id",
-                  "name": "Model Name",
-                  "description": "Short description of what this model represents",
-                  "fields": [
-                    { "name": "field_name", "type": "string|number|boolean|date|array|object|reference", "required": true, "description": "purpose" }
-                  ]
-                }
-                
-                Keep it to the 3-5 most essential models.
-            `;
-
-            const response = await fetch('/api/llmcall', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    system: "You are an expert database architect. Return only valid JSON.",
-                    message: prompt,
-                    model: 'gpt-4o',
-                    provider: { name: 'OpenAI' }
-                })
-            });
-
-            const result = await response.json();
-
-            if (result.error) throw new Error(result.message);
-
-            // generateText returns an object with a 'text' property
-            const content = result.text;
-            const cleanContent = content.replace(/```json|```/g, '').trim();
-            const models = JSON.parse(cleanContent);
-
-            setSuggestedModels(models);
-            toast.success('Generated data model suggestions');
-        } catch (error) {
-            console.error('Failed to generate models:', error);
-            toast.error('Failed to generate suggestions. Please try manual description.');
-        } finally {
-            setIsGeneratingModels(false);
-        }
-    };
-
-    const parseManualDescription = async () => {
-        if (!dataModelDescription || dataModelDescription.length < 10) {
-            toast.error('Please provide a more detailed description first.');
-            return;
-        }
-
-        try {
-            setIsGeneratingModels(true);
-            setShowSuggestions(true);
-
-            const prompt = `
-                Convert this description of data models into a structured JSON schema:
-                "${dataModelDescription}"
-
-                Return ONLY a JSON array of objects with this structure:
-                {
-                  "name": "Model Name",
-                  "description": "Short description",
-                  "fields": [
-                    { "name": "field_name", "type": "string|number|boolean|date|array|object|reference", "required": true, "description": "purpose" }
-                  ]
-                }
-            `;
-
-            const response = await fetch('/api/llmcall', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    system: "You are an expert database architect. Return only valid JSON.",
-                    message: prompt,
-                    model: 'gpt-4o',
-                    provider: { name: 'OpenAI' }
-                })
-            });
-
-            const result = await response.json();
-            if (result.error) throw new Error(result.message);
-
-            const content = result.text;
-            const cleanContent = content.replace(/```json|```/g, '').trim();
-            const models = JSON.parse(cleanContent);
-
-            setSuggestedModels(models);
-            toast.success('Description analyzed and models suggested');
-        } catch (error) {
-            console.error('Failed to parse description:', error);
-            toast.error('Failed to analyze description.');
-        } finally {
-            setIsGeneratingModels(false);
-        }
-    };
-
-    const clearAllModels = () => {
-        onUpdate(selectedIntegrations || [], []);
-        toast.success('Cleared all data models');
-    };
-
-    const acceptModel = (model: DataModel) => {
-        const currentModels = dataModels || [];
-        const exists = currentModels.some(m => m.name === model.name);
-        if (exists) {
-            toast.warning(`${model.name} is already added.`);
-            return;
-        }
-
-        onUpdate(selectedIntegrations || [], [...currentModels, { ...model, id: `model-${Date.now()}-${Math.random().toString(36).substr(2, 9)}` }]);
-        toast.success(`Added ${model.name} model`);
-    };
-
-    const removeModel = (modelId: string) => {
-        onUpdate(selectedIntegrations || [], (dataModels || []).filter(m => m.id !== modelId));
-    };
 
     const groupedIntegrations = INTEGRATIONS.reduce((acc, integration) => {
         if (searchQuery && !integration.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
@@ -485,207 +333,6 @@ export function Step6Features({ selectedIntegrations, dataModels, onUpdate, onCo
                         </p>
                     </div>
                 )}
-
-                {/* Data Models Section */}
-                <div className="mt-16 pt-16 border-t border-[#1E2533]">
-                    <div className="mb-8">
-                        <h2 className="text-3xl font-extrabold text-white mb-3 tracking-tight flex items-center gap-3">
-                            <div className="i-ph:database text-cyan-400" />
-                            Data Models
-                        </h2>
-                        <p className="text-slate-400 text-base max-w-3xl leading-relaxed">
-                            Describe the data your app will work with. For example: "User has name, email, avatar. Each user can create multiple Exams. Each Exam has title, questions array, created date."
-                        </p>
-                    </div>
-
-                    <div className="bg-[#0B0F1C] border border-[#1E2533] rounded-2xl p-8">
-                        <div className="grid lg:grid-cols-2 gap-12">
-                            {/* Input Column */}
-                            <div className="space-y-6">
-                                <div className="flex items-start gap-4">
-                                    <div className="w-12 h-12 rounded-xl bg-cyan-500/10 flex items-center justify-center flex-shrink-0 border border-cyan-500/20">
-                                        <div className="i-ph:sparkle-duotone text-cyan-400 text-2xl" />
-                                    </div>
-                                    <div className="flex-1">
-                                        <label className="block text-sm font-bold text-white mb-2">
-                                            AI Model Suggestion
-                                        </label>
-                                        <p className="text-[13px] text-slate-400 mb-6 leading-relaxed">
-                                            Not sure what data models you need? Let AI suggest the core structure based on your app's purpose.
-                                        </p>
-
-                                        <button
-                                            onClick={generateModelSuggestions}
-                                            disabled={isGeneratingModels}
-                                            className="w-full py-4 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl font-black text-sm transition-all flex items-center justify-center gap-3 shadow-lg shadow-cyan-900/20 group uppercase tracking-widest active:scale-95 disabled:opacity-50"
-                                        >
-                                            {isGeneratingModels ? (
-                                                <div className="i-ph:circle-notch animate-spin text-xl" />
-                                            ) : (
-                                                <div className="i-ph:magic-wand-duotone text-xl group-hover:rotate-12 transition-transform" />
-                                            )}
-                                            {isGeneratingModels ? 'Designing Schema...' : 'Suggest Data Models'}
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div className="pt-6 border-t border-[#1E2533]/50">
-                                    <div className="flex items-center justify-between mb-4">
-                                        <label className="text-xs font-black text-slate-500 uppercase tracking-widest">Manual Description</label>
-                                        <div className="flex items-center gap-4">
-                                            <button
-                                                onClick={parseManualDescription}
-                                                className="bg-transparent border-none p-0 text-[10px] font-black text-cyan-400 hover:text-cyan-300 uppercase tracking-wider flex items-center gap-1 transition-colors outline-none"
-                                            >
-                                                <div className="i-ph:wand text-xs" />
-                                                Analyze Description
-                                            </button>
-                                            <span className="text-[10px] text-slate-600 font-mono tracking-tighter">{dataModelDescription.length} chars</span>
-                                        </div>
-                                    </div>
-                                    <textarea
-                                        value={dataModelDescription}
-                                        onChange={(e) => setDataModelDescription(e.target.value)}
-                                        placeholder="Or describe it yourself... Example: 'Products have name, price, SKU. Orders link a User to multiple Products.'"
-                                        rows={4}
-                                        className="w-full px-4 py-3 bg-[#06080F] border border-[#1E2533] rounded-xl text-white placeholder-slate-700 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 transition-all resize-none text-[13px] leading-relaxed"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Suggestions Column */}
-                            <div className="min-h-[300px] border-l border-[#1E2533] pl-12 hidden lg:block">
-                                <AnimatePresence mode="wait">
-                                    {!showSuggestions && (
-                                        <motion.div
-                                            initial={{ opacity: 0 }}
-                                            animate={{ opacity: 1 }}
-                                            className="h-full flex flex-col items-center justify-center text-center px-4"
-                                        >
-                                            <div className="w-16 h-16 rounded-full bg-[#06080F] border border-[#1E2533] flex items-center justify-center mb-4">
-                                                <div className="i-ph:database-duotone text-slate-700 text-3xl" />
-                                            </div>
-                                            <p className="text-slate-500 text-sm font-medium">Click Suggest to generate a schema for {step1.appName || 'your app'}.</p>
-                                        </motion.div>
-                                    )}
-
-                                    {showSuggestions && (
-                                        <motion.div
-                                            initial={{ opacity: 0, x: 20 }}
-                                            animate={{ opacity: 1, x: 0 }}
-                                            className="space-y-4"
-                                        >
-                                            <div className="flex items-center justify-between mb-6">
-                                                <h4 className="text-xs font-black text-cyan-400 uppercase tracking-widest">Suggested Models</h4>
-                                                {isGeneratingModels && <div className="i-ph:circle-notch animate-spin text-cyan-400" />}
-                                            </div>
-
-                                            <div className="space-y-3 max-h-[350px] overflow-y-auto pr-4 custom-scrollbar">
-                                                {suggestedModels.map((model, idx) => {
-                                                    const alreadyAdded = (dataModels || []).some(m => m.name === model.name);
-                                                    return (
-                                                        <motion.div
-                                                            key={idx}
-                                                            initial={{ opacity: 0, y: 10 }}
-                                                            animate={{ opacity: 1, y: 0 }}
-                                                            transition={{ delay: idx * 0.1 }}
-                                                            className={`p-4 rounded-xl border transition-all ${alreadyAdded
-                                                                ? 'bg-green-500/5 border-green-500/30'
-                                                                : 'bg-[#06080F] border-[#1E2533] hover:border-cyan-500/30'}`}
-                                                        >
-                                                            <div className="flex items-start justify-between gap-3">
-                                                                <div className="flex-1">
-                                                                    <div className="flex items-center gap-2 mb-1">
-                                                                        <span className="text-sm font-black text-white">{model.name}</span>
-                                                                        {alreadyAdded && <div className="i-ph:check-circle-fill text-green-500 text-xs" />}
-                                                                    </div>
-                                                                    <p className="text-[11px] text-slate-400 leading-tight mb-3">{model.description}</p>
-                                                                    <div className="flex flex-wrap gap-1">
-                                                                        {model.fields.slice(0, 4).map((f, i) => (
-                                                                            <span key={i} className="text-[9px] font-black text-slate-500 bg-slate-800/50 px-1.5 py-0.5 rounded uppercase tracking-tighter">
-                                                                                {f.name}
-                                                                            </span>
-                                                                        ))}
-                                                                        {model.fields.length > 4 && <span className="text-[9px] text-slate-600">+{model.fields.length - 4}</span>}
-                                                                    </div>
-                                                                </div>
-
-                                                                <button
-                                                                    onClick={() => acceptModel(model)}
-                                                                    disabled={alreadyAdded}
-                                                                    className={`p-2 rounded-lg transition-all ${alreadyAdded
-                                                                        ? 'text-green-500 cursor-default'
-                                                                        : 'text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/10'}`}
-                                                                >
-                                                                    <div className={alreadyAdded ? "i-ph:check-bold" : "i-ph:plus-bold"} />
-                                                                </button>
-                                                            </div>
-                                                        </motion.div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
-                            </div>
-                        </div>
-
-                        {/* Inventory of added models */}
-                        {(dataModels || []).length > 0 && (
-                            <div className="mt-12 pt-8 border-t border-[#1E2533]">
-                                <div className="flex items-center justify-between mb-6">
-                                    <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Active Schema Definition</h4>
-                                    <button
-                                        onClick={clearAllModels}
-                                        className="bg-transparent border-none p-0 text-[10px] font-black text-rose-500/60 hover:text-rose-500 uppercase tracking-widest flex items-center gap-1.5 transition-colors outline-none"
-                                    >
-                                        <div className="i-ph:trash-simple-bold text-xs" />
-                                        Clear All
-                                    </button>
-                                </div>
-                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                                    {(dataModels || []).map((model) => (
-                                        <div key={model.id} className="bg-[#0D1421] border border-[#1E2533] rounded-xl p-4 group relative">
-                                            <button
-                                                onClick={() => removeModel(model.id)}
-                                                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 text-slate-600 hover:text-rose-500"
-                                            >
-                                                <div className="i-ph:minus-circle-bold" />
-                                            </button>
-                                            <div className="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center mb-3">
-                                                <div className="i-ph:table text-green-400" />
-                                            </div>
-                                            <span className="block text-xs font-black text-white uppercase tracking-tight truncate">{model.name}</span>
-                                            <span className="text-[10px] text-slate-500 font-medium truncate">{model.fields.length} properties</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Example prompt */}
-                    <div className="mt-6 pt-6 border-t border-[#1E2533]">
-                        <details className="group">
-                            <summary className="cursor-pointer text-xs font-bold text-slate-400 hover:text-cyan-400 transition-colors flex items-center gap-2">
-                                <div className="i-ph:lightbulb text-base" />
-                                Show examples
-                                <div className="i-ph:caret-down group-open:rotate-180 transition-transform" />
-                            </summary>
-                            <div className="mt-4 space-y-3 text-xs text-slate-500 leading-relaxed">
-                                <div className="bg-[#06080F] rounded-lg p-4 border border-[#1E2533]">
-                                    <p className="font-bold text-cyan-400 mb-2">E-commerce App:</p>
-                                    <p className="font-mono">Product (name, price, images, stock, category), User (name, email, cart), Order (user, items, total, status, date)</p>
-                                </div>
-                                <div className="bg-[#06080F] rounded-lg p-4 border border-[#1E2533]">
-                                    <p className="font-bold text-cyan-400 mb-2">Social App:</p>
-                                    <p className="font-mono">User (username, bio, avatar, followers), Post (author, content, images, likes, comments), Comment (author, post, text, timestamp)</p>
-                                </div>
-                            </div>
-                        </details>
-                    </div>
-                </div>
-
             </div>
         </div>
     );
