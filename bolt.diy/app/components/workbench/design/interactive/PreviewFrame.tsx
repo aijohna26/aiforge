@@ -4,12 +4,14 @@ import { BASE_VARIABLES } from '~/utils/theme';
 
 interface PreviewFrameProps {
     html: string;
+    id?: string;
     title?: string;
     theme?: ThemeType;
     className?: string;
+    isCapturing?: boolean;
 }
 
-export const PreviewFrame: React.FC<PreviewFrameProps> = ({ html, title = 'Preview', theme, className }) => {
+export const PreviewFrame: React.FC<PreviewFrameProps> = ({ html, id = 'preview', title = 'Preview', theme, className, isCapturing = false }) => {
     const iframeRef = useRef<HTMLIFrameElement>(null);
 
     // Function to construct the full HTML document with Tailwind
@@ -84,6 +86,30 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({ html, title = 'Previ
             </html>
         `;
     };
+
+    if (isCapturing) {
+        // Use the same tailwind proxy for the capture div to ensure styles are processed
+        const tailwindUrl = `/api/image-proxy?url=${encodeURIComponent('https://cdn.tailwindcss.com')}`;
+
+        return (
+            <div className={`w-full h-full bg-white relative overflow-hidden ${className || ''}`} style={{ fontFamily: 'var(--font-sans), sans-serif' }}>
+                <style dangerouslySetInnerHTML={{
+                    __html: `
+                    :root {
+                        ${BASE_VARIABLES}
+                        ${theme?.style || ''}
+                    }
+                    .capture-root-${id} {
+                        background-color: var(--background, white);
+                        color: var(--foreground, #111827);
+                    }
+                `}} />
+                {/* Inject Tailwind CDN into the capture div so the capture library can see the styles */}
+                <script src={tailwindUrl}></script>
+                <div className={`capture-root-${id} h-full w-full`} dangerouslySetInnerHTML={{ __html: html }} />
+            </div>
+        );
+    }
 
     return (
         <iframe

@@ -28,9 +28,14 @@ export const Canvas: React.FC<CanvasProps> = ({ frames, isGenerating = false, cu
     const [zoom, setZoom] = useState(80);
     const [isPanningMode, setIsPanningMode] = useState(false);
     const [isChatOpen, setIsChatOpen] = useState(false);
+    const [isHidingForScreenshot, setIsHidingForScreenshot] = useState(false);
+    const canvasRef = useRef<HTMLDivElement>(null);
     const [prompt, setPrompt] = useState('');
     const transformRef = useRef<ReactZoomPanPinchRef>(null);
     const [hasAutoFocused, setHasAutoFocused] = useState(false);
+
+    // Check if we are being captured by the screenshot engine
+    const isScreenshotMode = isHidingForScreenshot || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('screenshot'));
 
     // Merge custom theme into list
     const EFFECTIVE_THEME_LIST = customTheme
@@ -56,8 +61,58 @@ export const Canvas: React.FC<CanvasProps> = ({ frames, isGenerating = false, cu
         }
     }, [frames, hasAutoFocused]);
 
+    const takeScreenshot = async () => {
+        const t = toast.loading('📸 Capturing studio snapshot...');
+
+        try {
+            // 1. Enter Capture Mode (hides HUD)
+            setIsHidingForScreenshot(true);
+
+            // 2. Wait for React to re-render (very short)
+            await new Promise(resolve => setTimeout(resolve, 60));
+
+            // 3. Clone the entire document state
+            const html = document.documentElement.outerHTML;
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+
+            // 4. RESTORE HUD IMMEDIATELY - We have the data, the user shouldn't wait for server
+            setIsHidingForScreenshot(false);
+
+            // 5. Background send to capture engine
+            const response = await fetch('/api/screenshot', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    html: html,
+                    selector: '#screenshot-area',
+                    width,
+                    height
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.details || 'Capture failed');
+            }
+
+            const { image } = await response.json() as { image: string };
+
+            const link = document.createElement('a');
+            link.download = `appforge-design-${new Date().getTime()}.png`;
+            link.href = image;
+            link.click();
+
+            toast.success('✨ Screenshot captured!', { id: t });
+        } catch (error: any) {
+            console.error('Screenshot failed:', error);
+            toast.error(`Capture failed: ${error.message}`, { id: t });
+            setIsHidingForScreenshot(false); // Ensure recovery on crash
+        }
+    };
+
     return (
-        <div className="relative w-full h-full bg-[#0B0B0E] overflow-hidden flex items-center justify-center">
+        <div ref={canvasRef} className="relative w-full h-full bg-[#0B0B0E] overflow-hidden flex items-center justify-center">
 
             {/* Premium Red Dot Grid Background */}
             <div className="absolute inset-0 pointer-events-none opacity-[0.4]">
@@ -83,16 +138,20 @@ export const Canvas: React.FC<CanvasProps> = ({ frames, isGenerating = false, cu
                 {({ zoomIn, zoomOut, resetTransform, setTransform }) => (
                     <>
                         <TransformComponent
-                            wrapperStyle={{ width: '100%', height: '100%', cursor: isPanningMode ? 'grab' : 'default' }}
+                            wrapperStyle={{ width: '100vw', height: '100vh', background: 'transparent' }}
                             contentStyle={{
                                 width: '8000px',
                                 height: '8000px',
                                 position: 'relative'
                             }}
                         >
-                            <div
-                                className="w-[8000px] h-[8000px] relative pointer-events-auto frames-container"
-                                style={{ cursor: isPanningMode ? 'grab' : 'default' }}
+                            <div id="screenshot-area"
+                                className="w-[8000px] h-[8000px] relative pointer-events-auto frames-container bg-[#0B0B0E]"
+                                style={{
+                                    cursor: isPanningMode ? 'grab' : 'default',
+                                    backgroundImage: 'radial-gradient(#ff0000 1px, transparent 1px)',
+                                    backgroundSize: '40px 40px'
+                                }}
                                 onClick={() => setActiveFrameId(null)}
                             >
                                 {frames.map((frame, index) => (
@@ -102,6 +161,7 @@ export const Canvas: React.FC<CanvasProps> = ({ frames, isGenerating = false, cu
                                         html={frame.html}
                                         isActive={activeFrameId === frame.id}
                                         isPanningMode={isPanningMode}
+                                        isScreenshotMode={isScreenshotMode}
                                         theme={selectedTheme}
                                         onSelect={setActiveFrameId}
                                         defaultX={frame.x || (4000 + (index * 450) - 150)}
@@ -112,120 +172,125 @@ export const Canvas: React.FC<CanvasProps> = ({ frames, isGenerating = false, cu
                         </TransformComponent>
 
                         {/* TOP CENTER TOOLBAR (Premium Dubs Style) */}
-                        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-0.5 p-1.5 bg-[#1E1E21]/95 backdrop-blur-2xl border border-white/[0.08] rounded-[22px] shadow-[0_8px_32px_rgba(0,0,0,0.6)]">
-                            {/* AI Mode Toggle (Reference Style) */}
-                            <button
-                                onClick={() => setIsChatOpen(!isChatOpen)}
-                                className={`group relative size-9 flex items-center justify-center rounded-full transition-all duration-300 ${isChatOpen
-                                    ? 'bg-[#9333EA] text-white shadow-[0_0_20px_rgba(147,51,234,0.4)]'
-                                    : 'bg-white/[0.06] text-white/50 hover:bg-[#9333EA]/20 hover:text-[#9333EA]'}`}
-                                aria-label="AI Studio"
-                            >
-                                <div className="i-ph:magic-wand-fill text-lg transition-transform group-hover:rotate-12" />
-                            </button>
+                        {!isScreenshotMode && (
+                            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-0.5 p-1.5 bg-[#1E1E21]/95 backdrop-blur-2xl border border-white/[0.08] rounded-[22px] shadow-[0_8px_32px_rgba(0,0,0,0.6)] screenshot-exclude">
+                                {/* AI Mode Toggle (Reference Style) */}
+                                <button
+                                    onClick={() => setIsChatOpen(!isChatOpen)}
+                                    className={`group relative size-9 flex items-center justify-center rounded-full transition-all duration-300 ${isChatOpen
+                                        ? 'bg-[#9333EA] text-white shadow-[0_0_20px_rgba(147,51,234,0.4)]'
+                                        : 'bg-white/[0.06] text-white/50 hover:bg-[#9333EA]/20 hover:text-[#9333EA]'}`}
+                                    aria-label="AI Studio"
+                                >
+                                    <div className="i-ph:magic-wand-fill text-lg transition-transform group-hover:rotate-12" />
+                                </button>
 
-                            <div className="w-px h-5 bg-white/[0.08] mx-1.5" />
+                                <div className="w-px h-5 bg-white/[0.08] mx-1.5" />
 
-                            <div className="flex items-center relative">
-                                {/* Theme Selection dots */}
-                                <div className="flex items-center gap-1.5 px-2">
-                                    {EFFECTIVE_THEME_LIST.slice(0, 4).map((theme) => {
-                                        const colors = parseThemeColors(theme.style);
-                                        const isSelected = selectedThemeId === theme.id;
-                                        return (
-                                            <button
-                                                key={theme.id}
-                                                onClick={() => setSelectedThemeId(theme.id)}
-                                                className={`size-5 rounded-full ring-offset-2 ring-offset-[#1E1E21] transition-all hover:scale-110 ${isSelected ? 'ring-2 ring-indigo-500' : 'ring-1 ring-white/10'}`}
-                                                style={{ backgroundColor: colors.primary }}
-                                                title={theme.name}
-                                            />
-                                        );
-                                    })}
+                                <div className="flex items-center relative">
+                                    {/* Theme Selection dots */}
+                                    <div className="flex items-center gap-1.5 px-2">
+                                        {EFFECTIVE_THEME_LIST.slice(0, 4).map((theme) => {
+                                            const colors = parseThemeColors(theme.style);
+                                            const isSelected = selectedThemeId === theme.id;
+                                            return (
+                                                <button
+                                                    key={theme.id}
+                                                    onClick={() => setSelectedThemeId(theme.id)}
+                                                    className={`size-5 rounded-full ring-offset-2 ring-offset-[#1E1E21] transition-all hover:scale-110 ${isSelected ? 'ring-2 ring-indigo-500' : 'ring-1 ring-white/10'}`}
+                                                    style={{ backgroundColor: colors.primary }}
+                                                    title={theme.name}
+                                                />
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* More themes toggle */}
+                                    <button
+                                        onClick={() => setIsThemeOpen(!isThemeOpen)}
+                                        className={`flex items-center gap-2 pl-2 pr-4 py-2 rounded-full transition-all duration-300 ${isThemeOpen
+                                            ? 'bg-[#9333EA] text-white shadow-[0_0_20px_rgba(147,51,234,0.3)]'
+                                            : 'bg-white/[0.06] text-white/50 hover:bg-white/[0.12] hover:text-white/80'}`}
+                                    >
+                                        <span className="text-[10px] font-black uppercase tracking-[0.1em]">+{EFFECTIVE_THEME_LIST.length - 4} more</span>
+                                        <div className={`i-ph:caret-down-bold text-[10px] transition-all duration-300 ${isThemeOpen ? 'rotate-180' : ''}`} />
+                                    </button>
+
+                                    {/* Theme Selector Popover */}
+                                    <AnimatePresence>
+                                        {isThemeOpen && (
+                                            <motion.div
+                                                initial={{ opacity: 0, y: 12, scale: 0.95 }}
+                                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                exit={{ opacity: 0, y: 12, scale: 0.95 }}
+                                                className="absolute top-[calc(100%+12px)] left-0 w-[280px] max-h-[480px] overflow-y-auto bg-[#0A0A0B]/98 backdrop-blur-[40px] border border-white/[0.08] rounded-[28px] p-2.5 shadow-[0_32px_80px_rgba(0,0,0,0.9)] z-[70] custom-scrollbar screenshot-exclude"
+                                            >
+                                                <div className="px-3 py-2 mb-2 border-b border-white/5">
+                                                    <h5 className="text-[10px] font-black text-white/30 uppercase tracking-[0.15em]">Design Library</h5>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    {EFFECTIVE_THEME_LIST.map((theme) => {
+                                                        const colors = parseThemeColors(theme.style);
+                                                        const isSelected = selectedThemeId === theme.id;
+                                                        return (
+                                                            <button
+                                                                key={theme.id}
+                                                                onClick={() => {
+                                                                    setSelectedThemeId(theme.id);
+                                                                    setIsThemeOpen(false);
+                                                                }}
+                                                                className={`w-full flex items-center gap-4 px-4 py-3 rounded-[18px] transition-all duration-200 group ${isSelected
+                                                                    ? 'bg-[#9333EA]/10 border border-[#9333EA]/30 text-white'
+                                                                    : 'bg-transparent border border-transparent hover:bg-white/[0.03] text-white/50 hover:text-white'}`}
+                                                            >
+                                                                <div className="flex -space-x-1.5 translate-y-[1px]">
+                                                                    <div className="size-4 rounded-full ring-2 ring-[#0A0A0B] shadow-lg" style={{ backgroundColor: colors.primary }} />
+                                                                    <div className="size-4 rounded-full ring-2 ring-[#0A0A0B] shadow-lg" style={{ backgroundColor: colors.secondary || colors.background }} />
+                                                                </div>
+                                                                <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-left flex-1">{theme.name}</span>
+                                                                {isSelected ? (
+                                                                    <div className="i-ph:check-circle-fill text-[#9333EA] text-base" />
+                                                                ) : (
+                                                                    <div className="i-ph:circle-bold text-white/10 text-xs opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                                )}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
                                 </div>
 
-                                {/* More themes toggle */}
-                                <button
-                                    onClick={() => setIsThemeOpen(!isThemeOpen)}
-                                    className={`flex items-center gap-2 pl-2 pr-4 py-2 rounded-full transition-all duration-300 ${isThemeOpen
-                                        ? 'bg-[#9333EA] text-white shadow-[0_0_20px_rgba(147,51,234,0.3)]'
-                                        : 'bg-white/[0.06] text-white/50 hover:bg-white/[0.12] hover:text-white/80'}`}
-                                >
-                                    <span className="text-[10px] font-black uppercase tracking-[0.1em]">+{EFFECTIVE_THEME_LIST.length - 4} more</span>
-                                    <div className={`i-ph:caret-down-bold text-[10px] transition-all duration-300 ${isThemeOpen ? 'rotate-180' : ''}`} />
-                                </button>
+                                <div className="w-px h-5 bg-white/[0.08] mx-1.5" />
 
-                                {/* Theme Selector Popover */}
-                                <AnimatePresence>
-                                    {isThemeOpen && (
-                                        <motion.div
-                                            initial={{ opacity: 0, y: 12, scale: 0.95 }}
-                                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                                            exit={{ opacity: 0, y: 12, scale: 0.95 }}
-                                            className="absolute top-[calc(100%+12px)] left-0 w-[280px] max-h-[480px] overflow-y-auto bg-[#0A0A0B]/98 backdrop-blur-[40px] border border-white/[0.08] rounded-[28px] p-2.5 shadow-[0_32px_80px_rgba(0,0,0,0.9)] z-[70] custom-scrollbar"
-                                        >
-                                            <div className="px-3 py-2 mb-2 border-b border-white/5">
-                                                <h5 className="text-[10px] font-black text-white/30 uppercase tracking-[0.15em]">Design Library</h5>
-                                            </div>
-                                            <div className="space-y-1">
-                                                {EFFECTIVE_THEME_LIST.map((theme) => {
-                                                    const colors = parseThemeColors(theme.style);
-                                                    const isSelected = selectedThemeId === theme.id;
-                                                    return (
-                                                        <button
-                                                            key={theme.id}
-                                                            onClick={() => {
-                                                                setSelectedThemeId(theme.id);
-                                                                setIsThemeOpen(false);
-                                                            }}
-                                                            className={`w-full flex items-center gap-4 px-4 py-3 rounded-[18px] transition-all duration-200 group ${isSelected
-                                                                ? 'bg-[#9333EA]/10 border border-[#9333EA]/30 text-white'
-                                                                : 'bg-transparent border border-transparent hover:bg-white/[0.03] text-white/50 hover:text-white'}`}
-                                                        >
-                                                            <div className="flex -space-x-1.5 translate-y-[1px]">
-                                                                <div className="size-4 rounded-full ring-2 ring-[#0A0A0B] shadow-lg" style={{ backgroundColor: colors.primary }} />
-                                                                <div className="size-4 rounded-full ring-2 ring-[#0A0A0B] shadow-lg" style={{ backgroundColor: colors.secondary || colors.background }} />
-                                                            </div>
-                                                            <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-left flex-1">{theme.name}</span>
-                                                            {isSelected ? (
-                                                                <div className="i-ph:check-circle-fill text-[#9333EA] text-base" />
-                                                            ) : (
-                                                                <div className="i-ph:circle-bold text-white/10 text-xs opacity-0 group-hover:opacity-100 transition-opacity" />
-                                                            )}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
+                                {/* Right Utils */}
+                                <div className="flex items-center gap-1 pr-1">
+                                    <button
+                                        onClick={takeScreenshot}
+                                        className="size-9 flex items-center justify-center rounded-full text-white/50 bg-white/[0.06] hover:bg-[#9333EA]/20 hover:text-[#9333EA] transition-all"
+                                    >
+                                        <div className="i-ph:camera-bold text-lg" />
+                                    </button>
+                                    <button
+                                        onClick={() => toast.success('✨ Design Saved')}
+                                        className="px-5 py-2 bg-gradient-to-r from-[#F97316] to-[#EA580C] hover:from-[#EA580C] hover:to-[#C2410C] text-white rounded-full text-[11px] font-black uppercase tracking-wider transition-all shadow-[0_4px_12px_rgba(249,115,22,0.3)] hover:shadow-[0_4px_20px_rgba(249,115,22,0.5)] active:scale-95"
+                                    >
+                                        Save
+                                    </button>
+                                </div>
                             </div>
-
-                            <div className="w-px h-5 bg-white/[0.08] mx-1.5" />
-
-                            {/* Right Utils */}
-                            <div className="flex items-center gap-1 pr-1">
-                                <button className="size-9 flex items-center justify-center rounded-full text-white/50 bg-white/[0.06] hover:bg-[#9333EA]/20 hover:text-[#9333EA] transition-all">
-                                    <div className="i-ph:camera-bold text-lg" />
-                                </button>
-                                <button
-                                    onClick={() => toast.success('✨ Design Saved')}
-                                    className="px-5 py-2 bg-gradient-to-r from-[#F97316] to-[#EA580C] hover:from-[#EA580C] hover:to-[#C2410C] text-white rounded-full text-[11px] font-black uppercase tracking-wider transition-all shadow-[0_4px_12px_rgba(249,115,22,0.3)] hover:shadow-[0_4px_20px_rgba(249,115,22,0.5)] active:scale-95"
-                                >
-                                    Save
-                                </button>
-                            </div>
-                        </div>
+                        )}
 
                         {/* AI Chat Popover (Premium Dubs Style) */}
                         <AnimatePresence>
-                            {isChatOpen && (
+                            {(isChatOpen && !isScreenshotMode) && (
                                 <motion.div
                                     initial={{ opacity: 0, x: -12, scale: 0.96 }}
                                     animate={{ opacity: 1, x: 0, scale: 1 }}
                                     exit={{ opacity: 0, x: -12, scale: 0.96 }}
                                     transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                                    className="fixed top-24 left-6 w-[380px] bg-[#17171A]/98 backdrop-blur-[40px] border border-white/[0.1] rounded-[28px] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.8)] z-[100]"
+                                    className="fixed top-24 left-6 w-[380px] bg-[#17171A]/98 backdrop-blur-[40px] border border-white/[0.1] rounded-[28px] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.8)] z-[100] screenshot-exclude"
                                 >
                                     <div className="flex flex-col gap-5">
                                         <div className="flex items-center justify-between">
@@ -279,90 +344,92 @@ export const Canvas: React.FC<CanvasProps> = ({ frames, isGenerating = false, cu
                         </AnimatePresence>
 
                         {/* BOTTOM CENTER STATUS BAR (Premium Dubs Style) */}
-                        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 p-1.5 bg-[#1E1E21]/95 backdrop-blur-2xl border border-white/[0.08] rounded-full shadow-[0_8px_32px_rgba(0,0,0,0.6)]">
-                            {/* Selection Tool (Arrow) */}
-                            <button
-                                className={`group size-9 flex items-center justify-center rounded-full transition-all duration-200 ${!isPanningMode
-                                    ? 'bg-[#9333EA]/10 text-[#9333EA] border border-[#9333EA]/20 shadow-[0_0_15px_rgba(147,51,234,0.15)]'
-                                    : 'text-white/40 bg-transparent hover:bg-white/[0.05]'
-                                    }`}
-                                onClick={() => setIsPanningMode(false)}
-                                aria-label="Selection tool"
-                            >
-                                <div className="i-ph:cursor-fill text-lg" />
-                            </button>
+                        {!isScreenshotMode && (
+                            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 p-1.5 bg-[#1E1E21]/95 backdrop-blur-2xl border border-white/[0.08] rounded-full shadow-[0_8px_32px_rgba(0,0,0,0.6)] screenshot-exclude">
+                                {/* Selection Tool (Arrow) */}
+                                <button
+                                    className={`group size-9 flex items-center justify-center rounded-full transition-all duration-200 ${!isPanningMode
+                                        ? 'bg-[#9333EA]/10 text-[#9333EA] border border-[#9333EA]/20 shadow-[0_0_15px_rgba(147,51,234,0.15)]'
+                                        : 'text-white/40 bg-transparent hover:bg-white/[0.05]'
+                                        }`}
+                                    onClick={() => setIsPanningMode(false)}
+                                    aria-label="Selection tool"
+                                >
+                                    <div className="i-ph:cursor-fill text-lg" />
+                                </button>
 
-                            {/* Hand Tool */}
-                            <button
-                                className={`group flex items-center gap-2.5 px-6 py-2.5 rounded-full transition-all duration-200 ${isPanningMode
-                                    ? 'bg-[#9333EA]/10 text-[#9333EA] border border-[#9333EA]/20 shadow-[0_0_15px_rgba(147,51,234,0.15)]'
-                                    : 'text-white/40 bg-transparent hover:bg-white/[0.05]'
-                                    }`}
-                                onClick={() => setIsPanningMode(true)}
-                                aria-label="Hand tool"
-                            >
-                                <div className="i-ph:hand-fill text-lg" />
-                                <span className="text-[12px] font-bold tracking-tight">Hand</span>
-                            </button>
+                                {/* Hand Tool */}
+                                <button
+                                    className={`group flex items-center gap-2.5 px-6 py-2.5 rounded-full transition-all duration-200 ${isPanningMode
+                                        ? 'bg-[#9333EA]/10 text-[#9333EA] border border-[#9333EA]/20 shadow-[0_0_15px_rgba(147,51,234,0.15)]'
+                                        : 'text-white/40 bg-transparent hover:bg-white/[0.05]'
+                                        }`}
+                                    onClick={() => setIsPanningMode(true)}
+                                    aria-label="Hand tool"
+                                >
+                                    <div className="i-ph:hand-fill text-lg" />
+                                    <span className="text-[12px] font-bold tracking-tight">Hand</span>
+                                </button>
 
-                            <div className="w-px h-5 bg-white/5 mx-1" />
+                                <div className="w-px h-5 bg-white/5 mx-1" />
 
-                            {/* Zoom Out Button */}
-                            <button
-                                onClick={() => zoomOut(0.1)}
-                                className="group size-9 flex items-center justify-center text-white/40 bg-transparent hover:bg-white/[0.06] hover:text-white rounded-full transition-all"
-                                aria-label="Zoom out"
-                            >
-                                <div className="i-ph:minus-bold text-base" />
-                            </button>
+                                {/* Zoom Out Button */}
+                                <button
+                                    onClick={() => zoomOut(0.1)}
+                                    className="group size-9 flex items-center justify-center text-white/40 bg-transparent hover:bg-white/[0.06] hover:text-white rounded-full transition-all"
+                                    aria-label="Zoom out"
+                                >
+                                    <div className="i-ph:minus-bold text-base" />
+                                </button>
 
-                            <div className="flex items-center gap-1 px-3 py-1.5 bg-black/40 rounded-full border border-white/[0.04]">
-                                <span className="text-xs font-bold text-white/80 tabular-nums min-w-[38px] text-center">{zoom}%</span>
+                                <div className="flex items-center gap-1 px-3 py-1.5 bg-black/40 rounded-full border border-white/[0.04]">
+                                    <span className="text-xs font-bold text-white/80 tabular-nums min-w-[38px] text-center">{zoom}%</span>
+                                </div>
+
+                                {/* Zoom In Button */}
+                                <button
+                                    onClick={() => zoomIn(0.1)}
+                                    className="group size-9 flex items-center justify-center text-white/40 bg-transparent hover:bg-white/[0.06] hover:text-white rounded-full transition-all"
+                                    aria-label="Zoom in"
+                                >
+                                    <div className="i-ph:plus-bold text-base" />
+                                </button>
+
+                                <div className="w-px h-5 bg-white/5 mx-1" />
+
+                                {/* Fit to Screen */}
+                                <button
+                                    onClick={() => {
+                                        if (frames.length > 0) {
+                                            const avgX = frames.reduce((sum, f) => sum + (f.x || 4000), 0) / frames.length;
+                                            const avgY = frames.reduce((sum, f) => sum + (f.y || 3600), 0) / frames.length;
+                                            setTransform(
+                                                window.innerWidth / 2 - (avgX * 0.8) - (375 * 0.8 / 2),
+                                                window.innerHeight / 2 - (avgY * 0.8) - (812 * 0.8 / 2),
+                                                0.8,
+                                                400
+                                            );
+                                        } else {
+                                            resetTransform();
+                                        }
+                                    }}
+                                    className="group size-9 flex items-center justify-center text-white/40 bg-white/[0.04] hover:bg-indigo-500/20 hover:text-indigo-400 border border-white/[0.04] rounded-full transition-all active:scale-95 shadow-xl"
+                                    aria-label="Fit to screen"
+                                >
+                                    <div className="i-ph:frame-corners-bold text-lg" />
+                                </button>
                             </div>
-
-                            {/* Zoom In Button */}
-                            <button
-                                onClick={() => zoomIn(0.1)}
-                                className="group size-9 flex items-center justify-center text-white/40 bg-transparent hover:bg-white/[0.06] hover:text-white rounded-full transition-all"
-                                aria-label="Zoom in"
-                            >
-                                <div className="i-ph:plus-bold text-base" />
-                            </button>
-
-                            <div className="w-px h-5 bg-white/5 mx-1" />
-
-                            {/* Fit to Screen */}
-                            <button
-                                onClick={() => {
-                                    if (frames.length > 0) {
-                                        const avgX = frames.reduce((sum, f) => sum + (f.x || 4000), 0) / frames.length;
-                                        const avgY = frames.reduce((sum, f) => sum + (f.y || 3600), 0) / frames.length;
-                                        setTransform(
-                                            window.innerWidth / 2 - (avgX * 0.8) - (375 * 0.8 / 2),
-                                            window.innerHeight / 2 - (avgY * 0.8) - (812 * 0.8 / 2),
-                                            0.8,
-                                            400
-                                        );
-                                    } else {
-                                        resetTransform();
-                                    }
-                                }}
-                                className="group size-9 flex items-center justify-center text-white/40 bg-white/[0.04] hover:bg-indigo-500/20 hover:text-indigo-400 border border-white/[0.04] rounded-full transition-all active:scale-95 shadow-xl"
-                                aria-label="Fit to screen"
-                            >
-                                <div className="i-ph:frame-corners-bold text-lg" />
-                            </button>
-                        </div>
+                        )}
 
                         {/* Syncing Indicator (Premium Dubs Style) */}
                         <AnimatePresence>
-                            {isGenerating && (
+                            {(isGenerating && !isScreenshotMode) && (
                                 <motion.div
                                     initial={{ opacity: 0, x: -20, scale: 0.9 }}
                                     animate={{ opacity: 1, x: 0, scale: 1 }}
                                     exit={{ opacity: 0, x: -20, scale: 0.9 }}
                                     transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                                    className="absolute bottom-8 left-8 z-50 flex items-center gap-3 px-6 py-3 bg-gradient-to-br from-indigo-600 to-indigo-700 rounded-[18px] text-white shadow-[0_8px_32px_rgba(79,70,229,0.5)] border border-indigo-400/20"
+                                    className="absolute bottom-8 left-8 z-50 flex items-center gap-3 px-6 py-3 bg-gradient-to-br from-indigo-600 to-indigo-700 rounded-[18px] text-white shadow-[0_8px_32px_rgba(79,70,229,0.5)] border border-indigo-400/20 screenshot-exclude"
                                 >
                                     <div className="relative">
                                         <div className="i-ph:circle-notch-bold animate-spin text-base" />

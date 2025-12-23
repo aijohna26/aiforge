@@ -579,7 +579,7 @@ export function BrandStyleFrame() {
                                                 onClick={() => updateStep3Data({ logoTextMode: option.value })}
                                                 className={`px-4 py-1.5 text-sm rounded-full transition-colors ${step3.logoTextMode === option.value
                                                     ? 'bg-blue-600 text-white'
-                                                    : 'text-slate-200 hover:text-white hover:bg-slate-700/50'
+                                                    : 'text-slate-900 hover:text-white hover:bg-slate-700/50'
                                                     }`}
                                                 type="button"
                                             >

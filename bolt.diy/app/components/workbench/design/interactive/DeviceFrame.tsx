@@ -10,8 +10,9 @@ interface DeviceFrameProps {
     html: string;
     isActive: boolean;
     isPanningMode: boolean;
-    theme: ThemeType;
+    theme?: ThemeType;
     onSelect: (id: string) => void;
+    isScreenshotMode?: boolean;
     defaultX?: number;
     defaultY?: number;
 }
@@ -23,8 +24,9 @@ export const DeviceFrame: React.FC<DeviceFrameProps> = ({
     isPanningMode,
     theme,
     onSelect,
-    defaultX = 100,
-    defaultY = 50
+    isScreenshotMode = false,
+    defaultX = 4000,
+    defaultY = 3600,
 }) => {
     return (
         <Rnd
@@ -43,9 +45,9 @@ export const DeviceFrame: React.FC<DeviceFrameProps> = ({
             onDragStart={() => onSelect(id)}
             className={`group ${isActive ? 'z-50' : 'z-10'}`}
         >
-            {/* PRO Floating Frame Header (Dubs/Reference Style) */}
-            <div className={`absolute -top-12 left-0 right-0 flex justify-center z-[100] transition-all duration-300 ${isActive ? 'opacity-100 scale-100' : 'opacity-40 scale-95 hover:opacity-100'}`}>
-                <div className={`flex items-center gap-1.5 p-1 bg-[#0A0A0B]/90 backdrop-blur-[40px] border rounded-full shadow-2xl transition-all ${isActive ? 'border-indigo-500/50 shadow-indigo-500/20' : 'border-white/10'}`}>
+            {/* PRO Floating Frame Header (Dubs Pro Style) */}
+            {!isScreenshotMode && (
+                <div className={`absolute -top-14 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-4 py-2 bg-[#0A0A0B]/90 backdrop-blur-[40px] border border-white/[0.08] rounded-full shadow-[0_12px_40px_rgba(0,0,0,0.6)] transition-all duration-300 screenshot-exclude ${isActive ? 'opacity-100 translate-y-0 scale-100 ring-1 ring-indigo-500/30' : 'opacity-40 translate-y-2 scale-95 pointer-events-none'}`}>
                     <div className="flex items-center gap-2 px-3.5 py-1.5 border-r border-white/5">
                         <div className="i-ph:dots-six-vertical-bold text-white/20 text-xs handle cursor-grab active:cursor-grabbing" />
                         <span className="text-[11px] font-bold text-white tracking-wide whitespace-nowrap">
@@ -77,7 +79,7 @@ export const DeviceFrame: React.FC<DeviceFrameProps> = ({
                         </button>
                     </div>
                 </div>
-            </div>
+            )}
 
             <div
                 className={`
@@ -96,16 +98,16 @@ export const DeviceFrame: React.FC<DeviceFrameProps> = ({
 
                 {/* Content Area - Strictly Mobile Aspect Ratio */}
                 <div className="w-full h-full relative z-10 bg-[#FFFFFF]">
-                    <PreviewFrame html={html} theme={theme} />
+                    <PreviewFrame html={html} id={id} theme={theme} />
                 </div>
 
                 {/* PRO Selection Handles (Reference Style) */}
                 <AnimatePresence>
-                    {isActive && (
+                    {(isActive && !isScreenshotMode) && (
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
-                            className="absolute inset-0 pointer-events-none z-30"
+                            className="absolute inset-0 pointer-events-none z-30 screenshot-exclude"
                         >
                             {/* Pro-style Corner Points (Handles) */}
                             <div className="absolute -top-1 -left-1 size-3 bg-white border-[1.5px] border-indigo-500 shadow-lg pointer-events-auto" />
