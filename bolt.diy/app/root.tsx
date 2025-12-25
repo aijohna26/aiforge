@@ -9,10 +9,23 @@ import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { ClientOnly } from 'remix-utils/client-only';
 import { cssTransition, ToastContainer } from 'react-toastify';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createClient as createServerClient } from './lib/supabase/server';
 import { createClient as createBrowserClient } from './lib/supabase/browser';
 import { alertStore, hideAlert } from './lib/stores/alertStore';
 import { CreditAlert } from './components/workbench/design/CreditAlert';
+import { useStore } from '@nanostores/react';
+import { logStore } from './lib/stores/logs';
+
+// Create a client for React Query
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60, // 1 minute
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const response = new Headers();
@@ -106,7 +119,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      <ClientOnly>{() => <DndProvider backend={HTML5Backend}>{children}</DndProvider>}</ClientOnly>
+      <QueryClientProvider client={queryClient}>
+        <ClientOnly>{() => <DndProvider backend={HTML5Backend}>{children}</DndProvider>}</ClientOnly>
+      </QueryClientProvider>
       <ToastContainer
         closeButton={({ closeToast }) => {
           return (
@@ -155,8 +170,6 @@ function GlobalAlert() {
   );
 }
 
-import { useStore } from '@nanostores/react';
-import { logStore } from './lib/stores/logs';
 
 export default function App() {
   const { session, env } = useLoaderData<typeof loader>();

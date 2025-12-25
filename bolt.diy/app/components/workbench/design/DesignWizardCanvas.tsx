@@ -348,7 +348,7 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }:
     return (
         <>
             {/* VS Code Inspired Absolute Navigation Bar */}
-            <div className="absolute top-6 left-1/2 transform -translate-x-1/2 z-[9999] flex items-center gap-4">
+            <div className={`absolute top-6 left-1/2 transform -translate-x-1/2 z-[9970] flex items-center gap-4 transition-opacity duration-300 ${wizardData.step5.isStudioActive ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
                 <div className="flex items-center gap-2 bg-[#1A1A1A] border border-[#333] rounded-full px-6 py-2.5 shadow-2xl">
                     {steps.map((step, index) => (
                         <div key={step.id} className="flex items-center">
@@ -492,7 +492,7 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }:
             </div>
 
             {/* Miro-style Sticky Navigation Tray */}
-            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none">
+            <div className={`absolute bottom-8 left-1/2 -translate-x-1/2 z-[9970] pointer-events-none transition-opacity duration-300 ${wizardData.step5.isStudioActive ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
                 <div className="flex items-center gap-4 bg-[#11121D]/80 backdrop-blur-xl border border-[#1F243B] rounded-2xl px-6 py-4 shadow-[0_20px_50px_rgba(0,0,0,0.5)] pointer-events-auto">
                     {/* Recenter Button (Miro style) */}
                     <button

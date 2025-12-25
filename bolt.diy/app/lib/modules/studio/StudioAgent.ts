@@ -25,6 +25,8 @@ export interface StudioScreenRequest {
     type: string;
     purpose: string;
     keyElements: string[];
+    showLogo?: boolean;
+    showBottomNav?: boolean;
 }
 
 export class StudioAgent {
@@ -125,21 +127,22 @@ export class StudioAgent {
       - **Condensed Buttons**: Use py-2.5 or py-3 for buttons, not py-4.
       - **Minimal Bottom Spacing**: Avoid excessive pb-8, pb-12 at the bottom of screens.
 
-      DESIGN SYSTEM SPECIFICATIONS:
-      - Use ONLY Tailwind CSS classes for styling.
-      - Use theme CSS variables ONLY for color-related properties (bg-[var(--background)], text-[var(--foreground)], border-[var(--border)], ring-[var(--ring)], etc.)
+      DESIGN SYSTEM & THEMING (NON-NEGOTIABLE):
+      - You MUST use semantic Tailwind classes that map to our dynamic theme variables.
+      - NEVER use hardcoded hex codes, RGB, or hsl values for colors in your HTML.
+      - THEME-AWARE CLASSES TO USE:
+        *   Backgrounds: bg-background, bg-primary, bg-secondary, bg-accent, bg-muted, bg-card, bg-popover
+        *   Text: text-foreground, text-primary, text-secondary, text-accent, text-muted, text-card-foreground
+        *   Borders: border-border, border-input
+        *   Rings/Focus: ring-ring
+        *   Radius: rounded-lg, rounded-md, rounded-sm (these map to our theme radius)
 
-      SEMANTIC COLORS:
-      - Background: bg-[var(--background)]
-      - Text: text-[var(--foreground)]
-      - Primary: bg-[var(--primary)] or text-[var(--primary)]
-      - Border: border-[var(--border)]
-      - Accent: bg-[var(--accent)] or text-[var(--accent)]
+      🚨 IMPORTANT: The hex codes provided in the prompt's 'Custom Theme Context' are for REFERENCE ONLY so you understand the brand's intent. Do NOT put these hex codes in your code. Instead, use the semantic classes above (e.g., if the brand primary is purple, use 'bg-primary' to apply it). This allows the user to swap themes instantly.
 
       UI GUIDELINES:
       - Create modular, composable layouts.
       - Use clear typography hierarchy.
-      - Ensure premium feel with gradients, micro-interactions, and soft shadows.
+      - Ensure premium feel with gradients (use bg-gradient-to-br from-primary/20 to-transparent for example), micro-interactions, and soft shadows.
       - Use Lucide-style iconography (represent as beautiful SVG or common patterns).
 
       OUTPUT:
@@ -166,20 +169,21 @@ export class StudioAgent {
             : '';
 
         const colorContext = branding.colorPalette
-            ? `\n🌈 COLOR PALETTE (USE THESE EXACT COLORS):
-- Primary: ${branding.colorPalette.primary}
-- Secondary: ${branding.colorPalette.secondary}
-- Accent: ${branding.colorPalette.accent}
-- Background: ${branding.colorPalette.background}
-- Text Primary: ${branding.colorPalette.text?.primary}
-- Text Secondary: ${branding.colorPalette.text?.secondary}`
-            : `\n🌈 COLORS: Primary: ${branding.primaryColor}, Background: ${branding.backgroundColor}, Text: ${branding.textColor}`;
+            ? `\n🌈 CUSTOM THEME CONTEXT (VARIABLE DEFINITIONS):
+The following hex codes are what the semantic variables currently represent in the 'Custom' theme:
+- var(--primary) is currently ${branding.colorPalette.primary}
+- var(--secondary) is currently ${branding.colorPalette.secondary}
+- var(--accent) is currently ${branding.colorPalette.accent}
+- var(--background) is currently ${branding.colorPalette.background}
+- var(--foreground) is currently ${branding.colorPalette.text?.primary}
+- var(--muted) is currently ${branding.colorPalette.text?.secondary}`
+            : `\n🌈 COLORS (REFERENCE ONLY): Primary: ${branding.primaryColor}, Background: ${branding.backgroundColor}, Text: ${branding.textColor}`;
 
-        const styleContext = `\n✨ DESIGN SYSTEM:
-- UI Style: ${branding.uiStyle || 'modern'} (${branding.uiStyle === 'playful' ? 'fun, whimsical, colorful, rounded corners, friendly' : branding.uiStyle === 'minimal' ? 'clean, spacious, simple' : branding.uiStyle === 'elegant' ? 'sophisticated, refined' : 'contemporary'})
-- Personality: ${branding.personality || 'professional'} (${branding.personality === 'friendly' ? 'warm, approachable, conversational tone' : branding.personality === 'energetic' ? 'vibrant, dynamic, exciting' : branding.personality === 'calm' ? 'peaceful, soothing' : 'business-appropriate'})
+        const styleContext = `\n✨ DESIGN SYSTEM INTENT:
+- UI Style: ${branding.uiStyle || 'modern'}
+- Personality: ${branding.personality || 'professional'}
 - Typography: ${branding.typography || 'sans-serif'}
-- Components: ${branding.components || 'rounded'}`;
+- Base Radius: ${branding.components || 'rounded'}`;
 
         return `
 Generate a ${screen.type} screen for "${branding.appName}".
@@ -195,14 +199,16 @@ ${styleContext}
 ${colorContext}
 ${logoDirective}
 
-🎯 CRITICAL REQUIREMENTS:
-1. **Target Audience Adherence**: Design MUST be appropriate for ${branding.targetAudience || 'general users'}. Use age-appropriate language, imagery, and complexity.
-2. **Logo Consistency**: ${branding.logo ? 'Use the EXACT logo image tag provided above. DO NOT create a different logo.' : 'Create a simple text-based logo placeholder.'}
-3. **Color Consistency**: Use ONLY the colors specified in the palette above. DO NOT invent new colors.
-4. **Style Consistency**: Follow the "${branding.uiStyle || 'modern'}" style strictly with a "${branding.personality || 'professional'}" personality.
-5. **Brand Identity**: Every element should reflect the brand identity of "${branding.appName}" for ${branding.targetAudience || 'users'}.
+🎯 CRITICAL THEMING RULES:
+1. **NO HEX CODES**: Use ONLY semantic classes like bg-primary, text-foreground, border-border.
+2. **Dynamic Compatibility**: Your code must work perfectly even if the colors behind the variables change.
+3. **Target Audience Adherence**: Design MUST be appropriate for ${branding.targetAudience || 'general users'}.
+4. **Logo Preference**: ${screen.showLogo === false ? '🚨 HIDDEN: DO NOT include any logo on this screen.' : branding.logo ? 'Use the EXACT logo image tag provided above.' : 'Create a simple text-based logo placeholder.'}
+5. **Navigation Preference**: ${screen.showBottomNav === false ? '🚨 HIDDEN: DO NOT include a bottom navigation bar on this screen.' : 'Include the bottom navigation if it matches the app flow.'}
+6. **Brand Identity**: Reflect "${branding.appName}" while using the semantic theme system.
 
 Create a high-fidelity, production-ready mobile screen that perfectly matches ALL the requirements above.
+🚨 ZERO TOLERANCE: DO NOT USE HEX CODES OR RGB. USE ONLY THE SEMANTIC TAILWIND CLASSES (bg-primary, text-foreground, etc.).
     `;
     }
 

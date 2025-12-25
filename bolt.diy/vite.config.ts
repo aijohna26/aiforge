@@ -15,7 +15,6 @@ dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const utilTypesPath = path.resolve(__dirname, 'node_modules/util/support/types.js');
 
 export default defineConfig((config) => {
   return {
@@ -23,9 +22,10 @@ export default defineConfig((config) => {
       'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
     },
     resolve: {
-      alias: {
-        'node:util/types': utilTypesPath,
-      },
+      alias: {},
+    },
+    optimizeDeps: {
+      exclude: ['undici'],
     },
     build: {
       target: 'esnext',

@@ -3,18 +3,29 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-toastify';
 import { useStore } from '@nanostores/react';
-import { designWizardStore, updateStep5Data } from '../../../lib/stores/designWizard';
+import { designWizardStore, updateStep5Data, setStudioActive } from '../../../lib/stores/designWizard';
 import { Canvas, type FrameData } from './interactive/Canvas';
+import { useScreenGenerationPolling } from '~/lib/hooks/useJobPolling';
+import { JobProgressBar } from '~/components/inngest/JobProgressBar';
+import { FEATURE_FLAGS } from '~/lib/feature-flags';
 
 type InteractionState = 'idle' | 'generating' | 'preview';
 
 export function Step5Interactive() {
+    const FRAME_SPACING = 1000;
+    const CANVAS_CENTER_X = 4000;
+    const CANVAS_CENTER_Y = 4000;
     const wizardData = useStore(designWizardStore);
     const [status, setStatus] = useState<InteractionState>('idle');
     const [frames, setFrames] = useState<FrameData[]>([]);
     const [isFullscreen, setIsFullscreen] = useState(false);
+
+    useEffect(() => {
+        setStudioActive(isFullscreen);
+    }, [isFullscreen]);
     const [customTheme, setCustomTheme] = useState<any>(null);
     const [pendingRegeneration, setPendingRegeneration] = useState(false);
+    const [jobId, setJobId] = useState<string | null>(null);
     const snapshotRef = useRef<string>('');
     const latestSnapshotRef = useRef<string>('');
     const hasGeneratedRef = useRef(false);
@@ -22,10 +33,53 @@ export function Step5Interactive() {
     const storedStudioFrames = wizardData.step5?.studioFrames || [];
     const storedStudioSnapshot = wizardData.step5?.studioSnapshot || null;
 
+    // Poll for job completion when using Inngest
+    useScreenGenerationPolling(jobId, (result) => {
+        if (result?.screens) {
+            console.log('[Inngest] Job completed, merging results...');
+
+            setFrames((prev) => {
+                const updatedFrames = [...prev];
+
+                result.screens.forEach((screen: any, index: number) => {
+                    const existingIndex = updatedFrames.findIndex(f => f.id === screen.id);
+                    if (existingIndex >= 0) {
+                        // Update placeholder with actual content
+                        updatedFrames[existingIndex] = {
+                            ...updatedFrames[existingIndex],
+                            html: screen.html,
+                            title: screen.title
+                        };
+                    } else {
+                        // Fallback position if for some reason placeholder wasn't there
+                        const x = CANVAS_CENTER_X + (prev.length + index) * FRAME_SPACING;
+                        updatedFrames.push({
+                            id: screen.id,
+                            title: screen.title,
+                            html: screen.html,
+                            x,
+                            y: CANVAS_CENTER_Y
+                        });
+                    }
+                });
+
+                persistStudioFrames(updatedFrames);
+                return updatedFrames;
+            });
+
+            setStatus('preview');
+            setJobId(null);
+
+            if (result.theme) {
+                setCustomTheme(result.theme);
+            }
+        }
+    });
+
     const getRightmostFrame = useCallback(() => {
         const currentFrames = framesRef.current;
         if (!currentFrames.length) {
-            return { x: 2300, y: 2200 };
+            return { x: CANVAS_CENTER_X, y: CANVAS_CENTER_Y };
         }
         return currentFrames.reduce((rightmost, frame) => {
             if (!rightmost) return frame;
@@ -35,7 +89,7 @@ export function Step5Interactive() {
         }, currentFrames[0]);
     }, []);
 
-    const FRAME_SPACING = 450;
+
 
     useEffect(() => {
         framesRef.current = frames;
@@ -71,17 +125,131 @@ export function Step5Interactive() {
         }
     }, [storedStudioFrames, storedStudioSnapshot, frames.length, wizardSnapshot]);
 
+    const [isSaving, setIsSaving] = useState(false);
+    const isSavingRef = useRef(false); // Added for immediate lock
+    const [isCheckingDb, setIsCheckingDb] = useState(false);
+
+    const handleSave = useCallback(async () => {
+        // Use ref for immediate lock to prevent rapid-click duplicates
+        if (frames.length === 0 || isSavingRef.current) return;
+
+        isSavingRef.current = true;
+        setIsSaving(true);
+
+        const t = toast.loading('💾 Saving workspace to cloud...');
+
+        // Safety timeout: if request takes > 15s, dismiss the loader
+        const safetyTimeout = setTimeout(() => {
+            toast.dismiss(t);
+            isSavingRef.current = false;
+            setIsSaving(false);
+        }, 15000);
+
+        try {
+            const hash = await import('~/utils/hash').then(m => m.hashString(wizardSnapshot));
+
+            const response = await fetch('/api/studio/workspace', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    snapshotHash: hash,
+                    frames,
+                    theme: customTheme,
+                    projectId: wizardData.projectId || 'default'
+                })
+            });
+
+            const data = await response.json();
+            clearTimeout(safetyTimeout); // Clear timeout on successful response
+
+            if (!response.ok) {
+                if (data.sql) {
+                    toast.update(t, {
+                        render: (
+                            <div className="flex flex-col gap-2">
+                                <p className="font-bold">{data.error}</p>
+                                <code className="block p-2 bg-black/50 rounded text-[10px] break-all select-all font-mono">
+                                    {data.sql}
+                                </code>
+                                <p className="text-[10px] text-white/50 italic">Copy and run this in your Supabase SQL Editor</p>
+                            </div>
+                        ),
+                        type: 'error',
+                        isLoading: false,
+                        autoClose: 10000 // Ensure autoClose is always applied
+                    });
+                    console.log('%c[Supabase SQL Fix]', 'color: #818cf8; font-weight: bold;', '\n' + data.sql);
+                } else {
+                    throw new Error(data.error || 'Failed to save to database');
+                }
+                return;
+            }
+
+            toast.update(t, {
+                render: '✨ Workspace persisted to database',
+                type: 'success',
+                isLoading: false,
+                autoClose: 3000 // Ensure autoClose is always applied
+            });
+        } catch (error: any) {
+            console.error('[Studio Save] Failed:', error);
+            clearTimeout(safetyTimeout); // Clear timeout on error
+            toast.update(t, {
+                render: error.message || 'Failed to save to database',
+                type: 'error',
+                isLoading: false,
+                autoClose: 4000 // Ensure autoClose is always applied
+            });
+        } finally {
+            isSavingRef.current = false;
+            setIsSaving(false);
+        }
+    }, [frames, customTheme, wizardSnapshot, wizardData.projectId]); // Removed `isSaving` from dependencies
+
     const handleInitialize = useCallback(async () => {
         setIsFullscreen(true);
 
+        // 1. Check if we already have it in store (local memory)
         if (storedStudioFrames.length > 0 && storedStudioSnapshot === wizardSnapshot) {
             setFrames(storedStudioFrames);
             setStatus('preview');
+            setIsFullscreen(true);
+            setStudioActive(true);
             hasGeneratedRef.current = true;
             snapshotRef.current = storedStudioSnapshot || wizardSnapshot;
             return;
         }
 
+        // 2. Check Database for existing design with this snapshot hash
+        setIsCheckingDb(true);
+        try {
+            const hash = await import('~/utils/hash').then(m => m.hashString(wizardSnapshot));
+            const dbResponse = await fetch(`/api/studio/workspace?hash=${hash}&projectId=${wizardData.projectId || 'default'}`);
+
+            const data = await dbResponse.json();
+
+            if (dbResponse.ok && data.workspace) {
+                console.log('[Studio] Found existing design in database');
+                setFrames(data.workspace.frames);
+                if (data.workspace.theme) setCustomTheme(data.workspace.theme);
+                persistStudioFrames(data.workspace.frames);
+                setStatus('preview');
+                hasGeneratedRef.current = true;
+                snapshotRef.current = wizardSnapshot;
+                setIsCheckingDb(false);
+                return;
+            } else if (!dbResponse.ok && data.errorCode === 'TABLE_MISSING') {
+                console.warn('[Studio] studio_workspaces table missing. Please run migration.');
+                // We don't show toast here during initialize to avoid noise,
+                // but we might show it if user tries to Save.
+            }
+        } catch (error) {
+            console.warn('[Studio] DB lookup failed, falling back to generation:', error);
+        } finally {
+            setIsCheckingDb(false);
+        }
+
+        // 3. If no existing design, proceed with LLM generation
         setStatus('generating');
 
         try {
@@ -110,7 +278,9 @@ export function Step5Interactive() {
                 name: s.name,
                 type: s.type,
                 purpose: s.purpose,
-                keyElements: s.keyElements
+                keyElements: s.keyElements,
+                showLogo: s.showLogo,
+                showBottomNav: s.showBottomNav
             }));
 
             // Only generate FIRST 3 SCREENS for approval
@@ -123,13 +293,17 @@ export function Step5Interactive() {
                 { id: 'screen-3', name: 'Profile', type: 'profile', purpose: 'User settings', keyElements: ['Avatar', 'Logout'] }
             ];
 
+            // Calculate starting X to center the entire group of screens
+            const groupWidth = (finalScreens.length - 1) * FRAME_SPACING;
+            const startX = CANVAS_CENTER_X - (groupWidth / 2);
+
             // Create placeholder frames immediately with empty HTML (triggers skeleton loaders)
             const placeholderFrames = finalScreens.map((s, index) => ({
                 id: s.id,
                 title: s.name,
                 html: '', // Empty HTML triggers skeleton loader
-                x: 2300 + (index * 450),
-                y: 2200
+                x: startX + (index * FRAME_SPACING),
+                y: CANVAS_CENTER_Y
             }));
 
             // Show placeholder frames immediately
@@ -138,7 +312,12 @@ export function Step5Interactive() {
             const response = await fetch('/api/studio/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ branding, screens: finalScreens, includeTheme: true })
+                body: JSON.stringify({
+                    branding,
+                    screens: finalScreens,
+                    includeTheme: true,
+                    userId: 'user-placeholder' // TODO: Get from auth context
+                })
             });
 
             if (!response.ok) {
@@ -149,39 +328,53 @@ export function Step5Interactive() {
 
             const data = await response.json();
 
-            // Set custom theme if generated
-            if (data.theme) {
-                setCustomTheme(data.theme);
+            // Handle dual mode response (async with Inngest or sync)
+            if (data.mode === 'async') {
+                // Inngest mode: Start polling for job completion
+                console.log('[Studio] Background generation started:', data.jobId);
+                setJobId(data.jobId);
+                toast.info('Generating screens in background...');
+                hasGeneratedRef.current = true;
+                snapshotRef.current = latestSnapshotRef.current || wizardSnapshot;
+            } else {
+                // Backward compatible sync mode
+                if (data.theme) {
+                    setCustomTheme(data.theme);
+                }
+
+                // Update frames with actual HTML content
+                const screensCount = data.screens?.length || initialBatch.length || 1;
+                const groupWidth = (screensCount - 1) * FRAME_SPACING;
+                const startX = CANVAS_CENTER_X - (groupWidth / 2);
+
+                const generatedFrames = data.screens.map((s: any, index: number) => {
+                    const x = startX + (index * FRAME_SPACING);
+                    const y = CANVAS_CENTER_Y;
+                    console.log(`[Initial Generation] Screen ${s.id} positioned at x:${x}, y:${y} (index:${index})`);
+                    return {
+                        id: s.id,
+                        title: s.title,
+                        html: s.html,
+                        x, // Arrange horizontally
+                        y
+                    };
+                });
+
+                console.log('[Initial Generation] Generated frames:', generatedFrames.map(f => ({ id: f.id, x: f.x, y: f.y })));
+                setFrames(generatedFrames);
+                persistStudioFrames(generatedFrames);
+                setStatus('preview');
+                toast.success('Studio initialized with custom brand theme.');
+                hasGeneratedRef.current = true;
+                snapshotRef.current = latestSnapshotRef.current || wizardSnapshot;
             }
-
-            // Update frames with actual HTML content
-            const generatedFrames = data.screens.map((s: any, index: number) => {
-                const x = 2300 + (index * 450);
-                const y = 2200;
-                console.log(`[Initial Generation] Screen ${s.id} positioned at x:${x}, y:${y} (index:${index})`);
-                return {
-                    id: s.id,
-                    title: s.title,
-                    html: s.html,
-                    x, // Arrange horizontally
-                    y
-                };
-            });
-
-            console.log('[Initial Generation] Generated frames:', generatedFrames.map(f => ({ id: f.id, x: f.x, y: f.y })));
-            setFrames(generatedFrames);
-            persistStudioFrames(generatedFrames);
-            setStatus('preview');
-            toast.success('Studio initialized with custom brand theme.');
-            hasGeneratedRef.current = true;
-            snapshotRef.current = latestSnapshotRef.current || wizardSnapshot;
         } catch (error: any) {
             console.error('[App Forge] Gen failed:', error);
             toast.error(error.message || 'Generation failed. Please check your API keys.');
             setStatus('idle');
             setIsFullscreen(false);
         }
-    }, [wizardData.step1, wizardData.step2, wizardData.step3, wizardData.step4, wizardSnapshot, storedStudioFrames, storedStudioSnapshot, persistStudioFrames]);
+    }, [wizardData.step1, wizardData.step2, wizardData.step3, wizardData.step4, wizardData.projectId, wizardSnapshot, storedStudioFrames, storedStudioSnapshot, persistStudioFrames]);
 
     const handleGenerateRemaining = async () => {
         setStatus('generating');
@@ -212,7 +405,9 @@ export function Step5Interactive() {
                 name: s.name,
                 type: s.type,
                 purpose: s.purpose,
-                keyElements: s.keyElements
+                keyElements: s.keyElements,
+                showLogo: s.showLogo,
+                showBottomNav: s.showBottomNav
             }));
 
             // Get the screens we haven't generated yet (skip first 3)
@@ -226,8 +421,8 @@ export function Step5Interactive() {
 
             // Calculate starting position based on rightmost frame
             const rightmost = getRightmostFrame();
-            const baseX = rightmost.x ?? 2300;
-            const baseY = 2200; // Always use the initial Y position
+            const baseX = rightmost.x ?? CANVAS_CENTER_X;
+            const baseY = CANVAS_CENTER_Y; // Always use the initial Y position
 
             // Create placeholder frames immediately with empty HTML (triggers skeleton loaders)
             const placeholderFrames = remainingBatch.map((s, index) => ({
@@ -336,6 +531,8 @@ export function Step5Interactive() {
                 type: screen.type,
                 purpose: screen.purpose,
                 keyElements: screen.keyElements,
+                showLogo: screen.showLogo,
+                showBottomNav: screen.showBottomNav,
             }));
 
             if (batch.length === 0) {
@@ -359,8 +556,8 @@ export function Step5Interactive() {
 
             // Create placeholder frames immediately
             const rightmost = getRightmostFrame();
-            const baseX = rightmost.x ?? 2300;
-            const baseY = 2200; // Always use the initial Y position
+            const baseX = rightmost.x ?? CANVAS_CENTER_X;
+            const baseY = CANVAS_CENTER_Y; // Always use the initial Y position
 
             console.log('[Step5Interactive] Rightmost frame:', rightmost);
             console.log('[Step5Interactive] BaseX:', baseX, 'BaseY:', baseY);
@@ -395,25 +592,35 @@ export function Step5Interactive() {
 
             const data = await response.json();
 
-            // Update placeholders with actual HTML
-            const generatedFrames = data.screens.map((s: any, index: number) => ({
-                id: s.id,
-                title: s.title,
-                html: s.html,
-                x: placeholderFrames[index]?.x ?? (baseX + FRAME_SPACING * (index + 1)),
-                y: placeholderFrames[index]?.y ?? baseY,
-            }));
+            if (data.mode === 'async') {
+                // Inngest mode: Start polling for job completion
+                console.log('[Studio] Background generation started (batch):', data.jobId);
+                setJobId(data.jobId);
+                toast.info('Generating additional screens in background...');
+                hasGeneratedRef.current = true;
+                // Note: We don't set status to 'preview' here because we want to stay in 'generating' 
+                // while the background job works. The polling callback will handle the transition.
+            } else {
+                // Update placeholders with actual HTML (Sync mode)
+                const generatedFrames = data.screens.map((s: any, index: number) => ({
+                    id: s.id,
+                    title: s.title,
+                    html: s.html,
+                    x: placeholderFrames[index]?.x ?? (baseX + FRAME_SPACING * (index + 1)),
+                    y: placeholderFrames[index]?.y ?? baseY,
+                }));
 
-            setFrames((prev) => {
-                // Remove placeholder frames and add generated frames
-                const placeholderIds = new Set(placeholderFrames.map(f => f.id));
-                const withoutPlaceholders = prev.filter(frame => !placeholderIds.has(frame.id));
-                const updated = [...withoutPlaceholders, ...generatedFrames];
-                persistStudioFrames(updated);
-                return updated;
-            });
-            setStatus('preview');
-            toast.success(`Generated ${generatedFrames.length} screen${generatedFrames.length === 1 ? '' : 's'}!`);
+                setFrames((prev) => {
+                    // Remove placeholder frames and add generated frames
+                    const placeholderIds = new Set(placeholderFrames.map(f => f.id));
+                    const withoutPlaceholders = prev.filter(frame => !placeholderIds.has(frame.id));
+                    const updated = [...withoutPlaceholders, ...generatedFrames];
+                    persistStudioFrames(updated);
+                    return updated;
+                });
+                setStatus('preview');
+                toast.success(`Generated ${generatedFrames.length} screen${generatedFrames.length === 1 ? '' : 's'}!`);
+            }
         } catch (error: any) {
             console.error('[App Forge] Gen failed:', error);
             toast.error(error.message || 'Generation failed.');
@@ -429,9 +636,26 @@ export function Step5Interactive() {
         }
     };
 
+    const handleCleanupLayout = useCallback(() => {
+        if (!frames.length) return;
+
+        const groupWidth = (frames.length - 1) * FRAME_SPACING;
+        const startX = CANVAS_CENTER_X - (groupWidth / 2);
+
+        const cleaned = frames.map((f, i) => ({
+            ...f,
+            x: startX + (i * FRAME_SPACING),
+            y: CANVAS_CENTER_Y
+        }));
+
+        setFrames(cleaned);
+        persistStudioFrames(cleaned);
+        toast.success('✨ Workspace layout optimized and centered');
+    }, [frames, FRAME_SPACING, CANVAS_CENTER_X, CANVAS_CENTER_Y, persistStudioFrames]);
+
     const content = (
         <div className={`
-            ${isFullscreen ? 'fixed inset-0 z-[9999] w-screen h-screen rounded-none border-0' : 'flex h-[500px] w-[900px] rounded-[40px] border border-white/5 mx-auto'} 
+            ${isFullscreen ? 'fixed inset-0 z-[9980] w-screen h-screen rounded-none border-0' : 'flex h-[500px] w-[900px] rounded-[40px] border border-white/5 mx-auto'} 
             flex flex-col bg-[#000] overflow-hidden shadow-[0_40px_100px_rgba(0,0,0,0.8)] transition-all duration-700 ease-in-out
         `}>
 
@@ -449,6 +673,7 @@ export function Step5Interactive() {
                             <button
                                 onClick={() => {
                                     setIsFullscreen(false);
+                                    setStudioActive(false);
                                     setStatus('idle');
                                 }}
                                 className="size-9 flex items-center justify-center text-white/70 bg-white/[0.06] hover:bg-white/[0.12] rounded-xl transition-all active:scale-95"
@@ -469,13 +694,58 @@ export function Step5Interactive() {
 
                         <div className="flex items-center gap-4">
                             <button
-                                onClick={() => toast.success('✨ Workspace Saved')}
-                                className="group relative px-8 py-2.5 bg-gradient-to-b from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white rounded-[14px] text-[11px] font-black uppercase tracking-[0.1em] transition-all shadow-[0_4px_16px_rgba(79,70,229,0.4)] active:scale-95 overflow-hidden"
+                                onClick={handleSave}
+                                disabled={isSaving}
+                                className="group relative px-8 py-2.5 bg-gradient-to-b from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 disabled:from-indigo-900 disabled:to-indigo-950 text-white rounded-[14px] text-[11px] font-black uppercase tracking-[0.1em] transition-all shadow-[0_4px_16px_rgba(79,70,229,0.4)] active:scale-95 overflow-hidden"
                             >
                                 <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                                <span className="relative">Save</span>
+                                <span className="relative flex items-center gap-2">
+                                    {isSaving ? (
+                                        <>
+                                            <div className="size-3 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                                            Saving...
+                                        </>
+                                    ) : 'Save'}
+                                </span>
                             </button>
                         </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* DB Lookup Loader */}
+            <AnimatePresence>
+                {isCheckingDb && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="absolute inset-0 z-[1002] bg-black/60 backdrop-blur-md flex flex-col items-center justify-center"
+                    >
+                        <div className="relative size-20 mb-6">
+                            <div className="absolute inset-0 border-4 border-indigo-500/20 rounded-full" />
+                            <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                        </div>
+                        <h3 className="text-xl font-black text-white mb-2 tracking-tight">Checking Database</h3>
+                        <p className="text-white/40 text-sm font-medium">Looking for previously generated designs...</p>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Progress Indicator (when using Inngest) */}
+            <AnimatePresence>
+                {status === 'generating' && jobId && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        className="fixed top-4 right-4 z-50 w-96 bg-black/90 backdrop-blur-xl rounded-2xl p-6 border border-white/10 shadow-[0_24px_48px_rgba(0,0,0,0.8)]"
+                    >
+                        <h3 className="text-sm font-bold text-white mb-3">Generating Screens</h3>
+                        <JobProgressBar
+                            jobId={jobId}
+                            showDetails={true}
+                        />
                     </motion.div>
                 )}
             </AnimatePresence>
@@ -559,6 +829,7 @@ export function Step5Interactive() {
                                 isGenerating={status === 'generating'}
                                 customTheme={customTheme}
                                 onGenerateNext={handleGenerateNextScreen}
+                                onCleanupLayout={handleCleanupLayout}
                             />
                         </motion.div>
                     )}

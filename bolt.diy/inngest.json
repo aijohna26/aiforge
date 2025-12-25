@@ -1,0 +1,5 @@
+{
+    "serve": {
+        "url": "http://localhost:5173/api/inngest"
+    }
+}

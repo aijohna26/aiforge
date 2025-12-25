@@ -152,6 +152,8 @@ export interface Step4Data {
         purpose: string;
         keyElements: string[];
         position: { x: number; y: number };
+        showLogo?: boolean;
+        showBottomNav?: boolean;
     }>;
     connections: Array<{
         from: string;
@@ -215,6 +217,7 @@ export interface Step5Data {
         y?: number;
     }>;
     studioSnapshot: string | null;
+    isStudioActive?: boolean;
 }
 
 // Step 6: Feature Configuration (Integrations & Data Models)
@@ -324,6 +327,7 @@ const initialDesignData: DesignWizardData = {
         totalCreditsUsed: 0,
         studioFrames: [],
         studioSnapshot: null,
+        isStudioActive: false,
     },
     step6: {
         integrations: [],
@@ -440,6 +444,21 @@ const migrateStoredWizardData = (data: DesignWizardData): DesignWizardData => {
         migrated.step6.integrations = migrated.step6.integrations.filter(
             i => !['convex', 'convex-auth'].includes(i.id)
         );
+    }
+
+    // Ensure step5 has studioFrames and generatedScreens
+    if (!migrated.step5) {
+        migrated.step5 = {
+            generatedScreens: [],
+            totalCreditsUsed: 0,
+            studioFrames: [],
+            studioSnapshot: null,
+            isStudioActive: false,
+        };
+    } else {
+        if (!migrated.step5.studioFrames) migrated.step5.studioFrames = [];
+        if (!migrated.step5.generatedScreens) migrated.step5.generatedScreens = [];
+        if (migrated.step5.isStudioActive === undefined) migrated.step5.isStudioActive = false;
     }
 
     return migrated;
@@ -673,11 +692,15 @@ export function isStep4Complete(): boolean {
 }
 
 export function isStep5Complete(): boolean {
-    const { step5 } = designWizardStore.get();
-    // Must have generated screens for all screens defined in step 4
-    const { step4 } = designWizardStore.get();
-    const generatedCount = step5.generatedScreens.filter(s => s.selected).length;
-    return generatedCount >= step4.screens.length;
+    const { step5, step4 } = designWizardStore.get();
+
+    if (!step5 || !step4) return false;
+
+    // Check both legacy static screens and new interactive studio frames
+    const hasStudioFrames = (step5.studioFrames?.length || 0) >= (step4.screens?.length || 0);
+    const hasGeneratedScreens = (step5.generatedScreens?.filter(s => s.selected).length || 0) >= (step4.screens?.length || 0);
+
+    return hasStudioFrames || hasGeneratedScreens;
 }
 
 export function isStep6Complete(): boolean {
@@ -758,5 +781,13 @@ export function setIsProcessing(isProcessing: boolean) {
     designWizardStore.set({
         ...current,
         isProcessing,
+    });
+}
+
+export function setStudioActive(isActive: boolean) {
+    const current = designWizardStore.get();
+    designWizardStore.set({
+        ...current,
+        step5: { ...current.step5, isStudioActive: isActive },
     });
 }

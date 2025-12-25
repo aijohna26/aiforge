@@ -124,6 +124,8 @@ export function ScreenFlowFrame() {
                 purpose: 'App launch animation and branding',
                 keyElements: [],
                 position: { x: 0, y: 0 },
+                showLogo: true,
+                showBottomNav: false
             };
 
             updateStep4Data({
@@ -132,6 +134,16 @@ export function ScreenFlowFrame() {
             });
         }
     }, []); // Only run once on mount
+
+    const handleToggleScreenOption = (screenId: string, option: 'showLogo' | 'showBottomNav') => {
+        const updatedScreens = screens.map(s => {
+            if (s.id === screenId) {
+                return { ...s, [option]: s[option] === undefined ? false : !s[option] };
+            }
+            return s;
+        });
+        updateStep4Data({ screens: updatedScreens });
+    };
 
     useEffect(() => {
         if (!navigation?.items?.length) return;
@@ -627,6 +639,8 @@ export function ScreenFlowFrame() {
             purpose: typeInfo.description,
             keyElements: [],
             position: { x: 0, y: 0 },
+            showLogo: true,
+            showBottomNav: type !== 'splash' && type !== 'signin' && type !== 'signup'
         };
 
         updateStep4Data({
@@ -654,6 +668,8 @@ export function ScreenFlowFrame() {
             purpose: newScreenPurpose,
             keyElements: [],
             position: { x: 0, y: 0 },
+            showLogo: true,
+            showBottomNav: newScreenType !== 'splash' && newScreenType !== 'signin' && newScreenType !== 'signup'
         };
 
         updateStep4Data({
@@ -717,6 +733,8 @@ export function ScreenFlowFrame() {
                     purpose: 'User authentication and login',
                     keyElements: [],
                     position: { x: 0, y: 0 },
+                    showLogo: true,
+                    showBottomNav: false
                 });
             }
 
@@ -728,6 +746,8 @@ export function ScreenFlowFrame() {
                     purpose: 'New user registration',
                     keyElements: [],
                     position: { x: 0, y: 0 },
+                    showLogo: true,
+                    showBottomNav: false
                 });
             }
 
@@ -993,6 +1013,33 @@ export function ScreenFlowFrame() {
                                                     Set Initial
                                                 </button>
                                             )}
+
+                                            <div className="flex items-center gap-1.5 px-2 py-1 bg-[#2a2a2a] rounded-lg border border-[#333]">
+                                                <button
+                                                    onClick={() => handleToggleScreenOption(screen.id, 'showLogo')}
+                                                    className={`flex items-center gap-1.5 px-2 py-0.5 rounded transition-all text-[10px] font-medium ${screen.showLogo !== false
+                                                        ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
+                                                        : 'text-slate-500 border border-transparent hover:text-slate-400'
+                                                        }`}
+                                                    title={screen.showLogo !== false ? 'Logo will be shown' : 'Logo will be hidden'}
+                                                >
+                                                    <div className="i-ph:frame-corners text-xs" />
+                                                    Logo
+                                                </button>
+                                                <div className="w-[1px] h-3 bg-[#333]" />
+                                                <button
+                                                    onClick={() => handleToggleScreenOption(screen.id, 'showBottomNav')}
+                                                    className={`flex items-center gap-1.5 px-2 py-0.5 rounded transition-all text-[10px] font-medium ${screen.showBottomNav !== false
+                                                        ? 'bg-purple-600/20 text-purple-400 border border-purple-500/30'
+                                                        : 'text-slate-500 border border-transparent hover:text-slate-400'
+                                                        }`}
+                                                    title={screen.showBottomNav !== false ? 'Bottom nav will be shown' : 'Bottom nav will be hidden'}
+                                                >
+                                                    <div className="i-ph:layout text-xs" />
+                                                    Nav
+                                                </button>
+                                            </div>
+
                                             <button
                                                 onClick={() => handleRemoveScreen(screen.id)}
                                                 className="w-8 h-8 flex items-center justify-center bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg transition-colors"

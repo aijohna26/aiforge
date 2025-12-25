@@ -20,12 +20,13 @@ interface CanvasProps {
     isGenerating?: boolean;
     customTheme?: ThemeType;
     onGenerateNext?: () => void;
+    onCleanupLayout?: () => void;
 }
 
 const FRAME_SCREENSHOT_WIDTH = 500;
 const FRAME_SCREENSHOT_HEIGHT = 940;
 
-export const Canvas: React.FC<CanvasProps> = ({ frames, isGenerating = false, customTheme, onGenerateNext }) => {
+export const Canvas: React.FC<CanvasProps> = ({ frames, isGenerating = false, customTheme, onGenerateNext, onCleanupLayout }) => {
     const [activeFrameId, setActiveFrameId] = useState<string | null>(null);
     const [selectedThemeId, setSelectedThemeId] = useState<string>(customTheme?.id || 'ocean-breeze');
     const [isThemeOpen, setIsThemeOpen] = useState(false);
@@ -48,13 +49,14 @@ export const Canvas: React.FC<CanvasProps> = ({ frames, isGenerating = false, cu
     const selectedTheme = EFFECTIVE_THEME_LIST.find(t => t.id === selectedThemeId) || EFFECTIVE_THEME_LIST[0];
 
     useEffect(() => {
-        if (frames.length > 0 && !hasAutoFocused && transformRef.current) {
+        if (frames.length > 0 && !hasAutoFocused && transformRef.current && canvasRef.current) {
+            const container = canvasRef.current.getBoundingClientRect();
             const avgX = frames.reduce((sum, f) => sum + (f.x || 4000), 0) / frames.length;
-            const avgY = frames.reduce((sum, f) => sum + (f.y || 3600), 0) / frames.length;
+            const avgY = frames.reduce((sum, f) => sum + (f.y || 4000), 0) / frames.length;
 
             transformRef.current.setTransform(
-                window.innerWidth / 2 - (avgX * 0.8) - (375 * 0.8 / 2),
-                window.innerHeight / 2 - (avgY * 0.8) - (812 * 0.8 / 2),
+                container.width / 2 - (avgX * 0.8) - (375 * 0.8 / 2),
+                container.height / 2 - (avgY * 0.8) - (812 * 0.8 / 2) + 700, // Balanced Y offset for optimal visibility
                 0.8,
                 0
             );
@@ -293,8 +295,8 @@ export const Canvas: React.FC<CanvasProps> = ({ frames, isGenerating = false, cu
                                 onClick={() => setActiveFrameId(null)}
                             >
                                 {frames.map((frame, index) => {
-                                    const defaultX = frame.x ?? (4000 + (index * 450) - 150);
-                                    const defaultY = frame.y ?? 3600;
+                                    const defaultX = frame.x ?? (4000 + (index * 1000) - 500);
+                                    const defaultY = frame.y ?? 4000;
                                     return (
                                         <DeviceFrame
                                             key={frame.id}
@@ -443,12 +445,6 @@ export const Canvas: React.FC<CanvasProps> = ({ frames, isGenerating = false, cu
                                             <span>Generate Next</span>
                                         </button>
                                     )}
-                                    <button
-                                        onClick={() => toast.success('✨ Design Saved')}
-                                        className="px-5 py-2 bg-gradient-to-r from-[#F97316] to-[#EA580C] hover:from-[#EA580C] hover:to-[#C2410C] text-white rounded-full text-[11px] font-black uppercase tracking-wider transition-all shadow-[0_4px_12px_rgba(249,115,22,0.3)] hover:shadow-[0_4px_20px_rgba(249,115,22,0.5)] active:scale-95"
-                                    >
-                                        Save
-                                    </button>
                                 </div>
                             </div>
                         )}
@@ -552,12 +548,13 @@ export const Canvas: React.FC<CanvasProps> = ({ frames, isGenerating = false, cu
                                 <div className="w-px h-5 bg-white/5 mx-1" />
                                 <button
                                     onClick={() => {
-                                        if (frames.length > 0) {
+                                        if (frames.length > 0 && canvasRef.current) {
+                                            const container = canvasRef.current.getBoundingClientRect();
                                             const avgX = frames.reduce((sum, f) => sum + (f.x || 4000), 0) / frames.length;
-                                            const avgY = frames.reduce((sum, f) => sum + (f.y || 3600), 0) / frames.length;
+                                            const avgY = frames.reduce((sum, f) => sum + (f.y || 4000), 0) / frames.length;
                                             setTransform(
-                                                window.innerWidth / 2 - (avgX * 0.8) - (375 * 0.8 / 2),
-                                                window.innerHeight / 2 - (avgY * 0.8) - (812 * 0.8 / 2),
+                                                container.width / 2 - (avgX * 0.8) - (375 * 0.8 / 2),
+                                                container.height / 2 - (avgY * 0.8) - (812 * 0.8 / 2) + 700,
                                                 0.8,
                                                 400
                                             );
@@ -569,6 +566,30 @@ export const Canvas: React.FC<CanvasProps> = ({ frames, isGenerating = false, cu
                                 >
                                     <div className="i-ph:frame-corners-bold text-lg" />
                                 </button>
+                                {onCleanupLayout && (
+                                    <button
+                                        onClick={() => {
+                                            onCleanupLayout();
+                                            // Trigger re-center after a brief delay for state propagation
+                                            setTimeout(() => {
+                                                if (transformRef.current && canvasRef.current) {
+                                                    const container = canvasRef.current.getBoundingClientRect();
+                                                    // Math for dead center 4000, 4000 with balanced Y offset
+                                                    transformRef.current.setTransform(
+                                                        container.width / 2 - (4000 * 0.8) - (375 * 0.8 / 2),
+                                                        container.height / 2 - (4000 * 0.8) - (812 * 0.8 / 2) + 700,
+                                                        0.8,
+                                                        600
+                                                    );
+                                                }
+                                            }, 100);
+                                        }}
+                                        className="group size-9 flex items-center justify-center text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-full transition-all active:scale-95 shadow-xl"
+                                        title="Optimize Layout (Re-center & Space Out)"
+                                    >
+                                        <div className="i-ph:magic-wand-bold text-lg" />
+                                    </button>
+                                )}
                             </div>
                         )}
 
