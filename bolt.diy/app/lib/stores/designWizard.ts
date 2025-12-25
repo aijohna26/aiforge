@@ -207,6 +207,14 @@ export interface Step5Data {
         }>;
     }>;
     totalCreditsUsed: number;
+    studioFrames: Array<{
+        id: string;
+        title?: string;
+        html: string;
+        x?: number;
+        y?: number;
+    }>;
+    studioSnapshot: string | null;
 }
 
 // Step 6: Feature Configuration (Integrations & Data Models)
@@ -314,6 +322,8 @@ const initialDesignData: DesignWizardData = {
     step5: {
         generatedScreens: [],
         totalCreditsUsed: 0,
+        studioFrames: [],
+        studioSnapshot: null,
     },
     step6: {
         integrations: [],

@@ -159,8 +159,8 @@ export function Step5Frame() {
         const screen = screens.find(s => s.id === screenId);
         if (!screen) return true;
 
-        // Smart defaults: Main app screens get nav, intro/auth/utility screens don't.
-        const noNavTypes = ['splash', 'signin', 'signup', 'onboarding', 'scanner'];
+        // Smart defaults: Everything except splash should include navigation by default.
+        const noNavTypes = ['splash'];
         return !noNavTypes.includes(screen.type);
     }, [screenNavigationSettings, screens]);
 
@@ -1539,4 +1539,3 @@ export function Step5Frame() {
         </>
     );
 }
-

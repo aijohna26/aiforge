@@ -76,7 +76,7 @@ export const DesignCanvas = ({ className, onTransformChange, forceReset }: Desig
         const canvas = new Canvas(canvasRef.current, {
             width: container.clientWidth,
             height: container.clientHeight,
-            backgroundColor: '#0a0a0a',
+            backgroundColor: '#0f0f0f', // Off-black for softer look
             selection: true,
             fireRightClick: true, // Enable right click events
             stopContextMenu: true, // Prevent context menu
@@ -84,12 +84,12 @@ export const DesignCanvas = ({ className, onTransformChange, forceReset }: Desig
 
         fabricCanvasRef.current = canvas;
 
-        // --- Grid Implementation ---
+        // --- Dotted Grid Implementation (Off-White Dots) ---
         const gridSize = 50;
-        const gridColor = '#333';
+        const dotSize = 1.5;
+        const dotColor = 'rgba(245, 245, 245, 0.12)'; // Off-white dots with subtle transparency
 
-        // We override the render method to draw a grid using HTML5 Canvas API for performance
-        // This is more efficient than adding thousands of line objects
+        // We override the render method to draw a dotted grid
         const originalRender = canvas.renderCanvas.bind(canvas);
         canvas.renderCanvas = function (ctx, objects) {
             const vpt = this.viewportTransform;
@@ -99,7 +99,7 @@ export const DesignCanvas = ({ className, onTransformChange, forceReset }: Desig
             ctx.fillStyle = this.backgroundColor as string;
             ctx.fillRect(0, 0, this.width, this.height);
 
-            // Draw Grid
+            // Draw Dotted Grid
             ctx.save();
             if (vpt) {
                 ctx.translate(vpt[4], vpt[5]);
@@ -110,24 +110,19 @@ export const DesignCanvas = ({ className, onTransformChange, forceReset }: Desig
                 const offX = -vpt[4] / zoom;
                 const offY = -vpt[5] / zoom;
 
-                ctx.lineWidth = 1 / zoom;
-                ctx.strokeStyle = gridColor;
+                ctx.fillStyle = dotColor;
 
                 const startX = Math.floor(offX / gridSize) * gridSize;
                 const startY = Math.floor(offY / gridSize) * gridSize;
 
-                ctx.beginPath();
-                // Vertical lines
+                // Draw dots at grid intersections
                 for (let x = startX; x < offX + width; x += gridSize) {
-                    ctx.moveTo(x, offY);
-                    ctx.lineTo(x, offY + height);
+                    for (let y = startY; y < offY + height; y += gridSize) {
+                        ctx.beginPath();
+                        ctx.arc(x, y, dotSize / zoom, 0, 2 * Math.PI);
+                        ctx.fill();
+                    }
                 }
-                // Horizontal lines
-                for (let y = startY; y < offY + height; y += gridSize) {
-                    ctx.moveTo(offX, y);
-                    ctx.lineTo(offX + width, y);
-                }
-                ctx.stroke();
             }
             ctx.restore();
 

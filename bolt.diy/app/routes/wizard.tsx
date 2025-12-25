@@ -273,6 +273,20 @@ export default function WizardPage() {
         setPackages(initialState.packages);
         setScreenGeneratorState(initialState.screenGeneratorState);
         setIsLoaded(true);
+
+        // Check for seed prompt from dashboard/landing page
+        if (typeof window !== 'undefined') {
+            const seedPrompt = localStorage.getItem('bolt_seed_prompt');
+            if (seedPrompt && !initialState.appInfo.description) {
+                console.log('[Wizard] Consuming seed prompt:', seedPrompt);
+                setAppInfo(prev => ({
+                    ...prev,
+                    description: seedPrompt
+                }));
+                // Clear it so it doesn't persist across fresh starts
+                localStorage.removeItem('bolt_seed_prompt');
+            }
+        }
     }, []);
 
     // Save to localStorage immediately when state changes

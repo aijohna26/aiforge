@@ -1,7 +1,7 @@
 import { json, type LoaderFunctionArgs } from '@remix-run/node';
 import { useLoaderData, useNavigate, Link } from '@remix-run/react';
 import { useStore } from '@nanostores/react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useMemo, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { createClient as createServerClient } from '~/lib/supabase/server';
@@ -49,11 +49,14 @@ export default function Dashboard() {
 
     const supabase = useMemo(() => createBrowserClient(), []);
 
+    const [isPromptModalOpen, setIsPromptModalOpen] = useState(false);
+    const [promptInput, setPromptInput] = useState('');
+
     // Handle initial prompt from landing page if it exists
     useEffect(() => {
         if (typeof window !== 'undefined' && localStorage.getItem('bolt_seed_prompt')) {
-            console.log('[Dashboard] Found seed prompt, redirecting to editor');
-            navigate('/editor');
+            console.log('[Dashboard] Found seed prompt, redirecting to chat (design mode)');
+            navigate('/chat');
         }
     }, [navigate]);
 
@@ -68,7 +71,16 @@ export default function Dashboard() {
         import('~/lib/stores/designWizard').then(m => m.resetDesignWizard());
         import('~/lib/stores/plan').then(m => m.resetPlan());
 
-        // Navigate to /chat directly (no ID) which serves as the "new" clean slate
+        setIsPromptModalOpen(true);
+        setIsCreating(false);
+    };
+
+    const handlePromptSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!promptInput.trim()) return;
+
+        localStorage.setItem('bolt_seed_prompt', promptInput.trim());
+        setIsPromptModalOpen(false);
         navigate('/chat');
     };
 
@@ -113,6 +125,64 @@ export default function Dashboard() {
                 <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-accent-500/10 dark:bg-purple-500/10 blur-[120px] rounded-full animate-pulse-glow" />
                 <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-orange-500/10 dark:bg-blue-500/10 blur-[120px] rounded-full animate-pulse-glow" style={{ animationDelay: '2s' }} />
             </div>
+
+            {/* Prompt Modal */}
+            <AnimatePresence>
+                {isPromptModalOpen && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setIsPromptModalOpen(false)}
+                            className="absolute inset-0 bg-black/60 backdrop-blur-xl"
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="relative w-full max-w-2xl bg-white dark:bg-[#111] rounded-[40px] border border-gray-100 dark:border-white/5 shadow-2xl overflow-hidden p-10"
+                        >
+                            <div className="mb-8">
+                                <h2 className="text-3xl font-black tracking-tight mb-2 uppercase">Craft New Forge</h2>
+                                <p className="text-sm font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Initialization Protocol Engaged</p>
+                            </div>
+
+                            <form onSubmit={handlePromptSubmit} className="relative group glow-effect">
+                                <div className="absolute -inset-1 bg-gradient-to-r from-accent-500 to-orange-400 dark:from-purple-600 dark:to-blue-600 rounded-2xl opacity-10 dark:opacity-20 blur-lg animate-pulse-glow group-hover:opacity-20 dark:group-hover:opacity-40 transition duration-500"></div>
+                                <div className="relative flex flex-col bg-gray-50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/10 rounded-2xl shadow-xl overflow-hidden focus-within:border-accent-500/50 focus-within:ring-1 focus-within:ring-accent-500/50 transition-all duration-300">
+                                    <textarea
+                                        autoFocus
+                                        value={promptInput}
+                                        onChange={(e) => setPromptInput(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && !e.shiftKey) {
+                                                e.preventDefault();
+                                                handlePromptSubmit(e);
+                                            }
+                                        }}
+                                        placeholder="Tell me about the app you want to build"
+                                        className="w-full bg-transparent text-lg text-gray-900 dark:text-white placeholder-gray-500 px-6 py-5 min-h-[120px] outline-none resize-none font-medium"
+                                    />
+
+                                    <div className="flex items-center justify-between px-4 pb-4">
+                                        <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">
+                                            Press Enter to Initialize
+                                        </div>
+                                        <button
+                                            type="submit"
+                                            disabled={!promptInput.trim()}
+                                            className="flex items-center justify-center size-10 rounded-xl bg-gray-900 dark:bg-white text-white dark:text-black hover:bg-accent-500 dark:hover:bg-accent-500 hover:text-white transition-all disabled:opacity-50"
+                                        >
+                                            <div className="i-ph:arrow-up-bold text-lg" />
+                                        </button>
+                                    </div>
+                                </div>
+                            </form>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
 
             {/* Header */}
             <nav className="relative z-10 flex items-center justify-between px-8 py-6 max-w-7xl mx-auto backdrop-blur-sm">

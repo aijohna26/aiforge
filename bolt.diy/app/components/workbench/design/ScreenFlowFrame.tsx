@@ -157,7 +157,7 @@ export function ScreenFlowFrame() {
     const [isGeneratingNav, setIsGeneratingNav] = useState(false);
     const [selectedModel, setSelectedModel] = useState('nano-banana');
     const [navVariationCount, setNavVariationCount] = useState(2);
-    const [navAspectRatio, setNavAspectRatio] = useState('16:9');
+    const [navAspectRatio, setNavAspectRatio] = useState('9:16');
     const [viewingNavVariation, setViewingNavVariation] = useState<string | null>(null);
     const [isEditingNav, setIsEditingNav] = useState(false);
     const [editNavPrompt, setEditNavPrompt] = useState('');

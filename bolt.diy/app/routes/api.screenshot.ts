@@ -8,12 +8,13 @@ export async function action({ request }: ActionFunctionArgs) {
     }
 
     const startTime = Date.now();
-    console.log('[Screenshot API] Starting capture request...');
+    console.log('[Screenshot API] Starting high-fidelity export...');
 
     try {
-        const { html, selector = '#screenshot-area', width = 1200, height = 800 } = await request.json() as {
+        const { html, clip, format = 'png', width = 8000, height = 8000 } = await request.json() as {
             html: string;
-            selector?: string;
+            clip?: { x: number; y: number; width: number; height: number };
+            format?: 'png' | 'pdf';
             width?: number;
             height?: number
         };
@@ -26,54 +27,111 @@ export async function action({ request }: ActionFunctionArgs) {
             ? 'node_modules/chromium/lib/chromium/chrome-mac/Chromium.app/Contents/MacOS/Chromium'
             : chromium.path;
 
-        console.log('[Screenshot API] Launching browser...');
         const browser = await puppeteer.launch({
             executablePath: exePath,
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-web-security'],
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-web-security',
+                '--font-render-hinting=none',
+                '--force-device-scale-factor=2'
+            ],
             headless: true,
         });
 
         try {
             const page = await browser.newPage();
-            await page.setViewport({ width, height, deviceScaleFactor: 2 });
 
-            console.log('[Screenshot API] Setting page content...');
-            // We use 'domcontentloaded' to be faster, combined with a manual timeout
-            await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            // High-Fidelity Canvas Viewport
+            await page.setViewport({
+                width: width,
+                height: height,
+                deviceScaleFactor: 2
+            });
 
-            console.log('[Screenshot API] Waiting for stabilization...');
-            // Shortened wait since we are sending full rendered HTML
-            await new Promise(resolve => setTimeout(resolve, 500));
+            console.log('[Screenshot API] Normalizing studio workspace transforms...');
+            const baseUrl = new URL(request.url).origin;
 
-            console.log(`[Screenshot API] Searching for selector: ${selector} `);
-            const element = await page.$(selector);
+            // Inject base Href for relative assets and base style recovery
+            let enrichedHtml = html.includes('<head>')
+                ? html.replace('<head>', `<head><base href="${baseUrl}/">`)
+                : `<!DOCTYPE html><html><head><base href="${baseUrl}/"></head><body>${html}</body></html>`;
 
-            let screenshot;
-            if (element) {
-                console.log('[Screenshot API] Capturing element screenshot...');
-                screenshot = await element.screenshot({ type: 'png' });
+            // STRIP TRANSFORMS & RECOVER STYLES
+            // We inject the Tailwind CDN to ensure all dynamic frames render correctly
+            enrichedHtml = enrichedHtml.replace('</head>', `
+                <script src="https://cdn.tailwindcss.com"></script>
+                <style>
+                    html, body { background: transparent !important; margin: 0; padding: 0; }
+                    * { transition: none !important; animation-duration: 0s !important; }
+                    .react-transform-component, .react-transform-element { transform: none !important; }
+                    [style*="transform"] { transform: none !important; }
+                    #screenshot-area { 
+                        position: absolute !important; 
+                        top: 0 !important; 
+                        left: 0 !important; 
+                        width: 8000px !important; 
+                        height: 8000px !important; 
+                        background: transparent !important;
+                        background-image: none !important;
+                    }
+                    .screenshot-exclude { display: none !important; }
+                    [data-screen-frame="true"] { 
+                        transform: none !important; 
+                        box-shadow: 0 40px 100px rgba(0,0,0,0.5) !important;
+                        border-radius: 32px !important;
+                        overflow: hidden !important;
+                        background: white !important; /* Ensure frames have their own background */
+                    }
+                </style>
+            </head>`);
+
+            await page.setContent(enrichedHtml, { waitUntil: 'load', timeout: 60000 });
+
+            // Let Tailwind process and assets load
+            await new Promise(resolve => setTimeout(resolve, 5000));
+
+            let data;
+            let contentType;
+
+            if (format === 'pdf') {
+                console.log('[Screenshot API] Exporting Vector PDF...');
+                const pdfBuffer = await page.pdf({
+                    format: 'A4',
+                    printBackground: true,
+                    scale: 0.8, // Slightly scale down to fit nicely
+                    margin: { top: '40px', right: '40px', bottom: '40px', left: '40px' }
+                });
+                data = Buffer.from(pdfBuffer).toString('base64');
+                contentType = 'application/pdf';
             } else {
-                console.warn(`[Screenshot API] Selector ${selector} not found, falling back to full page capture`);
-                screenshot = await page.screenshot({ type: 'png', fullPage: false });
+                console.log(`[Screenshot API] Capturing Precision PNG at ${JSON.stringify(clip)}...`);
+                const screenshot = await page.screenshot({
+                    type: 'png',
+                    clip: clip,
+                    fullPage: false,
+                    omitBackground: true
+                });
+                data = Buffer.from(screenshot).toString('base64');
+                contentType = 'image/png';
             }
 
-            const base64 = Buffer.from(screenshot as Uint8Array).toString('base64');
-            console.log(`[Screenshot API] Capture complete in ${Date.now() - startTime} ms`);
+            console.log(`[Screenshot API] Export successful in ${Date.now() - startTime}ms`);
 
             return json({
                 success: true,
-                image: `data: image / png; base64, ${base64} `
+                data: `data:${contentType};base64,${data}`,
+                format
             });
 
         } finally {
             await browser.close();
-            console.log('[Screenshot API] Browser closed');
         }
 
     } catch (error: any) {
         console.error('[Screenshot API] Fatal Error:', error);
         return json({
-            error: 'Failed to capture screenshot',
+            error: 'Export failed',
             details: error.message
         }, { status: 500 });
     }

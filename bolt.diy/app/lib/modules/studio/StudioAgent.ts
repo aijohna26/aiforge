@@ -7,10 +7,16 @@ export interface StudioBranding {
     textColor: string;
     appName: string;
     description?: string;
+    targetAudience?: string;
+    category?: string;
+    platform?: string;
     logo?: string;
     footer?: string;
     uiStyle?: string;
     personality?: string;
+    colorPalette?: any;
+    typography?: string;
+    components?: string;
 }
 
 export interface StudioScreenRequest {
@@ -86,42 +92,59 @@ export class StudioAgent {
             model: this.getModel(),
             system: `You are an elite Mobile UI/UX Design Engineer specializing in high-fidelity prototypes.
       Your task is to generate beautiful, production-ready mobile screen designs using HTML and Tailwind CSS.
-      
+
+      🚨 BRAND CONSISTENCY REQUIREMENTS (HIGHEST PRIORITY):
+      1. **Target Audience**: If a target audience is specified (e.g., children, teens, seniors), you MUST design for that specific demographic:
+         - Children: Use bright colors, playful elements, simple language, large buttons, fun illustrations, gamification
+         - Teens: Trendy, social-first, bold colors, modern typography, engaging visuals
+         - Seniors: High contrast, large text, simple navigation, clear labels, accessibility-first
+         - Professionals: Clean, minimal, efficient, data-focused
+      2. **Logo Consistency**: If an <img> tag is provided for the logo, use it EXACTLY as given. DO NOT create SVG logos, emoji logos, or text-only logos.
+      3. **Color Palette**: Use ONLY the colors specified in the prompt. DO NOT introduce new colors or gradients not in the palette.
+      4. **UI Style & Personality**: Strictly adhere to the specified UI style (playful/minimal/elegant/modern) and personality (friendly/energetic/calm/professional).
+
+      CRITICAL ARCHITECTURAL RULES:
+      1. **Root Structure**: All content must be inside a single root <div>.
+      2. **Overflow**: No overflow classes on the root <div>.
+         All scrollable content must be in inner containers with hidden scrollbars using: [&::-webkit-scrollbar]:hidden scrollbar-none.
+      3. **Height**:
+         - For absolute overlays (maps, bottom sheets, modals): Use "relative w-full h-screen" on the top div of the overlay.
+         - For regular content: Use "w-full h-full min-h-screen" on the top div.
+         - DO NOT use "h-screen" on inner content unless absolutely required. Height must grow with content.
+      4. **Iframe-Friendly**: Ensure all elements contribute to the final scrollHeight so the parent iframe can correctly resize.
+      5. **No Hardware Frames**: DO NOT generate any device bezels, home indicators, status bars, or hardware notches. Generate ONLY the internal UI of the app.
+
+      SPACING OPTIMIZATION (CRITICAL):
+      - **Target Height**: Design should fit within 812px viewport height WITHOUT scrolling for auth screens (sign-in, sign-up, splash).
+      - **Compact Padding**: Use tight, efficient spacing (p-4, p-6, py-3, etc.) instead of excessive padding.
+      - **Reduced Gaps**: Use gap-3, gap-4, space-y-3, space-y-4 instead of gap-6, gap-8.
+      - **Efficient Vertical Space**: Minimize empty space between sections. Every pixel counts.
+      - **Smart Grouping**: Group related elements tightly (e.g., form fields should have minimal spacing).
+      - **Compact Headers**: Keep hero images, logos, and headers reasonably sized (max 200-250px height).
+      - **Tight Forms**: Input fields should use py-2.5 or py-3, not py-4 or larger.
+      - **Condensed Buttons**: Use py-2.5 or py-3 for buttons, not py-4.
+      - **Minimal Bottom Spacing**: Avoid excessive pb-8, pb-12 at the bottom of screens.
+
       DESIGN SYSTEM SPECIFICATIONS:
       - Use ONLY Tailwind CSS classes for styling.
-      - App Name: ${branding.appName}
-      - App Description: ${branding.description || 'N/A'}
-      
-      SEMANTIC COLORS (MAPPED TO THEME):
-      - Background: Use "bg-background"
-      - Text: Use "text-foreground"
-      - Primary Action: Use "bg-primary" or "text-primary"
-      - Card/Surface: Use "bg-card"
-      - Icons/Accents: Use "text-accent" or "bg-accent"
-      - Muted elements: Use "text-muted-foreground" or "bg-muted"
-      
-      CRITICAL: Always use the semantic variable names (primary, secondary, background, foreground, etc.) for colors instead of hardcoded hex values to ensure theme compatibility.
-      
-      BRAND CONTEXT:
-      - App Name: ${branding.appName}
-      - Brand Logo: ${branding.logo ? 'A specific logo image is provided. Place a placeholder for it in the header/splash areas.' : 'No specific logo provided.'}
-      - Brand Footer: ${branding.footer ? 'A specific footer/sponsorship image is provided. Place it at the bottom where appropriate.' : 'No footer image provided.'}
-      - Brand Personality: ${branding.personality || 'modern and professional'}.
-      - Visual Style: ${branding.uiStyle || 'clean and minimalist'}.
-      
+      - Use theme CSS variables ONLY for color-related properties (bg-[var(--background)], text-[var(--foreground)], border-[var(--border)], ring-[var(--ring)], etc.)
+
+      SEMANTIC COLORS:
+      - Background: bg-[var(--background)]
+      - Text: text-[var(--foreground)]
+      - Primary: bg-[var(--primary)] or text-[var(--primary)]
+      - Border: border-[var(--border)]
+      - Accent: bg-[var(--accent)] or text-[var(--accent)]
+
       UI GUIDELINES:
-      1. COMPOSABILITY: Create modular layouts using flex and grid.
-      2. TYPOGRAPHY: Use a clear hierarchy with bold headings and readable body text.
-      3. INTERACTION: Every button must have a clear hover/active state (using tailwind).
-      4. IOS/ANDROID NEUTRAL: Design to be consistent across platforms but feel native to a mobile device.
-      5. PREMIUM FEEL: Use subtle gradients, soft shadows (shadow-sm/md), and generous negative space (px-6, py-8).
-      6. ICONOGRAPHY: Use Lucide-style iconography represented by SVG path strings or common Lucide patterns.
-      
-      OUTPUT REQUIREMENTS:
-      - Return ONLY the HTML code block.
-      - NO <html>, <head>, or <body> tags.
-      - Use a parent <div> with class "flex flex-col h-full w-full overflow-hidden" as the container.
-      - DO NOT use external scripts or non-standard CSS.`,
+      - Create modular, composable layouts.
+      - Use clear typography hierarchy.
+      - Ensure premium feel with gradients, micro-interactions, and soft shadows.
+      - Use Lucide-style iconography (represent as beautiful SVG or common patterns).
+
+      OUTPUT:
+      - Return ONLY raw HTML markup starting with <div>.
+      - No markdown code blocks, no <html>, <head>, or <body>.`,
             prompt: prompt,
         });
 
@@ -133,18 +156,53 @@ export class StudioAgent {
     }
 
     private constructPrompt(branding: StudioBranding, screen: StudioScreenRequest) {
+        // Build comprehensive context prompt
+        const audienceContext = branding.targetAudience
+            ? `\n🎯 TARGET AUDIENCE: ${branding.targetAudience}\nIMPORTANT: This is for ${branding.targetAudience}. Design accordingly with appropriate imagery, language, tone, and complexity.`
+            : '';
+
+        const logoDirective = branding.logo
+            ? `\n🎨 BRAND LOGO: <img src="${branding.logo}" alt="${branding.appName} Logo" class="w-16 h-16 object-contain mix-blend-screen" crossorigin="anonymous" style="filter: drop-shadow(0 2px 8px rgba(0,0,0,0.1));" />\nCRITICAL: Use this EXACT logo image tag wherever a logo is needed. DO NOT generate or imagine a different logo. ALWAYS include crossorigin="anonymous" attribute and mix-blend-screen class to blend the logo naturally with the background.`
+            : '';
+
+        const colorContext = branding.colorPalette
+            ? `\n🌈 COLOR PALETTE (USE THESE EXACT COLORS):
+- Primary: ${branding.colorPalette.primary}
+- Secondary: ${branding.colorPalette.secondary}
+- Accent: ${branding.colorPalette.accent}
+- Background: ${branding.colorPalette.background}
+- Text Primary: ${branding.colorPalette.text?.primary}
+- Text Secondary: ${branding.colorPalette.text?.secondary}`
+            : `\n🌈 COLORS: Primary: ${branding.primaryColor}, Background: ${branding.backgroundColor}, Text: ${branding.textColor}`;
+
+        const styleContext = `\n✨ DESIGN SYSTEM:
+- UI Style: ${branding.uiStyle || 'modern'} (${branding.uiStyle === 'playful' ? 'fun, whimsical, colorful, rounded corners, friendly' : branding.uiStyle === 'minimal' ? 'clean, spacious, simple' : branding.uiStyle === 'elegant' ? 'sophisticated, refined' : 'contemporary'})
+- Personality: ${branding.personality || 'professional'} (${branding.personality === 'friendly' ? 'warm, approachable, conversational tone' : branding.personality === 'energetic' ? 'vibrant, dynamic, exciting' : branding.personality === 'calm' ? 'peaceful, soothing' : 'business-appropriate'})
+- Typography: ${branding.typography || 'sans-serif'}
+- Components: ${branding.components || 'rounded'}`;
+
         return `
-      Generate a ${screen.type} screen for a mobile app named "${branding.appName}".
-      
-      Screen Name: ${screen.name}
-      Purpose: ${screen.purpose}
-      Key Elements to include: ${screen.keyElements.join(', ')}
-      
-      UI Style Preference: ${branding.uiStyle || 'modern'}
-      Brand Personality: ${branding.personality || 'professional'}
-      
-      The design should be a high-fidelity mobile UI. Ensure it looks like a real app screen.
-      Use modern design trends like glassmorphism, soft shadows, and clean typography.
+Generate a ${screen.type} screen for "${branding.appName}".
+${branding.description ? `\nApp Description: ${branding.description}` : ''}
+${audienceContext}
+
+📱 SCREEN DETAILS:
+- Name: ${screen.name}
+- Type: ${screen.type}
+- Purpose: ${screen.purpose}
+- Required Elements: ${screen.keyElements.join(', ')}
+${styleContext}
+${colorContext}
+${logoDirective}
+
+🎯 CRITICAL REQUIREMENTS:
+1. **Target Audience Adherence**: Design MUST be appropriate for ${branding.targetAudience || 'general users'}. Use age-appropriate language, imagery, and complexity.
+2. **Logo Consistency**: ${branding.logo ? 'Use the EXACT logo image tag provided above. DO NOT create a different logo.' : 'Create a simple text-based logo placeholder.'}
+3. **Color Consistency**: Use ONLY the colors specified in the palette above. DO NOT invent new colors.
+4. **Style Consistency**: Follow the "${branding.uiStyle || 'modern'}" style strictly with a "${branding.personality || 'professional'}" personality.
+5. **Brand Identity**: Every element should reflect the brand identity of "${branding.appName}" for ${branding.targetAudience || 'users'}.
+
+Create a high-fidelity, production-ready mobile screen that perfectly matches ALL the requirements above.
     `;
     }
 

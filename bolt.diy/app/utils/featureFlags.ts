@@ -9,10 +9,18 @@ export const FEATURES = EXPERIMENTAL_FEATURES;
 // Access this in components to check if the feature is enabled
 export const isFeatureEnabled = (featureId: string): boolean => {
     if (typeof window === 'undefined') return false;
-    // Enable by default for now to demonstrate the changes, or check localStorage
-    // For safety, let's look for the specific key.
-    // If you want to enable it by default during development, return true;
-    // return true; 
+
+    // Enable DUBS_WIZARD_MERGE by default to show the Studio designer
+    if (featureId === FEATURES.DUBS_WIZARD_MERGE) {
+        return true;
+    }
+
+    // Enable DUBS_INTERACTIVE_MOCKS by default to show the interactive canvas on Step 5
+    if (featureId === FEATURES.DUBS_INTERACTIVE_MOCKS) {
+        return true;
+    }
+
+    // For other features, check localStorage
     return localStorage.getItem(`feature_${featureId}`) === 'true';
 };
 

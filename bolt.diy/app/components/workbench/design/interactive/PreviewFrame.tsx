@@ -70,11 +70,11 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({ html, id = 'preview'
                     }
                     ::-webkit-scrollbar { width: 6px; height: 6px; }
                     ::-webkit-scrollbar-track { background: transparent; }
-                    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-                    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+                    ::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.8); border-radius: 3px; }
+                    ::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.95); }
                 </style>
             </head>
-            <body class="bg-white min-h-screen">
+            <body class="bg-background min-h-screen">
                 <div id="root" class="h-full w-full">${content}</div>
                 <script>
                     // Error catching
@@ -88,11 +88,8 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({ html, id = 'preview'
     };
 
     if (isCapturing) {
-        // Use the same tailwind proxy for the capture div to ensure styles are processed
-        const tailwindUrl = `/api/image-proxy?url=${encodeURIComponent('https://cdn.tailwindcss.com')}`;
-
         return (
-            <div className={`w-full h-full bg-white relative overflow-hidden ${className || ''}`} style={{ fontFamily: 'var(--font-sans), sans-serif' }}>
+            <div className={`w-full h-full bg-background relative overflow-hidden ${className || ''}`} style={{ fontFamily: 'var(--font-sans), sans-serif' }}>
                 <style dangerouslySetInnerHTML={{
                     __html: `
                     :root {
@@ -100,13 +97,15 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({ html, id = 'preview'
                         ${theme?.style || ''}
                     }
                     .capture-root-${id} {
-                        background-color: var(--background, white);
+                        background-color: var(--background, transparent);
                         color: var(--foreground, #111827);
                     }
                 `}} />
-                {/* Inject Tailwind CDN into the capture div so the capture library can see the styles */}
-                <script src={tailwindUrl}></script>
-                <div className={`capture-root-${id} h-full w-full`} dangerouslySetInnerHTML={{ __html: html }} />
+                <div
+                    className={`capture-root-${id} h-full w-full bg-background`}
+                    dangerouslySetInnerHTML={{ __html: html }}
+                    data-tailwind-capture="true"
+                />
             </div>
         );
     }
@@ -117,7 +116,7 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({ html, id = 'preview'
             title={title}
             className={`w-full h-full border-0 ${className || ''}`}
             srcDoc={getFullHtml(html)}
-            sandbox="allow-scripts allow-popups allow-forms"
+            sandbox="allow-scripts allow-popups allow-forms allow-same-origin"
         />
     );
 };
