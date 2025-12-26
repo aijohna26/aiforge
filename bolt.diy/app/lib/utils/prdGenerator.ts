@@ -129,7 +129,7 @@ ${step1.additionalDetails || 'Synthesize logic based on description.'}
 **Asset Management (STRICT ZERO-PLACEHOLDER POLICY):**
 The following assets have been mirrored to **Supabase Storage** for permanence. You MUST download them and place them into the project's **assets/images/** folder using **curl** before using them in the code. 
 
-🔴 **FORBIDDEN DOMAINS**: Any use of \`pexels.com\`, \`unsplash.com\`, or \`picsum.photos\` is a **TASK FAILURE**.
+🔴 **FORBIDDEN DOMAINS**: Any use of \`unsplash.com\` or \`picsum.photos\` is a **TASK FAILURE**. Pexels is allowed ONLY for content and hero imagery.
 
 - **Logo**: ${step3.logo?.url ? `${step3.logo.url}` : 'N/A'} (Save as **assets/images/logo.png**)
 - **App Icons**: Reuse the Logo URL (${step3.logo?.url}) for **assets/images/icon.png**, **assets/images/favicon.png**, and **assets/images/adaptive-icon.png**.

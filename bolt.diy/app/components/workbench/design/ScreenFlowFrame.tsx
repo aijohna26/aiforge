@@ -109,6 +109,14 @@ const getAspectRatioClass = (ratio: string) => {
     return ratioMap[ratio] || 'aspect-[16/9]';
 };
 
+const getDefaultScreenOptions = (type: Step4Data['screens'][0]['type']) => {
+    const isAuthOrOnboarding = ['splash', 'signin', 'signup', 'onboarding'].includes(type);
+    return {
+        showLogo: isAuthOrOnboarding, // Logo ON for auth/onboarding, OFF for main app screens
+        showBottomNav: !isAuthOrOnboarding // Nav OFF for auth/onboarding, ON for main app screens
+    };
+};
+
 export function ScreenFlowFrame() {
     const wizardData = useStore(designWizardStore);
     const { screens, initialScreen, authRequired, navigation } = wizardData.step4;
@@ -124,8 +132,7 @@ export function ScreenFlowFrame() {
                 purpose: 'App launch animation and branding',
                 keyElements: [],
                 position: { x: 0, y: 0 },
-                showLogo: true,
-                showBottomNav: false
+                ...getDefaultScreenOptions('splash')
             };
 
             updateStep4Data({
@@ -639,8 +646,7 @@ export function ScreenFlowFrame() {
             purpose: typeInfo.description,
             keyElements: [],
             position: { x: 0, y: 0 },
-            showLogo: true,
-            showBottomNav: type !== 'splash' && type !== 'signin' && type !== 'signup'
+            ...getDefaultScreenOptions(type)
         };
 
         updateStep4Data({
@@ -668,8 +674,7 @@ export function ScreenFlowFrame() {
             purpose: newScreenPurpose,
             keyElements: [],
             position: { x: 0, y: 0 },
-            showLogo: true,
-            showBottomNav: newScreenType !== 'splash' && newScreenType !== 'signin' && newScreenType !== 'signup'
+            ...getDefaultScreenOptions(newScreenType)
         };
 
         updateStep4Data({
@@ -733,8 +738,7 @@ export function ScreenFlowFrame() {
                     purpose: 'User authentication and login',
                     keyElements: [],
                     position: { x: 0, y: 0 },
-                    showLogo: true,
-                    showBottomNav: false
+                    ...getDefaultScreenOptions('signin')
                 });
             }
 
@@ -746,8 +750,7 @@ export function ScreenFlowFrame() {
                     purpose: 'New user registration',
                     keyElements: [],
                     position: { x: 0, y: 0 },
-                    showLogo: true,
-                    showBottomNav: false
+                    ...getDefaultScreenOptions('signup')
                 });
             }
 

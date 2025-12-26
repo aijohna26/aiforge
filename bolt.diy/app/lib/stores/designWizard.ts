@@ -218,6 +218,7 @@ export interface Step5Data {
     }>;
     studioSnapshot: string | null;
     isStudioActive?: boolean;
+    customTheme?: any;
 }
 
 // Step 6: Feature Configuration (Integrations & Data Models)
@@ -328,6 +329,7 @@ const initialDesignData: DesignWizardData = {
         studioFrames: [],
         studioSnapshot: null,
         isStudioActive: false,
+        customTheme: null,
     },
     step6: {
         integrations: [],
@@ -459,6 +461,7 @@ const migrateStoredWizardData = (data: DesignWizardData): DesignWizardData => {
         if (!migrated.step5.studioFrames) migrated.step5.studioFrames = [];
         if (!migrated.step5.generatedScreens) migrated.step5.generatedScreens = [];
         if (migrated.step5.isStudioActive === undefined) migrated.step5.isStudioActive = false;
+        if (migrated.step5.customTheme === undefined) migrated.step5.customTheme = null;
     }
 
     return migrated;
@@ -696,11 +699,13 @@ export function isStep5Complete(): boolean {
 
     if (!step5 || !step4) return false;
 
-    // Check both legacy static screens and new interactive studio frames
-    const hasStudioFrames = (step5.studioFrames?.length || 0) >= (step4.screens?.length || 0);
-    const hasGeneratedScreens = (step5.generatedScreens?.filter(s => s.selected).length || 0) >= (step4.screens?.length || 0);
+    // A step is complete if the user has generated at least ONE screen 
+    // OR if they have generated a custom theme (indicating they've used the studio)
+    const hasAnyFrames = (step5.studioFrames?.length || 0) > 0;
+    const hasAnyGenerated = (step5.generatedScreens?.filter(s => s.selected).length || 0) > 0;
+    const hasCustomTheme = !!step5.customTheme;
 
-    return hasStudioFrames || hasGeneratedScreens;
+    return hasAnyFrames || hasAnyGenerated || hasCustomTheme;
 }
 
 export function isStep6Complete(): boolean {

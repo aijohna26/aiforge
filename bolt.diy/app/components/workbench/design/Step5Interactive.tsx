@@ -18,12 +18,65 @@ export function Step5Interactive() {
     const wizardData = useStore(designWizardStore);
     const [status, setStatus] = useState<InteractionState>('idle');
     const [frames, setFrames] = useState<FrameData[]>([]);
+
+    const handleRegenerateTheme = useCallback(async () => {
+        setStatus('generating');
+
+        try {
+            const selectedNav = wizardData.step4.navigation.navBarVariations.find(v => v.id === wizardData.step4.navigation.selectedVariationId);
+
+            const branding = {
+                appName: wizardData.step1.appName || 'My App',
+                description: wizardData.step1.description,
+                targetAudience: wizardData.step1.targetAudience,
+                category: wizardData.step1.category,
+                platform: wizardData.step1.platform,
+                logo: wizardData.step3.logo?.url,
+                footer: selectedNav?.url,
+                primaryColor: wizardData.step3.colorPalette?.primary || '#4F46E5',
+                backgroundColor: wizardData.step3.colorPalette?.background || '#FFFFFF',
+                textColor: wizardData.step3.colorPalette?.text?.primary || '#111827',
+                uiStyle: wizardData.step2.uiStyle,
+                personality: wizardData.step2.personality,
+                colorPalette: wizardData.step3.colorPalette,
+                typography: wizardData.step2.typography,
+                components: wizardData.step2.components
+            };
+
+            const response = await fetch('/api/studio/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ branding, screens: [], includeTheme: true, userId: 'user-placeholder' })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            if (data.mode === 'async') {
+                setJobId(data.jobId);
+                toast.info('Regenerating theme in background...');
+            } else if (data.theme) {
+                setCustomTheme(data.theme);
+                toast.success('Design System regenerated successfully!');
+            }
+        } catch (error) {
+            console.error('[Studio] Theme regeneration failed:', error);
+            toast.error('Failed to regenerate theme');
+        } finally {
+            setStatus('preview');
+        }
+    }, [wizardData]);
+
     const [isFullscreen, setIsFullscreen] = useState(false);
 
     useEffect(() => {
         setStudioActive(isFullscreen);
     }, [isFullscreen]);
-    const [customTheme, setCustomTheme] = useState<any>(null);
+    const [customTheme, setCustomTheme] = useState<any>(wizardData.step5?.customTheme || null);
     const [pendingRegeneration, setPendingRegeneration] = useState(false);
     const [jobId, setJobId] = useState<string | null>(null);
     const snapshotRef = useRef<string>('');
@@ -106,24 +159,33 @@ export function Step5Interactive() {
         [wizardData.step1, wizardData.step2, wizardData.step3, wizardData.step4]
     );
 
-    const persistStudioFrames = useCallback((nextFrames: FrameData[]) => {
+    const persistStudioFrames = useCallback((nextFrames: FrameData[], nextTheme?: any) => {
         updateStep5Data({
             studioFrames: nextFrames,
             studioSnapshot: wizardSnapshot,
+            ...(nextTheme ? { customTheme: nextTheme } : {}),
         });
     }, [wizardSnapshot]);
+
+    // Auto-persist theme changes
+    useEffect(() => {
+        if (customTheme && customTheme !== wizardData.step5?.customTheme) {
+            updateStep5Data({ customTheme });
+        }
+    }, [customTheme, wizardData.step5?.customTheme]);
 
     // Auto-restore Studio state from stored frames
     useEffect(() => {
         if (storedStudioFrames.length > 0 && frames.length === 0) {
             setFrames(storedStudioFrames);
+            if (wizardData.step5?.customTheme) setCustomTheme(wizardData.step5.customTheme);
             setStatus('preview');
             setIsFullscreen(true);
             hasGeneratedRef.current = true;
             snapshotRef.current = storedStudioSnapshot || wizardSnapshot;
             console.log('[Studio] Restored', storedStudioFrames.length, 'frames from stored session');
         }
-    }, [storedStudioFrames, storedStudioSnapshot, frames.length, wizardSnapshot]);
+    }, [storedStudioFrames, frames.length, storedStudioSnapshot, wizardSnapshot, wizardData.step5?.customTheme]);
 
     const [isSaving, setIsSaving] = useState(false);
     const isSavingRef = useRef(false); // Added for immediate lock
@@ -539,12 +601,14 @@ export function Step5Interactive() {
                 // Fallback to generic screens if all defined ones already generated
                 const startIndex = framesRef.current.length + 1;
                 batch = Array.from({ length: batchSize }, (_, i) => ({
-                    id: `screen-${startIndex + i}`,
-                    name: `Screen ${startIndex + i}`,
+                    id: `screen-${framesRef.current.length + i + 1}`,
+                    name: `Additional Screen ${i + 1}`,
                     type: 'custom',
-                    purpose: 'Additional screen',
-                    keyElements: ['Content', 'Navigation'],
-                }));
+                    purpose: 'Continuing the app flow',
+                    keyElements: ['Navigation', 'Content'],
+                    showLogo: false,
+                    showBottomNav: true
+                })) as Step4Data['screens'];
             }
 
             // If there's nothing to generate (shouldn't happen due to fallback), exit
@@ -635,6 +699,7 @@ export function Step5Interactive() {
             }
         }
     };
+
 
     const handleCleanupLayout = useCallback(() => {
         if (!frames.length) return;
@@ -781,10 +846,12 @@ export function Step5Interactive() {
                                     </div>
 
                                     <h3 className="text-[28px] font-black text-white mb-3 tracking-[-0.02em] leading-tight">
-                                        Interactive Design Studio
+                                        {storedStudioFrames.length > 0 || wizardData.step5?.customTheme ? 'Continue Designing' : 'Interactive Design Studio'}
                                     </h3>
                                     <p className="text-indigo-200/70 text-[13px] leading-relaxed mb-10 font-medium max-w-sm">
-                                        Launch our immersive design engine to iterate on your app's flow and visual branding in an infinite workspace.
+                                        {storedStudioFrames.length > 0 || wizardData.step5?.customTheme
+                                            ? "Pick up where you left off. Your custom design system and screen architecture are ready for further refinement."
+                                            : "Launch our immersive design engine to iterate on your app's flow and visual branding in an infinite workspace."}
                                     </p>
 
                                     <div className="flex flex-col gap-4">
@@ -794,14 +861,17 @@ export function Step5Interactive() {
                                         >
                                             <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/5 opacity-0 group-hover:opacity-100 transition-opacity" />
                                             <div className="i-ph:rocket-launch-fill text-indigo-600 text-base group-hover:scale-110 transition-transform" />
-                                            <span className="relative">Launch Studio</span>
+                                            <span className="relative">
+                                                {storedStudioFrames.length > 0 || wizardData.step5?.customTheme ? 'Resume Studio' : 'Launch Studio'}
+                                            </span>
                                             <div className="i-ph:arrow-right-bold group-hover:translate-x-1 transition-transform" />
                                         </button>
-                                        {storedStudioFrames.length > 0 && (
+                                        {(storedStudioFrames.length > 0 || wizardData.step5?.customTheme) && (
                                             <button
                                                 onClick={() => {
-                                                    updateStep5Data({ studioFrames: [], studioSnapshot: null });
+                                                    updateStep5Data({ studioFrames: [], studioSnapshot: null, customTheme: null });
                                                     setFrames([]);
+                                                    setCustomTheme(null);
                                                     hasGeneratedRef.current = false;
                                                     snapshotRef.current = '';
                                                     toast.info('Studio cache cleared');
@@ -829,6 +899,7 @@ export function Step5Interactive() {
                                 isGenerating={status === 'generating'}
                                 customTheme={customTheme}
                                 onGenerateNext={handleGenerateNextScreen}
+                                onRegenerateTheme={handleRegenerateTheme}
                                 onCleanupLayout={handleCleanupLayout}
                             />
                         </motion.div>

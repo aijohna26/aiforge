@@ -139,10 +139,10 @@ These APIs don't exist in React Native:
 
 ## External Assets & Placeholders (CRITICAL)
 
-- ❌ **NEVER** use \`pexels.com\`, \`unsplash.com\`, or \`picsum.photos\` for core app assets (logos, icons, splash screens).
-- ❌ **NEVER** use \`curl\` to download from these domains in background tasks.
+- ❌ **NEVER** use \`unsplash.com\` or \`picsum.photos\` for core app assets (logos, icons, splash screens).
 - ✅ **ALWAYS** use the provided **Supabase Storage URLs** for brand assets.
 - ✅ **ALWAYS** use local assets once downloaded to \`assets/images/\`.
+- ✅ **Pexels** is permitted ONLY for content photos (hero images, products, avatars) when sourced via authenticated tools or valid direct URLs.
 - ✅ Use \`lucide-react-native\` or \`expo-symbols\` for generic icons instead of image placeholders.
 
 ## Performance Requirements
@@ -180,7 +180,6 @@ These APIs don't exist in React Native:
 </Pressable>
 
 ## FINAL FORBIDDEN DOMAIN LIST
-- pexels.com
 - unsplash.com
 - picsum.photos
 - via.placeholder.com

@@ -20,13 +20,14 @@ interface CanvasProps {
     isGenerating?: boolean;
     customTheme?: ThemeType;
     onGenerateNext?: () => void;
+    onRegenerateTheme?: () => void;
     onCleanupLayout?: () => void;
 }
 
 const FRAME_SCREENSHOT_WIDTH = 500;
 const FRAME_SCREENSHOT_HEIGHT = 940;
 
-export const Canvas: React.FC<CanvasProps> = ({ frames, isGenerating = false, customTheme, onGenerateNext, onCleanupLayout }) => {
+export const Canvas: React.FC<CanvasProps> = ({ frames, isGenerating = false, customTheme, onGenerateNext, onRegenerateTheme, onCleanupLayout }) => {
     const [activeFrameId, setActiveFrameId] = useState<string | null>(null);
     const [selectedThemeId, setSelectedThemeId] = useState<string>(customTheme?.id || 'ocean-breeze');
     const [isThemeOpen, setIsThemeOpen] = useState(false);
@@ -361,8 +362,21 @@ export const Canvas: React.FC<CanvasProps> = ({ frames, isGenerating = false, cu
                                                 exit={{ opacity: 0, y: 12, scale: 0.95 }}
                                                 className="absolute top-[calc(100%+12px)] left-0 w-[280px] max-h-[480px] overflow-y-auto bg-[#0A0A0B]/98 backdrop-blur-[40px] border border-white/[0.08] rounded-[28px] p-2.5 shadow-[0_32px_80px_rgba(0,0,0,0.9)] z-[70] custom-scrollbar screenshot-exclude"
                                             >
-                                                <div className="px-3 py-2 mb-2 border-b border-white/5">
+                                                <div className="px-3 py-2 mb-2 border-b border-white/5 flex items-center justify-between">
                                                     <h5 className="text-[10px] font-black text-white/30 uppercase tracking-[0.15em]">Design Library</h5>
+                                                    {onRegenerateTheme && (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                onRegenerateTheme();
+                                                            }}
+                                                            className="flex items-center gap-1.5 px-2 py-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-md transition-colors group/regen"
+                                                            title="AI Regenerate Custom Design System"
+                                                        >
+                                                            <div className="i-ph:magic-wand-fill text-[10px] group-hover/regen:rotate-12 transition-transform" />
+                                                            <span className="text-[9px] font-bold uppercase tracking-wider">Regenerate</span>
+                                                        </button>
+                                                    )}
                                                 </div>
                                                 <div className="space-y-1">
                                                     {EFFECTIVE_THEME_LIST.map((theme) => {

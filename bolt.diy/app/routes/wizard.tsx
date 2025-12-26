@@ -341,13 +341,19 @@ export default function WizardPage() {
     const handleRemoveSavedItem = (item: { type: 'logo' | 'screen'; id?: string }) => {
         if (item.type === 'logo') {
             setSavedLogo(null);
-            toast.success('Logo removed');
-            return;
-        }
-
-        if (item.type === 'screen' && item.id) {
-            setSavedScreens((prev) => prev.filter((screen) => screen.id !== item.id));
+        } else if (item.id) {
+            setSavedScreens((prev) => prev.filter((s) => s.id !== item.id));
             toast.success('Screen removed');
+        }
+    };
+
+    const handleUpdateSavedItem = (type: 'logo' | 'screen', id: string, newUrl: string) => {
+        if (type === 'logo') {
+            setSavedLogo(newUrl);
+        } else {
+            setSavedScreens((prev) =>
+                prev.map((screen) => (screen.id === id ? { ...screen, url: newUrl } : screen))
+            );
         }
     };
 
@@ -2037,6 +2043,7 @@ Please generate a complete, working Expo React Native application that matches t
                 savedLogo={savedLogo}
                 savedScreens={savedScreens}
                 onRemoveItem={handleRemoveSavedItem}
+                onUpdateItem={handleUpdateSavedItem}
             />
 
             {/* Reset Session Alert Dialog */}
