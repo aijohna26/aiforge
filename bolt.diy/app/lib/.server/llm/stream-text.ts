@@ -1,4 +1,4 @@
-import { convertToCoreMessages, streamText as _streamText, type Message } from 'ai';
+import { convertToModelMessages, streamText as _streamText, type UIMessage as Message } from 'ai';
 import { MAX_TOKENS, PROVIDER_COMPLETION_LIMITS, isReasoningModel, type FileMap } from './constants';
 import { getSystemPrompt } from '~/lib/common/prompts/prompts';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODIFICATIONS_TAG_NAME, PROVIDER_LIST, WORK_DIR } from '~/utils/constants';
@@ -113,9 +113,13 @@ export async function streamText(props: {
       const { model, provider, content } = extractPropertiesFromMessage(message);
       currentModel = model;
       currentProvider = provider;
-      newMessage.content = sanitizeText(content);
+      if (typeof (message as any).content === 'string') {
+        (newMessage as any).content = sanitizeText(content);
+      }
     } else if (message.role == 'assistant') {
-      newMessage.content = sanitizeText(message.content);
+      if (typeof (message as any).content === 'string') {
+        (newMessage as any).content = sanitizeText((message as any).content);
+      }
     }
 
     // Sanitize all text parts in parts array, if present
@@ -306,7 +310,7 @@ export async function streamText(props: {
     }),
     system: chatMode === 'build' ? systemPrompt : chatMode === 'design' ? designPrompt() : discussPrompt(),
     ...tokenParams,
-    messages: convertToCoreMessages(processedMessages as any),
+    messages: await convertToModelMessages(processedMessages as any),
     ...filteredOptions,
 
     // Set temperature to 1 for reasoning models (required by OpenAI API)

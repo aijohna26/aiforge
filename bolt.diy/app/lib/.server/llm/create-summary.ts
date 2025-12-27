@@ -27,13 +27,15 @@ export async function createSummary(props: {
 
       return { ...message, content };
     } else if (message.role == 'assistant') {
-      let content = message.content;
+      let content = (message as any).content;
 
-      content = simplifyBoltActions(content);
-      content = content.replace(/<div class=\\"__boltThought__\\">.*?<\/div>/s, '');
-      content = content.replace(/<think>.*?<\/think>/s, '');
+      if (typeof content === 'string') {
+        content = simplifyBoltActions(content);
+        content = content.replace(/<div class=\\"__boltThought__\\">.*?<\/div>/s, '');
+        content = content.replace(/<think>.*?<\/think>/s, '');
 
-      return { ...message, content };
+        return { ...message, content };
+      }
     }
 
     return message;
@@ -94,10 +96,12 @@ ${summary.summary}`;
 
   logger.debug('Sliced Messages:', slicedMessages.length);
 
-  const extractTextContent = (message: Message) =>
-    Array.isArray(message.content)
-      ? (message.content.find((item) => item.type === 'text')?.text as string) || ''
-      : message.content;
+  const extractTextContent = (message: Message) => {
+    const msg = message as any;
+    return Array.isArray(msg.content)
+      ? (msg.content.find((item: any) => item.type === 'text')?.text as string) || ''
+      : msg.content;
+  };
 
   // select files from the list of code file from the project that might be useful for the current request from the user
   const resp = await generateText({
@@ -170,10 +174,10 @@ Below is the chat after that:
 ---
 <new_chats>
 ${slicedMessages
-  .map((x) => {
-    return `---\n[${x.role}] ${extractTextContent(x)}\n---`;
-  })
-  .join('\n')}
+        .map((x) => {
+          return `---\n[${x.role}] ${extractTextContent(x)}\n---`;
+        })
+        .join('\n')}
 </new_chats>
 ---
 

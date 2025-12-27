@@ -3,6 +3,8 @@
 ## Overview
 Phase 3 integrates Inngest background jobs with the frontend, enabling real-time progress updates and non-blocking UI during screen generation.
 
+npx inngest-cli@latest dev -u http://localhost:5173/api/inngest
+
 ## ✅ Completed Components
 
 ### 1. React Query Hook: `useJobPolling`

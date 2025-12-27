@@ -35,6 +35,8 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import fs from 'fs';
+import path from 'path';
 import type {
   InngestJob,
   JobType,
@@ -44,6 +46,47 @@ import type {
   UpdateJobProgressInput,
   TokenUsage,
 } from '~/types/inngest-jobs';
+
+// File-based storage for job state sharing between processes
+const JOBS_DIR = path.join(process.cwd(), '.tmp', 'inngest-jobs');
+
+// Ensure directory exists
+if (!fs.existsSync(JOBS_DIR)) {
+  fs.mkdirSync(JOBS_DIR, { recursive: true });
+}
+
+function getJobFilePath(jobId: string): string {
+  return path.join(JOBS_DIR, `${jobId}.json`);
+}
+
+function readJobFromFile(jobId: string): InngestJob | null {
+  try {
+    const filePath = getJobFilePath(jobId);
+    if (!fs.existsSync(filePath)) return null;
+    const data = fs.readFileSync(filePath, 'utf-8');
+    const job = JSON.parse(data);
+    // Convert date strings back to Date objects
+    return {
+      ...job,
+      createdAt: new Date(job.createdAt),
+      updatedAt: new Date(job.updatedAt),
+      startedAt: job.startedAt ? new Date(job.startedAt) : undefined,
+      completedAt: job.completedAt ? new Date(job.completedAt) : undefined,
+    };
+  } catch (error) {
+    console.error(`[Inngest DB] Error reading job file ${jobId}:`, error);
+    return null;
+  }
+}
+
+function writeJobToFile(job: InngestJob): void {
+  try {
+    const filePath = getJobFilePath(job.id);
+    fs.writeFileSync(filePath, JSON.stringify(job, null, 2), 'utf-8');
+  } catch (error) {
+    console.error(`[Inngest DB] Error writing job file ${job.id}:`, error);
+  }
+}
 
 /**
  * Creates a new job in the database
@@ -70,18 +113,7 @@ export async function createJob(input: CreateJobInput): Promise<string> {
   ]);
   */
 
-  console.log('[Inngest DB] Created job:', {
-    jobId,
-    jobType: input.jobType,
-    provider: input.provider,
-    model: input.model,
-  });
-
-  // TEMPORARY: Store in memory (replace with actual DB)
-  if (!globalThis.__INNGEST_JOBS__) {
-    globalThis.__INNGEST_JOBS__ = new Map();
-  }
-  globalThis.__INNGEST_JOBS__.set(jobId, {
+  const job: InngestJob = {
     id: jobId,
     jobType: input.jobType,
     status: 'pending' as JobStatus,
@@ -94,7 +126,17 @@ export async function createJob(input: CreateJobInput): Promise<string> {
     model: input.model,
     createdAt: new Date(),
     updatedAt: new Date(),
+  };
+
+  console.log('[Inngest DB] Created job:', {
+    jobId,
+    jobType: input.jobType,
+    provider: input.provider,
+    model: input.model,
   });
+
+  // Write to file for cross-process sharing
+  writeJobToFile(job);
 
   return jobId;
 }
@@ -143,24 +185,25 @@ export async function updateJobStatus(input: UpdateJobStatusInput): Promise<void
     error: input.error,
   });
 
-  // TEMPORARY: Update in memory
-  if (globalThis.__INNGEST_JOBS__) {
-    const job = globalThis.__INNGEST_JOBS__.get(input.jobId);
-    if (job) {
-      Object.assign(job, {
-        status: input.status,
-        progress: input.progress,
-        outputData: input.outputData,
-        error: input.error,
-        tokenUsage: input.tokenUsage,
-        estimatedCostUsd: input.estimatedCostUsd,
-        completedAt: input.status === 'completed' || input.status === 'failed' ? now : job.completedAt,
-        updatedAt: now,
-      });
-      if (input.status === 'processing' && !job.startedAt) {
-        job.startedAt = now;
-      }
+  // Read from file, update, and write back
+  const job = readJobFromFile(input.jobId);
+  if (job) {
+    Object.assign(job, {
+      status: input.status,
+      progress: input.progress !== undefined ? input.progress : job.progress,
+      outputData: input.outputData,
+      error: input.error,
+      tokenUsage: input.tokenUsage,
+      estimatedCostUsd: input.estimatedCostUsd,
+      completedAt: input.status === 'completed' || input.status === 'failed' ? now : job.completedAt,
+      updatedAt: now,
+    });
+    if (input.status === 'processing' && !job.startedAt) {
+      job.startedAt = now;
     }
+    writeJobToFile(job);
+  } else {
+    console.warn(`[Inngest DB] Job ${input.jobId} not found for status update`);
   }
 }
 
@@ -185,13 +228,12 @@ export async function updateJobProgress(input: UpdateJobProgressInput): Promise<
     message: input.message,
   });
 
-  // TEMPORARY: Update in memory
-  if (globalThis.__INNGEST_JOBS__) {
-    const job = globalThis.__INNGEST_JOBS__.get(input.jobId);
-    if (job) {
-      job.progress = input.progress;
-      job.updatedAt = new Date();
-    }
+  // Read from file, update, and write back
+  const job = readJobFromFile(input.jobId);
+  if (job) {
+    job.progress = input.progress;
+    job.updatedAt = new Date();
+    writeJobToFile(job);
   }
 }
 
@@ -241,13 +283,8 @@ export async function getJob(jobId: string): Promise<InngestJob | null> {
   };
   */
 
-  // TEMPORARY: Retrieve from memory
-  if (globalThis.__INNGEST_JOBS__) {
-    const job = globalThis.__INNGEST_JOBS__.get(jobId);
-    return job || null;
-  }
-
-  return null;
+  // Read from file
+  return readJobFromFile(jobId);
 }
 
 /**
@@ -279,13 +316,12 @@ export async function incrementJobAttempts(jobId: string): Promise<void> {
 
   console.log('[Inngest DB] Incremented job attempts:', { jobId });
 
-  // TEMPORARY: Update in memory
-  if (globalThis.__INNGEST_JOBS__) {
-    const job = globalThis.__INNGEST_JOBS__.get(jobId);
-    if (job) {
-      job.attempts++;
-      job.updatedAt = new Date();
-    }
+  // Read from file, update, and write back
+  const job = readJobFromFile(jobId);
+  if (job) {
+    job.attempts++;
+    job.updatedAt = new Date();
+    writeJobToFile(job);
   }
 }
 
@@ -308,22 +344,23 @@ export async function findStaleJobs(staleMinutes: number = 30): Promise<InngestJ
   }));
   */
 
-  // TEMPORARY: Find from memory
-  if (!globalThis.__INNGEST_JOBS__) return [];
-
+  // Read from files
   const cutoffTime = new Date(Date.now() - staleMinutes * 60 * 1000);
   const staleJobs: InngestJob[] = [];
 
-  for (const job of globalThis.__INNGEST_JOBS__.values()) {
-    if (job.status === 'processing' && job.updatedAt < cutoffTime) {
-      staleJobs.push(job);
+  try {
+    const files = fs.readdirSync(JOBS_DIR);
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      const jobId = file.replace('.json', '');
+      const job = readJobFromFile(jobId);
+      if (job && job.status === 'processing' && job.updatedAt < cutoffTime) {
+        staleJobs.push(job);
+      }
     }
+  } catch (error) {
+    console.error('[Inngest DB] Error finding stale jobs:', error);
   }
 
   return staleJobs;
-}
-
-// TypeScript global declaration for temporary in-memory storage
-declare global {
-  var __INNGEST_JOBS__: Map<string, InngestJob> | undefined;
 }

@@ -19,15 +19,19 @@ interface CanvasProps {
     frames: FrameData[];
     isGenerating?: boolean;
     customTheme?: ThemeType;
+    branding?: any; // Branding context for custom prompts
+    userId?: string; // User ID for tracking
     onGenerateNext?: () => void;
     onRegenerateTheme?: () => void;
     onCleanupLayout?: () => void;
+    onDuplicateFrame?: (frameId: string) => void;
+    onNewFrame?: (frame: FrameData) => void; // Callback for adding new frames from chatbox
 }
 
 const FRAME_SCREENSHOT_WIDTH = 500;
 const FRAME_SCREENSHOT_HEIGHT = 940;
 
-export const Canvas: React.FC<CanvasProps> = ({ frames, isGenerating = false, customTheme, onGenerateNext, onRegenerateTheme, onCleanupLayout }) => {
+export const Canvas: React.FC<CanvasProps> = ({ frames, isGenerating = false, customTheme, branding, userId, onGenerateNext, onRegenerateTheme, onCleanupLayout, onDuplicateFrame, onNewFrame }) => {
     const [activeFrameId, setActiveFrameId] = useState<string | null>(null);
     const [selectedThemeId, setSelectedThemeId] = useState<string>(customTheme?.id || 'ocean-breeze');
     const [isThemeOpen, setIsThemeOpen] = useState(false);
@@ -38,6 +42,7 @@ export const Canvas: React.FC<CanvasProps> = ({ frames, isGenerating = false, cu
     const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
     const canvasRef = useRef<HTMLDivElement>(null);
     const [prompt, setPrompt] = useState('');
+    const [isChatGenerating, setIsChatGenerating] = useState(false);
     const transformRef = useRef<ReactZoomPanPinchRef>(null);
     const [hasAutoFocused, setHasAutoFocused] = useState(false);
 
@@ -139,6 +144,73 @@ export const Canvas: React.FC<CanvasProps> = ({ frames, isGenerating = false, cu
             setIsHidingForScreenshot(false);
         } finally {
             setIsExportMenuOpen(false);
+        }
+    };
+
+    const handlePromptSubmit = async () => {
+        if (!prompt.trim()) {
+            toast.error('Please enter a prompt');
+            return;
+        }
+
+        if (!branding) {
+            toast.error('Branding information is missing. Please complete the wizard first.');
+            return;
+        }
+
+        setIsChatGenerating(true);
+        const loadingToast = toast.loading('🎨 AI is designing your screen...');
+
+        try {
+            console.log('[Canvas Chat] Submitting prompt:', prompt);
+
+            const response = await fetch('/api/studio/custom-prompt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    prompt,
+                    branding,
+                    userId: userId || 'anonymous'
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to generate screen');
+            }
+
+            const result = await response.json();
+
+            console.log('[Canvas Chat] Generation successful:', result.screen.title);
+
+            // Calculate position for new frame
+            const newX = frames.length > 0
+                ? Math.max(...frames.map(f => f.x || 0)) + 1000
+                : 4000;
+            const newY = 4000;
+
+            const newFrame: FrameData = {
+                id: result.screen.id,
+                html: result.screen.html,
+                title: result.screen.title,
+                x: newX,
+                y: newY
+            };
+
+            // Notify parent component
+            if (onNewFrame) {
+                onNewFrame(newFrame);
+            }
+
+            toast.success(`✨ Created: ${result.interpretedAs.name}!`, { id: loadingToast });
+            setPrompt('');
+            setIsChatOpen(false);
+
+        } catch (error: any) {
+            console.error('[Canvas Chat] Error:', error);
+            toast.error(error.message || 'Failed to generate screen', { id: loadingToast });
+        } finally {
+            setIsChatGenerating(false);
         }
     };
 
@@ -312,6 +384,7 @@ export const Canvas: React.FC<CanvasProps> = ({ frames, isGenerating = false, cu
                                             defaultY={defaultY}
                                             scale={zoom / 100}
                                             onDownload={handleDownloadFrame}
+                                            onDuplicate={onDuplicateFrame}
                                         />
                                     );
                                 })}
@@ -503,18 +576,23 @@ export const Canvas: React.FC<CanvasProps> = ({ frames, isGenerating = false, cu
                                             </div>
                                         </div>
                                         <button
-                                            onClick={() => {
-                                                toast.info('🎨 AI is designing...');
-                                                setIsChatOpen(false);
-                                                setPrompt('');
-                                            }}
-                                            disabled={!prompt.trim()}
+                                            onClick={handlePromptSubmit}
+                                            disabled={!prompt.trim() || isChatGenerating}
                                             className="group relative w-full py-4 bg-gradient-to-b from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 disabled:from-white/5 disabled:to-white/5 text-white disabled:text-white/30 rounded-[20px] text-[11px] font-black uppercase tracking-[0.12em] transition-all shadow-[0_8px_32px_rgba(79,70,229,0.4)] disabled:shadow-none active:scale-[0.98] overflow-hidden"
                                         >
                                             <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                                             <div className="relative flex items-center justify-center gap-2">
-                                                <div className="i-ph:magic-wand-fill text-sm" />
-                                                <span>Initialize Generation</span>
+                                                {isChatGenerating ? (
+                                                    <>
+                                                        <div className="i-ph:circle-notch-bold text-sm animate-spin" />
+                                                        <span>Generating...</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <div className="i-ph:magic-wand-fill text-sm" />
+                                                        <span>Initialize Generation</span>
+                                                    </>
+                                                )}
                                             </div>
                                         </button>
                                     </div>

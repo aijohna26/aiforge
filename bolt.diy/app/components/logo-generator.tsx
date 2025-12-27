@@ -503,71 +503,74 @@ export function LogoGenerator({ appInfo, onSave, stylePreferences }: LogoGenerat
             {/* Edit Modal */}
             {isEditModalOpen && selectedLogo && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 dark:border-slate-700">
-                        <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
-                            <h3 className="font-semibold text-lg">Edit Logo</h3>
+                    <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md flex flex-col border border-slate-200 dark:border-slate-700">
+                        {/* Compact Header */}
+                        <div className="px-4 py-2.5 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center flex-shrink-0">
+                            <h3 className="font-semibold text-sm">Edit Logo</h3>
                             <button
                                 onClick={() => setIsEditModalOpen(false)}
-                                className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                                className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 text-lg leading-none"
                             >
                                 ✕
                             </button>
                         </div>
 
-                        <div className="p-6 space-y-6">
-                            {/* Clip Tray / Preview */}
-                            <div className="flex justify-center">
-                                <div className="relative w-32 h-32 rounded-lg overflow-hidden border-2 border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900">
+                        {/* Compact Content - NO SCROLLING NEEDED */}
+                        <div className="p-4 space-y-3">
+                            {/* Mini Preview - Inline with label */}
+                            <div className="flex items-center gap-3">
+                                <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 flex-shrink-0">
                                     <img
                                         src={selectedLogo}
                                         alt="Logo to edit"
                                         className="w-full h-full object-contain"
                                     />
-                                    <div className="absolute inset-0 bg-black/10 pointer-events-none" />
+                                </div>
+                                <div className="text-xs text-slate-500">
+                                    Using <strong>Nano Banana Edit</strong>
                                 </div>
                             </div>
 
-                            {/* Edit Prompt */}
+                            {/* Edit Prompt - MAIN FOCUS */}
                             <div>
-                                <label className="block text-sm font-medium mb-2 text-slate-700 dark:text-slate-300">
-                                    Edit Instructions
+                                <label className="block text-xs font-medium mb-1 text-slate-700 dark:text-slate-300">
+                                    What changes do you want?
                                 </label>
                                 <textarea
                                     value={editPrompt}
                                     onChange={(e) => setEditPrompt(e.target.value)}
                                     placeholder="e.g., Make it blue, add a circle background..."
                                     rows={3}
-                                    className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-sm"
+                                    autoFocus
                                 />
-                            </div>
-
-                            {/* Info Note */}
-                            <div className="text-xs text-slate-500 bg-blue-50 dark:bg-blue-900/20 p-3 rounded text-center">
-                                Using <strong>Nano Banana Edit</strong> model
                             </div>
 
                             {/* Error Message in Modal */}
                             {error && (
-                                <div className="text-sm text-red-600 bg-red-50 dark:bg-red-900/20 p-3 rounded border border-red-200 dark:border-red-800 flex items-center gap-2">
+                                <div className="text-xs text-red-600 bg-red-50 dark:bg-red-900/20 p-2 rounded border border-red-200 dark:border-red-800 flex items-center gap-2">
                                     <span>❌</span>
                                     <span>{error}</span>
                                 </div>
                             )}
                         </div>
 
-                        <div className="p-4 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-2 bg-slate-50 dark:bg-slate-900/50">
+                        {/* Compact Footer */}
+                        <div className="px-4 py-2.5 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-2 bg-slate-50 dark:bg-slate-900/50 flex-shrink-0">
                             <Button
                                 variant="ghost"
                                 onClick={() => setIsEditModalOpen(false)}
                                 disabled={isGenerating}
+                                size="sm"
                             >
                                 Cancel
                             </Button>
                             <Button
                                 onClick={handleEdit}
                                 disabled={isGenerating || !editPrompt.trim()}
+                                size="sm"
                             >
-                                {isGenerating ? 'Generating...' : 'Generate Edits'}
+                                {isGenerating ? '⚙️ Generate' : '✨ Generate'}
                             </Button>
                         </div>
                     </div>

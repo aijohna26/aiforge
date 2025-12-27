@@ -1017,24 +1017,24 @@ export function ScreenFlowFrame() {
                                                 </button>
                                             )}
 
-                                            <div className="flex items-center gap-1.5 px-2 py-1 bg-[#2a2a2a] rounded-lg border border-[#333]">
+                                            <div className="flex items-center gap-1 px-1.5 py-1 bg-[#1a1a1a] rounded-lg border border-[#2a2a2a]">
                                                 <button
                                                     onClick={() => handleToggleScreenOption(screen.id, 'showLogo')}
-                                                    className={`flex items-center gap-1.5 px-2 py-0.5 rounded transition-all text-[10px] font-medium ${screen.showLogo !== false
-                                                        ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
-                                                        : 'text-slate-500 border border-transparent hover:text-slate-400'
+                                                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded transition-all text-[10px] font-semibold ${screen.showLogo !== false
+                                                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
+                                                        : 'bg-[#2a2a2a] text-slate-400 hover:bg-[#333] hover:text-slate-300'
                                                         }`}
                                                     title={screen.showLogo !== false ? 'Logo will be shown' : 'Logo will be hidden'}
                                                 >
                                                     <div className="i-ph:frame-corners text-xs" />
                                                     Logo
                                                 </button>
-                                                <div className="w-[1px] h-3 bg-[#333]" />
+                                                <div className="w-[1px] h-4 bg-[#333]" />
                                                 <button
                                                     onClick={() => handleToggleScreenOption(screen.id, 'showBottomNav')}
-                                                    className={`flex items-center gap-1.5 px-2 py-0.5 rounded transition-all text-[10px] font-medium ${screen.showBottomNav !== false
-                                                        ? 'bg-purple-600/20 text-purple-400 border border-purple-500/30'
-                                                        : 'text-slate-500 border border-transparent hover:text-slate-400'
+                                                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded transition-all text-[10px] font-semibold ${screen.showBottomNav !== false
+                                                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
+                                                        : 'bg-[#2a2a2a] text-slate-400 hover:bg-[#333] hover:text-slate-300'
                                                         }`}
                                                     title={screen.showBottomNav !== false ? 'Bottom nav will be shown' : 'Bottom nav will be hidden'}
                                                 >

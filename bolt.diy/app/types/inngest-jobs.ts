@@ -5,7 +5,12 @@
  * These types define the structure of jobs tracked in the database.
  */
 
-export type JobType = 'screen-generation' | 'screenshot-export' | 'chat-context' | 'style-extraction';
+export type JobType =
+  | 'screen-generation'
+  | 'screenshot-export'
+  | 'chat-context'
+  | 'style-extraction'
+  | 'image-generation';
 export type JobStatus = 'pending' | 'processing' | 'completed' | 'failed';
 
 export interface TokenUsage {

@@ -46,7 +46,6 @@ const handler = serve({
  * Both loader (GET) and action (POST) use the same handler
  */
 export async function loader(args: LoaderFunctionArgs) {
-  console.log('[Inngest] GET request received');
   try {
     return await handler(args);
   } catch (error) {
@@ -56,7 +55,6 @@ export async function loader(args: LoaderFunctionArgs) {
 }
 
 export async function action(args: ActionFunctionArgs) {
-  console.log('[Inngest] POST request received');
   try {
     return await handler(args);
   } catch (error) {

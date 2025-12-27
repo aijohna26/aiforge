@@ -103,27 +103,28 @@ export const screenGeneration = inngest.createFunction(
       const totalScreens = screens.length;
       const generatedScreens = await Promise.all(screens.map(async (screen, i) => {
         const screenIndex = i + 1;
-        console.log(`[Inngest] Generating screen ${screenIndex}/${totalScreens}:`, screen.name);
 
-        // Publish screen generation start
-        if (userId && (channel as any)?.publish) {
-          await (channel as any).publish(`user:${userId}`, {
-            type: 'screen.generating',
-            jobId,
-            screenId: screen.id,
-            screenName: screen.name,
-            screenIndex,
-            totalScreens,
-            timestamp: new Date().toISOString(),
-          });
-        }
+        return await step.run(`generate-of-screen-${screen.id}`, async () => {
+          console.log(`[Inngest] Generating screen ${screenIndex}/${totalScreens}:`, screen.name);
 
-        try {
-          // No outer step.run here to allow tools to be their own steps
-          const result = await agent.generateScreen(branding, screen, step);
+          // Publish screen generation start
+          if (userId && (channel as any)?.publish) {
+            await (channel as any).publish(`user:${userId}`, {
+              type: 'screen.generating',
+              jobId,
+              screenId: screen.id,
+              screenName: screen.name,
+              screenIndex,
+              totalScreens,
+              timestamp: new Date().toISOString(),
+            });
+          }
 
-          // Wrap the final result in a step so it's persisted and not re-generated on resume
-          const generatedScreen = await step.run(`save-screen-${screen.id}`, async () => {
+          try {
+            // Generate screen without passing 'step' to avoid nesting issues
+            // This treats the entire screen generation as one atomic unit
+            const result = await agent.generateScreen(branding, screen);
+
             console.log(`[Inngest] Screen ${screenIndex}/${totalScreens} completed:`, screen.name);
 
             // Publish individual screen completion for UI updates
@@ -140,24 +141,22 @@ export const screenGeneration = inngest.createFunction(
             }
 
             return result;
-          });
+          } catch (error) {
+            console.error(`[Inngest] Failed to generate screen ${screen.name}:`, error);
 
-          return generatedScreen;
-        } catch (error) {
-          console.error(`[Inngest] Failed to generate screen ${screen.name}:`, error);
-
-          if (userId && (channel as any)?.publish) {
-            await (channel as any).publish(`user:${userId}`, {
-              type: 'screen.failed',
-              jobId,
-              screenId: screen.id,
-              screenName: screen.name,
-              error: error instanceof Error ? error.message : 'Unknown error',
-              timestamp: new Date().toISOString(),
-            });
+            if (userId && (channel as any)?.publish) {
+              await (channel as any).publish(`user:${userId}`, {
+                type: 'screen.failed',
+                jobId,
+                screenId: screen.id,
+                screenName: screen.name,
+                error: error instanceof Error ? error.message : 'Unknown error',
+                timestamp: new Date().toISOString(),
+              });
+            }
+            throw error;
           }
-          throw error;
-        }
+        });
       }));
 
       // Step 5: Mark job as completed

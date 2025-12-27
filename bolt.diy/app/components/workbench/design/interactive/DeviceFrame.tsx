@@ -17,6 +17,7 @@ interface DeviceFrameProps {
     defaultY?: number;
     scale?: number;
     onDownload?: (id: string) => Promise<void> | void;
+    onDuplicate?: (id: string) => Promise<void> | void;
 }
 
 export const DeviceFrame: React.FC<DeviceFrameProps> = ({
@@ -31,6 +32,7 @@ export const DeviceFrame: React.FC<DeviceFrameProps> = ({
     defaultY = 3600,
     scale = 1,
     onDownload,
+    onDuplicate,
 }) => {
     const contentRef = useRef<HTMLDivElement>(null);
     const [canScrollUp, setCanScrollUp] = useState(false);
@@ -163,11 +165,23 @@ export const DeviceFrame: React.FC<DeviceFrameProps> = ({
 
                     <div className="flex items-center gap-0.5 px-1">
                         <button
-                            onClick={(e) => { e.stopPropagation(); toast.info('Code view coming soon'); }}
+                            onClick={async (e) => {
+                                e.stopPropagation();
+                                if (!onDuplicate) {
+                                    toast.warning('Duplicate not available');
+                                    return;
+                                }
+                                try {
+                                    await Promise.resolve(onDuplicate(id));
+                                } catch (error) {
+                                    console.error('[DeviceFrame] Duplicate failed', error);
+                                    toast.error(error instanceof Error ? error.message : 'Failed to duplicate screen');
+                                }
+                            }}
                             className="size-8 flex items-center justify-center rounded-full bg-white/[0.06] text-white/50 hover:bg-[#9333EA]/20 hover:text-[#9333EA] transition-all"
-                            title="View Code"
+                            title="Duplicate Screen"
                         >
-                            <div className="i-ph:code-bold text-xs" />
+                            <div className="i-ph:squares-four-bold text-xs" />
                         </button>
                         <button
                             onClick={async (e) => {

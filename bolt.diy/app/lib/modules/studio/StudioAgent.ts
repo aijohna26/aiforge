@@ -1,7 +1,10 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { generateText, tool } from 'ai';
+import { generateText, tool, stepCountIs } from 'ai';
 import { z } from 'zod';
 import { searchPexels } from '../../utils/pexels';
+import { inngest } from '../../inngest/client';
+import { createJob, getJob } from '../../inngest/db';
+import { getAllowedTools, getImageToolGuidance, isToolAllowed } from './ImageToolRules';
 
 export interface StudioBranding {
     primaryColor: string;
@@ -19,6 +22,7 @@ export interface StudioBranding {
     colorPalette?: any;
     typography?: string;
     components?: string;
+    userId?: string;
 }
 
 export interface StudioScreenRequest {
@@ -32,7 +36,7 @@ export interface StudioScreenRequest {
 }
 
 export class StudioAgent {
-    private modelId = 'gemini-3-pro-preview';
+    private modelId = 'gemini-3-flash-preview';
 
     constructor(private apiKey?: string) { }
 
@@ -146,47 +150,52 @@ VIBE & AESTHETIC GUIDELINES:
         }
     }
 
-    async generateScreen(branding: StudioBranding, screen: StudioScreenRequest, step?: any) {
-        const prompt = this.constructPrompt(branding, screen);
+    /**
+     * Constructs the system prompt for screen generation with screen-type-specific guidance
+     * @param screenType - The type of screen being generated (splash, signin, home, etc.)
+     * @returns Enhanced system prompt with screen-specific image tool rules
+     */
+    private constructSystemPrompt(screenType: string): string {
+        // Get screen-specific image tool guidance
+        const imageGuidance = getImageToolGuidance(screenType);
 
-        const { text } = await generateText({
-            model: this.getModel(),
-            maxSteps: 5,
-            tools: {
-                searchImages: tool({
-                    description: 'Search for high-quality stock photos and images from Pexels to use in the design.',
-                    parameters: z.object({
-                        query: z.string().describe('The search query for images (e.g., "modern kitchen", "abstract background")'),
-                        count: z.number().optional().default(5).describe('Number of images to return'),
-                    }),
-                    execute: async ({ query, count }) => {
-                        const search = async () => {
-                            console.log(`[StudioAgent] Searching Pexels for: ${query}`);
-                            const images = await searchPexels(query, count);
-                            return {
-                                images: images.map(img => ({
-                                    url: img.src.large,
-                                    alt: img.alt,
-                                    photographer: img.photographer
-                                }))
-                            };
-                        };
-
-                        if (step) {
-                            return await step.run(`pexels-search-${query.replace(/\s+/g, '-').toLowerCase()}`, search);
-                        }
-
-                        return await search();
-                    },
-                }),
-            },
-            system: `You are an elite Mobile UI/UX Design Engineer specializing in high-fidelity prototypes.
+        return `You are an elite Mobile UI/UX Design Engineer specializing in high-fidelity prototypes.
       Your task is to generate beautiful, production-ready mobile screen designs using HTML and Tailwind CSS.
 
-      🛠 SUPER POWERS:
-      - You can use the 'searchImages' tool to find real, high-quality stock photos.
-      - Use these images for hero sections, avatars, product displays, or backgrounds to make the design feel premium and alive.
-      - ALWAYS use the actual URLs returned by the tool. DO NOT use placeholder URLs or external image services like Unsplash/Picsum unless the tool provides them.
+      🎨 SCREEN-SPECIFIC IMAGE TOOL GUIDANCE FOR ${screenType.toUpperCase()} SCREENS:
+      ${imageGuidance}
+
+      🛠 TOOL USAGE GUIDE:
+
+      1. **searchImages** - For generic stock photos:
+         - Returns: {images: [{url: "https://...", alt: "...", photographer: "..."}]}
+         - Use for: Generic content (avatars, product photos, backgrounds)
+         - How to use: Pick one URL from the images array and use it in an <img> tag
+
+      2. **generateImage** - For custom branded AI imagery:
+         - Returns: {imageUrl: "https://...", alt: "...", imageType: "..."}
+         - Use for: Branded splash screens, unique illustrations, custom backgrounds
+         - How to use: MUST use the returned imageUrl directly in an <img> tag
+         - ⚠️ This is expensive - use sparingly!
+
+      OUTPUT FORMAT:
+      You must return a single valid JSON object containing:
+      {
+        "html": "<div class...>",
+        "title": "Screen Title",
+        "id": "${screenType}"
+      }
+      The 'html' field MUST contain the complete, valid HTML code for the screen. It cannot be empty.
+      Do NOT wrap the output in markdown code blocks (\`\`\`json ... \`\`\`). Return raw JSON only.
+      NEVER output placeholder text like 'Navigation Bar', 'Footer', or 'Header'. If an element is not needed, do not render it.
+
+      🎨 CRITICAL IMAGE TOOL RULES:
+      - NEVER call both searchImages AND generateImage for the same screen
+      - If you call generateImage, ONLY use the returned imageUrl - do NOT also search Pexels
+      - When generateImage returns {imageUrl: "https://...", alt: "...", imageType: "..."}:
+        * You MUST use imageUrl in your final HTML: <img src="https://..." alt="..." crossorigin="anonymous" />
+        * NEVER substitute it with a Pexels URL or placeholder
+        * The imageUrl is the custom AI-generated image that perfectly matches the brand
 
       🚨 BRAND CONSISTENCY REQUIREMENTS (HIGHEST PRIORITY):
       1. **Target Audience**: If a target audience is specified (e.g., children, teens, seniors), you MUST design for that specific demographic:
@@ -208,9 +217,17 @@ VIBE & AESTHETIC GUIDELINES:
          - DO NOT use "h-screen" on inner content unless absolutely required. Height must grow with content.
       4. **Iframe-Friendly**: Ensure all elements contribute to the final scrollHeight so the parent iframe can correctly resize.
       5. **No Hardware Frames**: DO NOT generate any device bezels, home indicators, status bars, or hardware notches. Generate ONLY the internal UI of the app.
+      6. **Navigation Logic**:
+         - **Authentication Screens**: (Login, Sign Up, Forgot Password, Onboarding, Splash) MUST NOT have a main tab bar, navigation bar, or footer. They must be isolated.
+         - **Main Screens**: (Home, Profile, Settings) SHOULD have the navigation bar if provided in the prompt.
+         - **CRITICAL - Navigation/Footer Implementation**:
+           * NEVER use <img> tags for navigation bars, tab bars, or footers
+           * ALWAYS recreate navigation using HTML <div> elements, Tailwind CSS, and Lucide icons/SVG
+           * Match the reference design's style, colors, and layout using code, NOT images
+           * Use proper HTML structure with semantic elements and interactive states (hover, active, etc.)
 
       SPACING OPTIMIZATION (CRITICAL):
-      - **Target Height**: Design should fit within 812px viewport height WITHOUT scrolling for auth screens (sign-in, sign-up, splash).
+      - **Target Height**: Design should primarily fit within 812px, BUT for 'Children/Senior' personas or complex forms (Sign Up), allow scrolling to ensure touch targets are large (min 44px). Do not cram content.
       - **Compact Padding**: Use tight, efficient spacing (p-4, p-6, py-3, etc.) instead of excessive padding.
       - **Reduced Gaps**: Use gap-3, gap-4, space-y-3, space-y-4 instead of gap-6, gap-8.
       - **Efficient Vertical Space**: Minimize empty space between sections. Every pixel counts.
@@ -240,14 +257,137 @@ VIBE & AESTHETIC GUIDELINES:
 
       OUTPUT:
       - Return ONLY raw HTML markup starting with <div>.
-      - No markdown code blocks, no <html>, <head>, or <body>.`,
+      - No markdown code blocks, no <html>, <head>, or <body>.`;
+    }
+
+    async generateScreen(branding: StudioBranding, screen: StudioScreenRequest, step?: any) {
+        const prompt = this.constructPrompt(branding, screen);
+        let imageGenCount = 0;
+
+        // Get allowed tools based on screen type
+        const { allowGenerateImage, allowSearchImages } = getAllowedTools(screen.type);
+
+        console.log(`[StudioAgent] Screen type: ${screen.type}, allowGenerateImage: ${allowGenerateImage}, allowSearchImages: ${allowSearchImages}`);
+
+        // Build tools object dynamically based on screen type rules
+        const availableTools: any = {};
+
+        if (allowSearchImages) {
+            availableTools.searchImages = tool({
+                description: 'Search for high-quality stock photos and images from Pexels to use in the design.',
+                parameters: z.object({
+                    query: z.string().describe('The search query for images (e.g., "modern kitchen", "abstract background")'),
+                        count: z.number().optional().default(5).describe('Number of images to return'),
+                    }),
+                    execute: async ({ query, count }) => {
+                        console.log(`[StudioAgent] Searching Pexels for: ${query}`);
+                        const images = await searchPexels(query, count);
+                        return {
+                            images: images.map(img => ({
+                                url: img.src.large,
+                                alt: img.alt,
+                                photographer: img.photographer
+                            }))
+                        };
+                    },
+                });
+        }
+
+        if (allowGenerateImage) {
+            availableTools.generateImage = tool({
+                    description: `Generate custom branded images for app screens using AI.
+Use for: hero banners, splash backgrounds, feature illustrations, onboarding graphics.
+DO NOT use for: icons, logos (use provided assets), stock photos (use searchImages).
+This tool generates high-quality custom imagery that matches your brand identity.
+IMPORTANT: Ensure the generated image does NOT contain any device frames, phones, bezels, or hardware mockups. It must be a flat UI or illustration only.`,
+                    parameters: z.object({
+                        description: z.string().optional().describe('Detailed image description'),
+                        imageType: z.enum(['hero', 'background', 'illustration', 'feature-card']).optional().describe('Type of image to generate'),
+                        aspectRatio: z.string().default('9:16').describe('Aspect ratio: 9:16 (portrait), 16:9 (landscape), 1:1 (square)'),
+                    }),
+                    execute: async (input) => {
+                        // Double-check enforcement (defense in depth)
+                        if (!isToolAllowed(screen.type, 'generateImage')) {
+                            const errorMsg = `generateImage is not allowed for ${screen.type} screens. Use CSS backgrounds or searchImages instead.`;
+                            console.error('[StudioAgent] ❌', errorMsg);
+                            throw new Error(errorMsg);
+                        }
+
+                        const {
+                            description = 'App visualization',
+                            imageType = 'illustration',
+                            aspectRatio = '9:16'
+                        } = input || {};
+
+                        console.log('[StudioAgent] 🎨 generateImage tool called with:', input);
+
+                        const generateImageAsync = async () => {
+                            console.log('[StudioAgent] 🎨 Starting image generation:', { description, imageType, aspectRatio });
+
+                            // Enhance the prompt with branding context
+                            const enhancedPrompt = this.enhanceImagePromptForBranding(description, imageType, branding);
+
+                            // Create job in database
+                            const jobId = await createJob({
+                                jobType: 'image-generation',
+                                userId: branding.userId || 'system',
+                                inputData: { prompt: enhancedPrompt, imageType, aspectRatio },
+                                provider: 'kie',
+                                model: 'nano-banana',
+                            });
+
+                            // Send to Inngest (non-blocking)
+                            await inngest.send({
+                                name: 'media/generate.image',
+                                data: {
+                                    jobId,
+                                    userId: branding.userId || 'system',
+                                    prompt: enhancedPrompt,
+                                    googleModel: 'nano-banana',
+                                    outputFormat: 'png',
+                                    aspectRatio,
+                                    enhanceForUI: true,
+                                },
+                            });
+
+                            // Poll for completion with shorter timeout (max 15 attempts = 30 seconds)
+                            const imageUrl = await this.pollJobCompletion(jobId, 15);
+
+                            console.log('[StudioAgent] ✅ Image generated successfully!');
+                            console.log('[StudioAgent] 📸 Returning imageUrl to LLM:', imageUrl);
+
+                            const result = {
+                                imageUrl,
+                                alt: description,
+                                imageType,
+                            };
+
+                            console.log('[StudioAgent] 📦 Full response object:', result);
+                            return result;
+                        };
+
+                        // Execute directly without step.run to avoid NESTING_STEPS error
+                        // Retry behavior will be handled by the main function retry mechanism
+                        return await generateImageAsync();
+                    },
+                });
+        }
+
+        const { text } = await generateText({
+            model: this.getModel(),
+            stopWhen: stepCountIs(10),
+            tools: availableTools,
+            system: this.constructSystemPrompt(screen.type),
             prompt: prompt,
         });
 
+        console.log(`[StudioAgent] Raw response length for ${screen.id}: ${text.length}`);
+        const parsed = this.parseScreenResponse(text);
+
         return {
             id: screen.id,
-            title: screen.name,
-            html: this.extractHtml(text),
+            title: parsed.title || screen.name,
+            html: parsed.html,
         };
     }
 
@@ -312,12 +452,107 @@ DO NOT use rgba() or hsla(). Use Tailwind opacity instead (e.g., bg-primary/20).
     `;
     }
 
-    private extractHtml(text: string) {
-        // Basic extraction if the LLM wraps it in code blocks
-        const match = text.match(/```html?([\s\S]*?)```/);
-        if (match) {
-            return match[1].trim();
+    /**
+     * Enhances an image generation prompt with branding context
+     */
+    private enhanceImagePromptForBranding(description: string, imageType: string, branding: StudioBranding): string {
+        // Inject branding context
+        const colorContext = branding.colorPalette
+            ? `dominant colors: ${branding.colorPalette.primary}, ${branding.colorPalette.accent}`
+            : `colors: ${branding.primaryColor}`;
+
+        const styleContext = branding.uiStyle || 'modern';
+        const personality = branding.personality || 'professional';
+
+        return `${imageType} for ${branding.appName} mobile app. ${description}.
+Style: ${styleContext}, ${personality}. ${colorContext}.
+Mobile-optimized, high quality, professional design.
+IMPORTANT: Do NOT include any phone frames, device mockups, or smartphone bezels. Generate ONLY the content/artwork itself without any device containers.`;
+    }
+
+    /**
+     * Polls a job until completion or timeout
+     * Default: 15 attempts × 2s = 30 seconds
+     */
+    private async pollJobCompletion(jobId: string, maxAttempts: number = 15): Promise<string> {
+        for (let i = 0; i < maxAttempts; i++) {
+            const job = await getJob(jobId);
+
+            if (!job) {
+                throw new Error(`Job ${jobId} not found`);
+            }
+
+            if (job.status === 'completed' && job.outputData?.imageUrl) {
+                console.log(`[StudioAgent] Image ready after ${i + 1} attempts (${(i + 1) * 2}s)`);
+                return job.outputData.imageUrl;
+            }
+
+            if (job.status === 'failed') {
+                throw new Error(`Image generation failed: ${job.error || 'Unknown error'}`);
+            }
+
+            // Wait 2 seconds before next poll
+            await new Promise((resolve) => setTimeout(resolve, 2000));
         }
-        return text.trim();
+
+        const timeoutSeconds = maxAttempts * 2;
+        throw new Error(`Image generation timed out after ${timeoutSeconds} seconds. The image may still be generating in the background.`);
+    }
+
+    private parseScreenResponse(text: string): { html: string; title: string; id?: string } {
+        if (!text || text.trim().length < 10) {
+            throw new Error('Generated text is empty or too short');
+        }
+
+        try {
+            // optimized regex to strip markdown code blocks (json or plain)
+            const cleaned = text.replace(/```(?:json)?\s*([\s\S]*?)\s*```/g, '$1').trim();
+
+            // If the cleaned text starts with '{', try to parse it as JSON
+            if (cleaned.startsWith('{')) {
+                const parsed = JSON.parse(cleaned);
+                if (!parsed.html || parsed.html.length < 10) {
+                    throw new Error('Parsed HTML is empty or too short');
+                }
+                return parsed;
+            }
+
+            // Legacy/Fallback: If it doesn't look like JSON, assume it's just HTML (old behavior)
+            // But we requested JSON, so this is a last resort.
+            const htmlMatch = text.match(/```html?([\s\S]*?)```/);
+            if (htmlMatch) {
+                return { html: htmlMatch[1].trim(), title: 'Generated Screen' };
+            }
+
+            // Final fallback: treat as raw HTML if it looks like HTML
+            const trimmed = text.trim();
+            if (trimmed.startsWith('<div') || trimmed.startsWith('<main')) {
+                return { html: trimmed, title: 'Generated Screen' };
+            }
+
+            throw new Error('Response does not look like JSON or HTML');
+
+        } catch (e) {
+            console.error('[StudioAgent] Failed to parse JSON response:', e);
+            console.error('[StudioAgent] Raw text:', text);
+            // Fallback: try to find the start and end of JSON object
+            const start = text.indexOf('{');
+            const end = text.lastIndexOf('}');
+            if (start !== -1 && end !== -1) {
+                try {
+                    const parsed = JSON.parse(text.substring(start, end + 1));
+                    if (!parsed.html || parsed.html.length < 10) {
+                        throw new Error('Parsed HTML is empty or too short (fallback)');
+                    }
+                    return parsed;
+                } catch (e2) {
+                    // Last resort: treat as raw HTML
+                    if (text.length > 20) {
+                        return { html: text, title: 'Generated Screen' };
+                    }
+                }
+            }
+            throw e; // Rethrow original error if fallback fails
+        }
     }
 }

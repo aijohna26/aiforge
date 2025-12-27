@@ -1,12 +1,12 @@
 import {
-  experimental_createMCPClient,
   type ToolSet,
-  type Message,
-  type DataStreamWriter,
-  convertToCoreMessages,
-  formatDataStreamPart,
+  type UIMessage,
+  type UIMessageStreamWriter,
+  convertToModelMessages,
 } from 'ai';
-import { Experimental_StdioMCPTransport } from 'ai/mcp-stdio';
+import { formatDataStreamPart } from '@ai-sdk/ui-utils';
+import { experimental_createMCPClient } from '@ai-sdk/mcp';
+import { Experimental_StdioMCPTransport } from '@ai-sdk/mcp/mcp-stdio';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { z } from 'zod';
 import type { ToolCallAnnotation } from '~/types/context';
@@ -355,7 +355,7 @@ export class MCPService {
     return toolName in this._tools;
   }
 
-  processToolCall(toolCall: ToolCall, dataStream: DataStreamWriter): void {
+  processToolCall(toolCall: ToolCall, dataStream: UIMessageStreamWriter): void {
     const { toolCallId, toolName } = toolCall;
 
     if (this.isValidToolName(toolName)) {
@@ -374,7 +374,7 @@ export class MCPService {
     }
   }
 
-  async processToolInvocations(messages: Message[], dataStream: DataStreamWriter): Promise<Message[]> {
+  async processToolInvocations(messages: UIMessage[], dataStream: UIMessageStreamWriter): Promise<UIMessage[]> {
     const lastMessage = messages[messages.length - 1];
     const parts = lastMessage.parts;
 
@@ -407,7 +407,7 @@ export class MCPService {
 
             try {
               result = await toolInstance.execute(toolInvocation.args, {
-                messages: convertToCoreMessages(messages),
+                messages: await convertToModelMessages(messages),
                 toolCallId,
               });
             } catch (error) {

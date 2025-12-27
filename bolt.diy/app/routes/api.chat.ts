@@ -1,5 +1,6 @@
 import { type ActionFunctionArgs } from '@remix-run/cloudflare';
-import { createDataStream, generateId } from 'ai';
+import { generateId } from 'ai';
+import { createDataStream } from '~/lib/.server/llm/create-data-stream';
 import { MAX_RESPONSE_SEGMENTS, MAX_TOKENS, type FileMap } from '~/lib/.server/llm/constants';
 import { CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
 import { streamText, type Messages, type StreamingOptions } from '~/lib/.server/llm/stream-text';
@@ -91,7 +92,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
     let lastChunk: string | undefined = undefined;
 
     const dataStream = createDataStream({
-      async execute(dataStream) {
+      async execute(dataStream: any) {
         streamRecovery.startMonitoring();
 
         const filePaths = getFilePaths(files || {});
@@ -282,7 +283,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
               messageSliceId,
             });
 
-            result.mergeIntoDataStream(dataStream);
+            await dataStream.mergeIntoDataStream(result);
 
             (async () => {
               for await (const part of result.fullStream) {
@@ -344,7 +345,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           }
           streamRecovery.stop();
         })();
-        result.mergeIntoDataStream(dataStream);
+        await dataStream.mergeIntoDataStream(result);
       },
       onError: (error: any) => {
         // Provide more specific error messages for common issues

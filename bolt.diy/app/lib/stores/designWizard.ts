@@ -418,6 +418,22 @@ const migrateStoredWizardData = (data: DesignWizardData): DesignWizardData => {
         };
     }
 
+    // Migrate screens to add showLogo and showBottomNav if missing
+    if (migrated.step4?.screens) {
+        migrated.step4.screens = migrated.step4.screens.map(screen => {
+            // Only add defaults if both properties are undefined
+            if (screen.showLogo === undefined || screen.showBottomNav === undefined) {
+                const isAuthOrOnboarding = ['splash', 'signin', 'signup', 'onboarding'].includes(screen.type);
+                return {
+                    ...screen,
+                    showLogo: screen.showLogo !== undefined ? screen.showLogo : isAuthOrOnboarding,
+                    showBottomNav: screen.showBottomNav !== undefined ? screen.showBottomNav : !isAuthOrOnboarding,
+                };
+            }
+            return screen;
+        });
+    }
+
     if (!migrated.step6) {
         migrated.step6 = {
             integrations: [],

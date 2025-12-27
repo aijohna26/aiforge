@@ -57,4 +57,16 @@ export type InngestEvents = {
       extractionType: 'colors' | 'typography' | 'components' | 'full';
     };
   };
+  'media/generate.image': {
+    data: {
+      jobId: string;
+      userId: string;
+      prompt: string;
+      googleModel: 'nano-banana' | 'nano-banana-edit';
+      outputFormat: 'png' | 'jpeg';
+      aspectRatio: string;
+      referenceImages?: string[];
+      enhanceForUI?: boolean;
+    };
+  };
 };

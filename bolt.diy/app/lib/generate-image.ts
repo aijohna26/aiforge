@@ -45,6 +45,39 @@ class ImageGenerationService {
         this.defaultProvider = (process.env.IMAGE_GENERATION_PROVIDER as ImageProvider) || 'gemini';
     }
 
+    /**
+     * Helper function to extract URL from various Kie API response formats
+     * Handles: arrays of strings, objects with image_url/imageUrl/url, arrays of objects
+     */
+    private extractUrlFromOutput(output: any): string | undefined {
+        if (!output) return undefined;
+
+        // If output is an array
+        if (Array.isArray(output)) {
+            // If first element is a string URL, return it directly
+            // This handles the Nano Banana format: ["https://..."]
+            if (typeof output[0] === 'string') {
+                return output[0];
+            }
+            // If first element is an object, try to extract URL from it
+            if (output[0] && typeof output[0] === 'object') {
+                return output[0].image_url || output[0].imageUrl || output[0].url;
+            }
+        }
+
+        // If output is an object
+        if (typeof output === 'object' && !Array.isArray(output)) {
+            return output.image_url || output.imageUrl || output.url;
+        }
+
+        // If output is a direct string URL
+        if (typeof output === 'string') {
+            return output;
+        }
+
+        return undefined;
+    }
+
     async generateImage(options: ImageGenerationOptions): Promise<ImageGenerationResult> {
         const provider = options.provider || this.defaultProvider;
 
@@ -428,9 +461,14 @@ class ImageGenerationService {
             const status = queryData.data?.state || queryData.data?.status;
 
             if (status === 'success' || status === 'completed') {
-                let imageUrl = queryData.data?.output?.image_url ||
-                    queryData.data?.output?.[0] ||
-                    queryData.data?.image_url;
+                // Try to extract URL from output using helper function
+                const output = queryData.data?.output;
+                let imageUrl = this.extractUrlFromOutput(output);
+
+                // Fallback: check direct image_url field
+                if (!imageUrl) {
+                    imageUrl = queryData.data?.image_url;
+                }
 
                 // Handle resultJson string format (seen in production)
                 if (!imageUrl && queryData.data?.resultJson) {
@@ -443,6 +481,8 @@ class ImageGenerationService {
                         console.error('[Kie.ai] Failed to parse resultJson:', e);
                     }
                 }
+
+                console.log('[Kie.ai] Successfully extracted image URL:', imageUrl);
 
                 return {
                     url: imageUrl,
@@ -558,9 +598,14 @@ class ImageGenerationService {
             const status = queryData.data?.state || queryData.data?.status;
 
             if (status === 'success' || status === 'completed') {
-                let imageUrl = queryData.data?.output?.image_url ||
-                    queryData.data?.output?.[0] ||
-                    queryData.data?.image_url;
+                // Try to extract URL from output using helper function
+                const output = queryData.data?.output;
+                let imageUrl = this.extractUrlFromOutput(output);
+
+                // Fallback: check direct image_url field
+                if (!imageUrl) {
+                    imageUrl = queryData.data?.image_url;
+                }
 
                 // Handle resultJson string format
                 if (!imageUrl && queryData.data?.resultJson) {
@@ -573,6 +618,8 @@ class ImageGenerationService {
                         console.error('[Qwen] Failed to parse resultJson:', e);
                     }
                 }
+
+                console.log('[Qwen] Successfully extracted image URL:', imageUrl);
 
                 if (imageUrl) {
                     return {
@@ -681,9 +728,14 @@ class ImageGenerationService {
             const status = queryData.data?.state || queryData.data?.status;
 
             if (status === 'success' || status === 'completed') {
-                let imageUrl = queryData.data?.output?.image_url ||
-                    queryData.data?.output?.[0] ||
-                    queryData.data?.image_url;
+                // Try to extract URL from output using helper function
+                const output = queryData.data?.output;
+                let imageUrl = this.extractUrlFromOutput(output);
+
+                // Fallback: check direct image_url field
+                if (!imageUrl) {
+                    imageUrl = queryData.data?.image_url;
+                }
 
                 // Handle resultJson string format
                 if (!imageUrl && queryData.data?.resultJson) {
@@ -696,6 +748,8 @@ class ImageGenerationService {
                         console.error('[Seedream] Failed to parse resultJson:', e);
                     }
                 }
+
+                console.log('[Seedream] Successfully extracted image URL:', imageUrl);
 
                 if (imageUrl) {
                     return {

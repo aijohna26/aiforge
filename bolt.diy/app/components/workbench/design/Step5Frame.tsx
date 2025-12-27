@@ -1426,11 +1426,13 @@ export function Step5Frame() {
                                 </button>
                             </div>
 
-                            <div className="flex gap-4 mb-6">
-                                <div className="w-1/3 aspect-[9/16] rounded-lg border border-[#1F243B] overflow-hidden bg-slate-900">
-                                    <img src={screenToEdit.url} alt="To Edit" className="w-full h-full object-cover" />
+                            <div className="grid gap-5 mb-6 md:grid-cols-[minmax(180px,240px)_1fr] items-start">
+                                <div className="w-full max-w-[240px] mx-auto md:mx-0">
+                                    <div className="w-full aspect-[9/16] rounded-lg border border-[#1F243B] overflow-hidden bg-slate-900 max-h-[360px]">
+                                        <img src={screenToEdit.url} alt="To Edit" className="w-full h-full object-cover" />
+                                    </div>
                                 </div>
-                                <div className="flex-1 space-y-4">
+                                <div className="flex-1 flex flex-col space-y-4">
                                     <div>
                                         <label className="block text-xs font-bold text-slate-400 uppercase mb-2">
                                             Edit Model
@@ -1448,7 +1450,7 @@ export function Step5Frame() {
                                             ))}
                                         </select>
                                     </div>
-                                    <div>
+                                    <div className="flex-1 flex flex-col">
                                         <label className="block text-xs font-bold text-slate-400 uppercase mb-2">
                                             What would you like to change?
                                         </label>
@@ -1456,7 +1458,7 @@ export function Step5Frame() {
                                             value={editPrompt}
                                             onChange={(e) => setEditPrompt(e.target.value)}
                                             placeholder="e.g. Change the background to a dark gradient, make the buttons more rounded, add a glassmorphism effect to the cards..."
-                                            className="w-full h-32 px-3 py-2 rounded-lg bg-[#0B0F1C] border border-[#1F243B] focus:border-blue-500 outline-none text-sm transition-all resize-none text-white"
+                                            className="w-full flex-1 min-h-[220px] px-3 py-2 rounded-lg bg-[#0B0F1C] border border-[#1F243B] focus:border-blue-500 outline-none text-sm transition-all resize-none text-white"
                                             disabled={isBusy}
                                         />
                                     </div>

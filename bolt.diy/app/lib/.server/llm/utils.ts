@@ -1,4 +1,4 @@
-import { type Message } from 'ai';
+import { type UIMessage as Message } from 'ai';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODEL_REGEX, PROVIDER_REGEX } from '~/utils/constants';
 import { IGNORE_PATTERNS, type FileMap } from './constants';
 import ignore from 'ignore';
@@ -10,10 +10,14 @@ export function extractPropertiesFromMessage(message: Omit<Message, 'id'>): {
   content: string;
 } {
   let rawContent = '';
-  if (Array.isArray(message.content)) {
-    rawContent = message.content.find((item) => item.type === 'text')?.text || '';
-  } else {
-    rawContent = typeof message.content === 'string' ? message.content : '';
+
+  if (typeof (message as any).content === 'string') {
+    rawContent = (message as any).content;
+  } else if (message.parts) {
+    const textPart = message.parts.find((part) => part.type === 'text');
+    if (textPart && 'text' in textPart) {
+      rawContent = textPart.text;
+    }
   }
 
   const textContent = rawContent;

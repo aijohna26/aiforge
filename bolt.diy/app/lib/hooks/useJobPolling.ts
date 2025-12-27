@@ -46,7 +46,7 @@ export function useJobPolling(
   const {
     onComplete,
     onError,
-    pollingInterval = 2000,
+    pollingInterval = 1000,
     showToasts = true,
     successMessage = 'Job completed successfully!',
   } = options;
@@ -96,7 +96,12 @@ export function useJobPolling(
         return false;
       }
 
-      // Continue polling
+      // Continue polling if pending or processing
+      if (data.status === 'pending' || data.status === 'processing') {
+        return pollingInterval;
+      }
+
+      // Default fallback (shouldn't be reached ideally but safe to keep polling)
       return pollingInterval;
     },
     retry: 3,

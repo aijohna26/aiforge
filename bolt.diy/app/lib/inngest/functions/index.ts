@@ -7,6 +7,7 @@
 
 import { screenGeneration } from './screen-generation';
 import { screenshotExport } from './screenshot-export';
+import { imageGeneration } from './image-generation';
 // TODO: Implement remaining functions
 // import { chatContext } from './chat-context';
 // import { styleExtraction } from './style-extraction';
@@ -19,6 +20,7 @@ import { screenshotExport } from './screenshot-export';
 export const functions = [
   screenGeneration,
   screenshotExport,
+  imageGeneration,
   // chatContext,
   // styleExtraction,
   // cleanupStaleJobs,

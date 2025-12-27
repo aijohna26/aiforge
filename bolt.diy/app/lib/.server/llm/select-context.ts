@@ -34,14 +34,14 @@ export async function selectContext(props: {
 
       return { ...message, content };
     } else if (message.role == 'assistant') {
-      let content = message.content;
+      let content = (message as any).content;
 
-      content = simplifyBoltActions(content);
-
-      content = content.replace(/<div class=\\"__boltThought__\\">.*?<\/div>/s, '');
-      content = content.replace(/<think>.*?<\/think>/s, '');
-
-      return { ...message, content };
+      if (typeof content === 'string') {
+        content = simplifyBoltActions(content);
+        content = content.replace(/<div class=\\"__boltThought__\\">.*?<\/div>/s, '');
+        content = content.replace(/<think>.*?<\/think>/s, '');
+        return { ...message, content };
+      }
     }
 
     return message;
@@ -107,10 +107,12 @@ export async function selectContext(props: {
 
   const summaryText = `Here is the summary of the chat till now: ${summary}`;
 
-  const extractTextContent = (message: Message) =>
-    Array.isArray(message.content)
-      ? (message.content.find((item) => item.type === 'text')?.text as string) || ''
-      : message.content;
+  const extractTextContent = (message: Message) => {
+    const msg = message as any;
+    return Array.isArray(msg.content)
+      ? (msg.content.find((item: any) => item.type === 'text')?.text as string) || ''
+      : msg.content;
+  };
 
   const lastUserMessage = processedMessages.filter((x) => x.role == 'user').pop();
 

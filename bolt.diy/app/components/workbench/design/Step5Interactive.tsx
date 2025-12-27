@@ -8,11 +8,13 @@ import { Canvas, type FrameData } from './interactive/Canvas';
 import { useScreenGenerationPolling } from '~/lib/hooks/useJobPolling';
 import { JobProgressBar } from '~/components/inngest/JobProgressBar';
 import { FEATURE_FLAGS } from '~/lib/feature-flags';
+import { hashStringSync } from '~/utils/hash';
 
 type InteractionState = 'idle' | 'generating' | 'preview';
 
 export function Step5Interactive() {
-    const FRAME_SPACING = 1000;
+    const DEVICE_WIDTH = 375; // Device frame width in pixels
+    const FRAME_SPACING = 500; // Gap between frames (reduced from 1000)
     const CANVAS_CENTER_X = 4000;
     const CANVAS_CENTER_Y = 4000;
     const wizardData = useStore(designWizardStore);
@@ -88,23 +90,40 @@ export function Step5Interactive() {
 
     // Poll for job completion when using Inngest
     useScreenGenerationPolling(jobId, (result) => {
+        console.log('[Inngest] Polling callback received:', {
+            hasScreens: !!result?.screens,
+            screensCount: result?.screens?.length
+        });
+
         if (result?.screens) {
             console.log('[Inngest] Job completed, merging results...');
 
             setFrames((prev) => {
                 const updatedFrames = [...prev];
+                console.log('[Inngest] Current frames before update:', prev.map(f => ({ id: f.id, hasHtml: !!f.html })));
 
                 result.screens.forEach((screen: any, index: number) => {
-                    const existingIndex = updatedFrames.findIndex(f => f.id === screen.id);
+                    let existingIndex = updatedFrames.findIndex(f => f.id === screen.id);
+
+                    // Fallback: If ID mismatch but index aligns with a placeholder, Assume it's the correct one
+                    // This handles cases where LLM might slightly alter the ID or if we used a generated ID
+                    if (existingIndex === -1 && index < updatedFrames.length && !updatedFrames[index].html) {
+                        console.warn(`[Inngest] ID mismatch for screen index ${index}. Expected ${updatedFrames[index].id}, got ${screen.id}. Updating by index.`);
+                        existingIndex = index;
+                    }
+
                     if (existingIndex >= 0) {
                         // Update placeholder with actual content
+                        console.log(`[Inngest] Updating frame ${updatedFrames[existingIndex].id} with content (length: ${screen.html?.length})`);
                         updatedFrames[existingIndex] = {
                             ...updatedFrames[existingIndex],
+                            id: screen.id, // Update ID in case we matched by index
                             html: screen.html,
-                            title: screen.title
+                            title: screen.title || updatedFrames[existingIndex].title
                         };
                     } else {
                         // Fallback position if for some reason placeholder wasn't there
+                        console.log(`[Inngest] Appending new frame ${screen.id}`);
                         const x = CANVAS_CENTER_X + (prev.length + index) * FRAME_SPACING;
                         updatedFrames.push({
                             id: screen.id,
@@ -150,12 +169,12 @@ export function Step5Interactive() {
 
     const wizardSnapshot = useMemo(
         () =>
-            JSON.stringify({
+            hashStringSync(JSON.stringify({
                 step1: wizardData.step1,
                 step2: wizardData.step2,
                 step3: wizardData.step3,
                 step4: wizardData.step4,
-            }),
+            })),
         [wizardData.step1, wizardData.step2, wizardData.step3, wizardData.step4]
     );
 
@@ -190,6 +209,24 @@ export function Step5Interactive() {
     const [isSaving, setIsSaving] = useState(false);
     const isSavingRef = useRef(false); // Added for immediate lock
     const [isCheckingDb, setIsCheckingDb] = useState(false);
+
+    // Track last saved state to detect changes
+    const [lastSavedStateHash, setLastSavedStateHash] = useState<string>('');
+
+    // Compute current state hash for change detection
+    const currentStateHash = useMemo(() => {
+        return hashStringSync(JSON.stringify({
+            frames,
+            theme: customTheme,
+        }));
+    }, [frames, customTheme]);
+
+    // Determine if there are unsaved changes
+    const hasUnsavedChanges = useMemo(() => {
+        if (frames.length === 0) return false;
+        if (!lastSavedStateHash) return true; // Never saved
+        return currentStateHash !== lastSavedStateHash;
+    }, [currentStateHash, lastSavedStateHash, frames.length]);
 
     const handleSave = useCallback(async () => {
         // Use ref for immediate lock to prevent rapid-click duplicates
@@ -247,6 +284,9 @@ export function Step5Interactive() {
                 return;
             }
 
+            // Update last saved state hash on successful save
+            setLastSavedStateHash(currentStateHash);
+
             toast.update(t, {
                 render: '✨ Workspace persisted to database',
                 type: 'success',
@@ -266,7 +306,7 @@ export function Step5Interactive() {
             isSavingRef.current = false;
             setIsSaving(false);
         }
-    }, [frames, customTheme, wizardSnapshot, wizardData.projectId]); // Removed `isSaving` from dependencies
+    }, [frames, customTheme, wizardSnapshot, wizardData.projectId, currentStateHash]); // Removed `isSaving` from dependencies
 
     const handleInitialize = useCallback(async () => {
         setIsFullscreen(true);
@@ -356,7 +396,8 @@ export function Step5Interactive() {
             ];
 
             // Calculate starting X to center the entire group of screens
-            const groupWidth = (finalScreens.length - 1) * FRAME_SPACING;
+            // Account for device width + spacing between frames
+            const groupWidth = (finalScreens.length - 1) * (DEVICE_WIDTH + FRAME_SPACING) + DEVICE_WIDTH;
             const startX = CANVAS_CENTER_X - (groupWidth / 2);
 
             // Create placeholder frames immediately with empty HTML (triggers skeleton loaders)
@@ -364,7 +405,7 @@ export function Step5Interactive() {
                 id: s.id,
                 title: s.name,
                 html: '', // Empty HTML triggers skeleton loader
-                x: startX + (index * FRAME_SPACING),
+                x: startX + (index * (DEVICE_WIDTH + FRAME_SPACING)),
                 y: CANVAS_CENTER_Y
             }));
 
@@ -406,11 +447,11 @@ export function Step5Interactive() {
 
                 // Update frames with actual HTML content
                 const screensCount = data.screens?.length || initialBatch.length || 1;
-                const groupWidth = (screensCount - 1) * FRAME_SPACING;
+                const groupWidth = (screensCount - 1) * (DEVICE_WIDTH + FRAME_SPACING) + DEVICE_WIDTH;
                 const startX = CANVAS_CENTER_X - (groupWidth / 2);
 
                 const generatedFrames = data.screens.map((s: any, index: number) => {
-                    const x = startX + (index * FRAME_SPACING);
+                    const x = startX + (index * (DEVICE_WIDTH + FRAME_SPACING));
                     const y = CANVAS_CENTER_Y;
                     console.log(`[Initial Generation] Screen ${s.id} positioned at x:${x}, y:${y} (index:${index})`);
                     return {
@@ -491,7 +532,7 @@ export function Step5Interactive() {
                 id: s.id,
                 title: s.name,
                 html: '', // Empty HTML triggers skeleton loader
-                x: baseX + FRAME_SPACING * (index + 1),
+                x: baseX + DEVICE_WIDTH + FRAME_SPACING + ((DEVICE_WIDTH + FRAME_SPACING) * index),
                 y: baseY
             }));
 
@@ -518,7 +559,7 @@ export function Step5Interactive() {
                 id: s.id,
                 title: s.title,
                 html: s.html,
-                x: baseX + FRAME_SPACING * (index + 1),
+                x: baseX + DEVICE_WIDTH + FRAME_SPACING + ((DEVICE_WIDTH + FRAME_SPACING) * index),
                 y: baseY
             }));
 
@@ -551,12 +592,12 @@ export function Step5Interactive() {
     }, [wizardSnapshot]);
 
     useEffect(() => {
-        if (pendingRegeneration && status !== 'generating') {
+        if (pendingRegeneration && status !== 'generating' && wizardData.currentStep === 5) {
             setPendingRegeneration(false);
             toast.info('Detected updates in earlier steps. Regenerating Studio...');
             handleInitialize();
         }
-    }, [pendingRegeneration, status, handleInitialize]);
+    }, [pendingRegeneration, status, handleInitialize, wizardData.currentStep]);
 
     const handleGenerateNextScreen = async () => {
         setStatus('generating');
@@ -628,7 +669,7 @@ export function Step5Interactive() {
             console.log('[Step5Interactive] Current frames:', framesRef.current.map(f => ({ id: f.id, x: f.x, y: f.y })));
 
             placeholderFrames = batch.map((screen, index) => {
-                const x = baseX + FRAME_SPACING * (index + 1);
+                const x = baseX + DEVICE_WIDTH + FRAME_SPACING + ((DEVICE_WIDTH + FRAME_SPACING) * index);
                 const y = baseY;
                 console.log(`[Step5Interactive] Creating frame ${screen.id} at x:${x}, y:${y} (index:${index})`);
                 return {
@@ -670,7 +711,7 @@ export function Step5Interactive() {
                     id: s.id,
                     title: s.title,
                     html: s.html,
-                    x: placeholderFrames[index]?.x ?? (baseX + FRAME_SPACING * (index + 1)),
+                    x: placeholderFrames[index]?.x ?? (baseX + DEVICE_WIDTH + FRAME_SPACING + ((DEVICE_WIDTH + FRAME_SPACING) * index)),
                     y: placeholderFrames[index]?.y ?? baseY,
                 }));
 
@@ -704,19 +745,83 @@ export function Step5Interactive() {
     const handleCleanupLayout = useCallback(() => {
         if (!frames.length) return;
 
-        const groupWidth = (frames.length - 1) * FRAME_SPACING;
+        const groupWidth = (frames.length - 1) * (DEVICE_WIDTH + FRAME_SPACING) + DEVICE_WIDTH;
         const startX = CANVAS_CENTER_X - (groupWidth / 2);
 
         const cleaned = frames.map((f, i) => ({
             ...f,
-            x: startX + (i * FRAME_SPACING),
+            x: startX + (i * (DEVICE_WIDTH + FRAME_SPACING)),
             y: CANVAS_CENTER_Y
         }));
 
         setFrames(cleaned);
         persistStudioFrames(cleaned);
         toast.success('✨ Workspace layout optimized and centered');
-    }, [frames, FRAME_SPACING, CANVAS_CENTER_X, CANVAS_CENTER_Y, persistStudioFrames]);
+    }, [frames, DEVICE_WIDTH, FRAME_SPACING, CANVAS_CENTER_X, CANVAS_CENTER_Y, persistStudioFrames]);
+
+    const handleDuplicateFrame = useCallback((frameId: string) => {
+        setFrames((prev) => {
+            const target = prev.find((frame) => frame.id === frameId);
+            if (!target) {
+                toast.error('Unable to duplicate screen');
+                return prev;
+            }
+
+            const baseX = target.x ?? CANVAS_CENTER_X;
+            const baseY = target.y ?? CANVAS_CENTER_Y;
+            let nextX = baseX + FRAME_SPACING;
+
+            const isOccupied = (x: number) => prev.some((frame) => Math.abs((frame.x ?? 0) - x) < 10 && (frame.y ?? 0) === baseY);
+            while (isOccupied(nextX)) {
+                nextX += FRAME_SPACING;
+            }
+
+            const newFrame: FrameData = {
+                ...target,
+                id: `${target.id}-copy-${Date.now()}`,
+                title: `${target.title || target.id} Copy`,
+                x: nextX,
+                y: baseY,
+            };
+
+            const updated = [...prev, newFrame];
+            persistStudioFrames(updated);
+            toast.success('Screen duplicated');
+            return updated;
+        });
+    }, [CANVAS_CENTER_X, CANVAS_CENTER_Y, FRAME_SPACING, persistStudioFrames]);
+
+    const handleNewFrameFromChat = useCallback((newFrame: FrameData) => {
+        console.log('[Studio Chat] Adding new frame from chatbox:', newFrame.title);
+        setFrames((prev) => {
+            const updated = [...prev, newFrame];
+            persistStudioFrames(updated);
+            return updated;
+        });
+        toast.success(`✨ ${newFrame.title || 'New screen'} added to canvas!`);
+    }, [persistStudioFrames]);
+
+    // Build branding object for chatbox
+    const branding = useMemo(() => {
+        const selectedNav = wizardData.step4.navigation.navBarVariations.find(v => v.id === wizardData.step4.navigation.selectedVariationId);
+        return {
+            appName: wizardData.step1.appName || 'My App',
+            description: wizardData.step1.description,
+            targetAudience: wizardData.step1.targetAudience,
+            category: wizardData.step1.category,
+            platform: wizardData.step1.platform,
+            logo: wizardData.step3.logo?.url,
+            footer: selectedNav?.url,
+            primaryColor: wizardData.step3.colorPalette?.primary || '#4F46E5',
+            backgroundColor: wizardData.step3.colorPalette?.background || '#FFFFFF',
+            textColor: wizardData.step3.colorPalette?.text?.primary || '#111827',
+            uiStyle: wizardData.step2.uiStyle,
+            personality: wizardData.step2.personality,
+            colorPalette: wizardData.step3.colorPalette,
+            typography: wizardData.step2.typography,
+            components: wizardData.step2.components
+        };
+    }, [wizardData]);
 
     const content = (
         <div className={`
@@ -760,17 +865,35 @@ export function Step5Interactive() {
                         <div className="flex items-center gap-4">
                             <button
                                 onClick={handleSave}
-                                disabled={isSaving}
-                                className="group relative px-8 py-2.5 bg-gradient-to-b from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 disabled:from-indigo-900 disabled:to-indigo-950 text-white rounded-[14px] text-[11px] font-black uppercase tracking-[0.1em] transition-all shadow-[0_4px_16px_rgba(79,70,229,0.4)] active:scale-95 overflow-hidden"
+                                disabled={isSaving || !hasUnsavedChanges}
+                                className={`group relative px-8 py-2.5 rounded-[14px] text-[11px] font-black uppercase tracking-[0.1em] transition-all active:scale-95 overflow-hidden ${
+                                    isSaving
+                                        ? 'bg-gradient-to-b from-indigo-600 to-indigo-700 text-white shadow-[0_4px_16px_rgba(79,70,229,0.4)]'
+                                        : hasUnsavedChanges
+                                            ? 'bg-gradient-to-b from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white shadow-[0_4px_16px_rgba(79,70,229,0.4)]'
+                                            : 'bg-white/[0.06] border border-white/[0.08] text-white/40 cursor-default hover:bg-white/[0.06]'
+                                }`}
                             >
-                                <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                                <div className={`absolute inset-0 bg-gradient-to-b from-white/10 to-transparent opacity-0 transition-opacity ${hasUnsavedChanges && !isSaving ? 'group-hover:opacity-100' : ''}`} />
                                 <span className="relative flex items-center gap-2">
                                     {isSaving ? (
                                         <>
                                             <div className="size-3 border-2 border-white/20 border-t-white rounded-full animate-spin" />
                                             Saving...
                                         </>
-                                    ) : 'Save'}
+                                    ) : hasUnsavedChanges ? (
+                                        <>
+                                            <div className="size-1.5 bg-white rounded-full animate-pulse" />
+                                            Save
+                                        </>
+                                    ) : (
+                                        <>
+                                            <svg className="size-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                            </svg>
+                                            Saved
+                                        </>
+                                    )}
                                 </span>
                             </button>
                         </div>
@@ -898,9 +1021,13 @@ export function Step5Interactive() {
                                 frames={frames}
                                 isGenerating={status === 'generating'}
                                 customTheme={customTheme}
+                                branding={branding}
+                                userId="user-placeholder"
                                 onGenerateNext={handleGenerateNextScreen}
                                 onRegenerateTheme={handleRegenerateTheme}
                                 onCleanupLayout={handleCleanupLayout}
+                                onDuplicateFrame={handleDuplicateFrame}
+                                onNewFrame={handleNewFrameFromChat}
                             />
                         </motion.div>
                     )}
