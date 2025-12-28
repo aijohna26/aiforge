@@ -23,6 +23,7 @@ export interface StreamingOptions extends Omit<Parameters<typeof _streamText>[0]
       supabaseUrl?: string;
     };
   };
+  maxSteps?: number; // AI SDK 6.0: Explicitly include maxSteps for tool execution
 }
 
 const logger = createScopedLogger('stream-text');
@@ -302,61 +303,14 @@ export async function streamText(props: {
     ),
   );
 
-  // AI SDK 6.0: Validate and clean messages before conversion
-  // CRITICAL: AI SDK 6.0 requires messages to have a 'parts' array, not just 'content'
-  const validMessages = processedMessages.filter((msg) => {
-    if (!msg || typeof msg !== 'object') {
-      logger.warn('Skipping invalid message:', msg);
-      return false;
-    }
-    if (!msg.role) {
-      logger.warn('Skipping message missing role:', msg);
-      return false;
-    }
-    return true;
-  }).map((msg) => {
-    const cleaned: any = {
-      role: msg.role,
-    };
-
-    // AI SDK 6.0: Messages MUST have a parts array
-    // If the message has parts already, use them
-    if ((msg as any).parts && Array.isArray((msg as any).parts)) {
-      cleaned.parts = (msg as any).parts;
-    }
-    // If message has content, convert it to parts array
-    else if (msg.content) {
-      // Convert content to parts format
-      if (typeof msg.content === 'string') {
-        cleaned.parts = [{ type: 'text', text: msg.content }];
-      } else if (Array.isArray(msg.content)) {
-        // Already in parts-like format
-        cleaned.parts = msg.content;
-      } else {
-        cleaned.parts = [{ type: 'text', text: String(msg.content) }];
-      }
-    }
-    // No content or parts - create empty text part
-    else {
-      cleaned.parts = [{ type: 'text', text: '' }];
-    }
-
-    // Preserve experimental_attachments if present (AI SDK 6.0 format)
-    if ((msg as any).experimental_attachments) {
-      cleaned.experimental_attachments = (msg as any).experimental_attachments;
-    }
-
-    return cleaned;
-  });
-
-  logger.info(`Cleaned messages: ${processedMessages.length} -> ${validMessages.length}`);
-
+  // AI SDK 6.0: Convert to model messages directly
+  // processedMessages already have the correct format (either content or parts)
   let modelMessages;
   try {
-    modelMessages = await convertToModelMessages(validMessages as any);
+    modelMessages = await convertToModelMessages(processedMessages as any);
   } catch (err) {
     console.error('[DEBUG-STREAM] convertToModelMessages failed:', err);
-    console.error('[DEBUG-STREAM] First invalid message:', JSON.stringify(validMessages[0], null, 2));
+    console.error('[DEBUG-STREAM] Messages:', JSON.stringify(processedMessages, null, 2));
     throw err;
   }
 

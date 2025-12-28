@@ -74,6 +74,13 @@ export const AssistantMessage = memo(
     parts,
     addToolResult,
   }: AssistantMessageProps) => {
+    // AI SDK 6.0: Extract text content from parts if content is not available
+    let displayContent = content;
+    if (!displayContent && parts) {
+      const textParts = parts.filter((p): p is TextUIPart => p.type === 'text');
+      displayContent = textParts.map((p) => p.text).join('');
+    }
+
     const filteredAnnotations = (annotations?.filter(
       (annotation: JSONValue) =>
         annotation && typeof annotation === 'object' && Object.keys(annotation).includes('type'),
@@ -177,7 +184,7 @@ export const AssistantMessage = memo(
           </div>
         </>
         <Markdown append={append} chatMode={chatMode} setChatMode={setChatMode} model={model} provider={provider} html>
-          {content}
+          {displayContent}
         </Markdown>
         {toolInvocations && toolInvocations.length > 0 && (
           <ToolInvocations

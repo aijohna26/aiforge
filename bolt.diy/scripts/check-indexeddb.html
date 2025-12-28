@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IndexedDB Chat Checker</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 1200px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #0a0a0a;
+      color: #e5e5e5;
+    }
+    h1 {
+      color: #fff;
+      border-bottom: 2px solid #333;
+      padding-bottom: 10px;
+    }
+    .chat-card {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 15px 0;
+    }
+    .chat-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 10px;
+    }
+    .chat-meta {
+      color: #888;
+      font-size: 14px;
+      margin: 5px 0;
+    }
+    .chat-preview {
+      background: #0a0a0a;
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 4px;
+      font-size: 13px;
+      color: #aaa;
+      max-height: 100px;
+      overflow-y: auto;
+    }
+    .navigate-btn {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-top: 10px;
+      font-size: 14px;
+    }
+    .navigate-btn:hover {
+      background: #2563eb;
+    }
+    .stats {
+      background: #1a1a1a;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      border: 1px solid #333;
+    }
+    .error {
+      color: #ef4444;
+      background: #1a0a0a;
+      padding: 15px;
+      border-radius: 8px;
+      border: 1px solid #7f1d1d;
+    }
+    .success {
+      color: #10b981;
+      background: #0a1a0a;
+      padding: 15px;
+      border-radius: 8px;
+      border: 1px solid #166534;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔍 IndexedDB Chat History Checker</h1>
+
+  <div id="output"></div>
+
+  <script>
+    async function checkIndexedDB() {
+      const output = document.getElementById('output');
+
+      try {
+        // Open IndexedDB
+        const dbRequest = indexedDB.open('boltHistory', 2);
+
+        dbRequest.onerror = () => {
+          output.innerHTML = '<div class="error">❌ Failed to open IndexedDB</div>';
+        };
+
+        dbRequest.onsuccess = async (event) => {
+          const db = event.target.result;
+
+          // Get all chats
+          const transaction = db.transaction('chats', 'readonly');
+          const store = transaction.objectStore('chats');
+          const getAllRequest = store.getAll();
+
+          getAllRequest.onsuccess = () => {
+            const chats = getAllRequest.result;
+
+            if (chats.length === 0) {
+              output.innerHTML = '<div class="error">❌ No chats found in IndexedDB</div>';
+              return;
+            }
+
+            // Sort by timestamp
+            chats.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+            let html = `<div class="stats">
+              <strong>📊 Total Chats Found:</strong> ${chats.length}
+            </div>`;
+
+            chats.forEach((chat, index) => {
+              const firstMsg = chat.messages.find(m => m.role === 'user');
+              const preview = firstMsg
+                ? (typeof firstMsg.content === 'string' ? firstMsg.content : JSON.stringify(firstMsg.content)).substring(0, 200)
+                : 'No messages';
+
+              const timeAgo = getTimeAgo(new Date(chat.timestamp));
+
+              html += `
+                <div class="chat-card">
+                  <div class="chat-title">
+                    ${index + 1}. ${chat.description || 'Untitled Chat'}
+                  </div>
+                  <div class="chat-meta">
+                    🆔 ID: ${chat.id} | URL ID: ${chat.urlId || 'N/A'}
+                  </div>
+                  <div class="chat-meta">
+                    📅 ${timeAgo} | 💬 ${chat.messages.length} messages
+                  </div>
+                  <div class="chat-preview">
+                    <strong>First message:</strong><br/>
+                    ${preview}...
+                  </div>
+                  <button class="navigate-btn" onclick="navigateToChat('${chat.urlId || chat.id}')">
+                    Open Chat →
+                  </button>
+                </div>
+              `;
+            });
+
+            output.innerHTML = html;
+          };
+
+          getAllRequest.onerror = () => {
+            output.innerHTML = '<div class="error">❌ Failed to retrieve chats</div>';
+          };
+        };
+      } catch (error) {
+        output.innerHTML = `<div class="error">❌ Error: ${error.message}</div>`;
+      }
+    }
+
+    function getTimeAgo(date) {
+      const seconds = Math.floor((new Date() - date) / 1000);
+
+      const intervals = {
+        year: 31536000,
+        month: 2592000,
+        week: 604800,
+        day: 86400,
+        hour: 3600,
+        minute: 60,
+        second: 1
+      };
+
+      for (const [unit, secondsInUnit] of Object.entries(intervals)) {
+        const interval = Math.floor(seconds / secondsInUnit);
+        if (interval >= 1) {
+          return `${interval} ${unit}${interval !== 1 ? 's' : ''} ago`;
+        }
+      }
+
+      return 'just now';
+    }
+
+    function navigateToChat(chatId) {
+      window.location.href = `/chat/${chatId}`;
+    }
+
+    // Run on page load
+    checkIndexedDB();
+  </script>
+</body>
+</html>

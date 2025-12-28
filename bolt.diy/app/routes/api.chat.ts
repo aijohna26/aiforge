@@ -92,26 +92,45 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
 
   try {
     const mcpService = MCPService.getInstance();
-    const totalMessageContent = messages.reduce((acc, message) => acc + message.content, '');
+
+    // AI SDK 6.0: Extract text content from message parts
+    const getMessageText = (message: any): string => {
+      if (message.content) return message.content; // Backward compatibility
+      if (message.parts) {
+        return message.parts
+          .filter((part: any) => part.type === 'text')
+          .map((part: any) => part.text)
+          .join('');
+      }
+      return '';
+    };
+
+    // AI SDK 6.0: Normalize usage object (inputTokens/outputTokens → promptTokens/completionTokens)
+    const normalizeUsage = (usage: any) => {
+      if (!usage) return usage;
+      return {
+        completionTokens: usage.outputTokens ?? usage.completionTokens ?? 0,
+        promptTokens: usage.inputTokens ?? usage.promptTokens ?? 0,
+        totalTokens: usage.totalTokens ?? 0,
+      };
+    };
+
+    const totalMessageContent = messages.reduce((acc, message) => acc + getMessageText(message), '');
     logger.debug(`Total message length: ${totalMessageContent.split(' ').length}, words`);
 
-    const encoder = new TextEncoder();
-    let lastChunk: string | undefined = undefined;
+    // Bypass createDataStream for AI SDK 6.0 compatibility
+    streamRecovery.startMonitoring();
 
-    const dataStream = createDataStream({
-      async execute(dataStream) {
-        streamRecovery.startMonitoring();
+    const filePaths = getFilePaths(files || {});
+    let filteredFiles: FileMap | undefined = undefined;
+    let summary: string | undefined = undefined;
+    let messageSliceId = 0;
 
-        const filePaths = getFilePaths(files || {});
-        let filteredFiles: FileMap | undefined = undefined;
-        let summary: string | undefined = undefined;
-        let messageSliceId = 0;
+    const processedMessages = await mcpService.processToolInvocations(messages, undefined as any);
 
-        const processedMessages = await mcpService.processToolInvocations(messages, dataStream);
-
-        if (processedMessages.length > 3) {
-          messageSliceId = processedMessages.length - 3;
-        }
+    if (processedMessages.length > 3) {
+      messageSliceId = processedMessages.length - 3;
+    }
 
         if (filePaths.length > 0 && contextOptimization) {
           logger.debug('Generating Chat Summary');
@@ -136,9 +155,10 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
             onFinish(resp) {
               if (resp.usage) {
                 logger.debug('createSummary token usage', JSON.stringify(resp.usage));
-                cumulativeUsage.completionTokens += resp.usage.completionTokens || 0;
-                cumulativeUsage.promptTokens += resp.usage.promptTokens || 0;
-                cumulativeUsage.totalTokens += resp.usage.totalTokens || 0;
+                const normalized = normalizeUsage(resp.usage);
+                cumulativeUsage.completionTokens += normalized.completionTokens;
+                cumulativeUsage.promptTokens += normalized.promptTokens;
+                cumulativeUsage.totalTokens += normalized.totalTokens;
               }
             },
           });
@@ -180,9 +200,10 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
             onFinish(resp) {
               if (resp.usage) {
                 logger.debug('selectContext token usage', JSON.stringify(resp.usage));
-                cumulativeUsage.completionTokens += resp.usage.completionTokens || 0;
-                cumulativeUsage.promptTokens += resp.usage.promptTokens || 0;
-                cumulativeUsage.totalTokens += resp.usage.totalTokens || 0;
+                const normalized = normalizeUsage(resp.usage);
+                cumulativeUsage.completionTokens += normalized.completionTokens;
+                cumulativeUsage.promptTokens += normalized.promptTokens;
+                cumulativeUsage.totalTokens += normalized.totalTokens;
               }
             },
           });
@@ -220,92 +241,29 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           toolChoice: 'auto',
           tools: mcpService.toolsWithoutExecute,
           maxSteps: maxLLMSteps,
+          /*
           onStepFinish: ({ toolCalls }) => {
             // add tool call annotations for frontend processing
             toolCalls.forEach((toolCall) => {
-              mcpService.processToolCall(toolCall, dataStream);
+              mcpService.processToolCall(toolCall as any, dataStream);
             });
           },
           onFinish: async ({ text: content, finishReason, usage }) => {
             logger.debug('usage', JSON.stringify(usage));
-
+            // simplified for debugging
             if (usage) {
-              cumulativeUsage.completionTokens += usage.completionTokens || 0;
-              cumulativeUsage.promptTokens += usage.promptTokens || 0;
-              cumulativeUsage.totalTokens += usage.totalTokens || 0;
+               console.log('[DEBUG] Usage received in onFinish');
             }
-
-            if (finishReason !== 'length') {
-              dataStream.writeMessageAnnotation({
-                type: 'usage',
-                value: {
-                  completionTokens: cumulativeUsage.completionTokens,
-                  promptTokens: cumulativeUsage.promptTokens,
-                  totalTokens: cumulativeUsage.totalTokens,
-                },
-              });
-              dataStream.writeData({
-                type: 'progress',
-                label: 'response',
-                status: 'complete',
-                order: progressCounter++,
-                message: 'Response Generated',
-              } satisfies ProgressAnnotation);
-
-              return;
-            }
-
-            // If max token limit reached, continue with a new message
-            logger.info(`Reached max token limit (${MAX_TOKENS}): Continuing message`);
-
-            const lastUserMessage = processedMessages.filter((x) => x.role == 'user').slice(-1)[0];
-            const { model, provider } = extractPropertiesFromMessage(lastUserMessage);
-            processedMessages.push({ id: generateId(), role: 'assistant', content });
-            processedMessages.push({
-              id: generateId(),
-              role: 'user',
-              content: `[Model: ${model}]\n\n[Provider: ${provider}]\n\n${CONTINUE_PROMPT}`,
-            });
-
-            const continuationResult = await streamText({
-              messages: [...processedMessages],
-              env: context.cloudflare?.env,
-              options,
-              apiKeys,
-              files,
-              providerSettings,
-              promptId,
-              contextOptimization,
-              contextFiles: filteredFiles,
-              chatMode,
-              designScheme,
-              summary,
-              messageSliceId,
-            });
-
-            // Merge continuation stream
-            continuationResult.mergeIntoDataStream(dataStream);
-
-            // Monitor for errors
-            for await (const part of continuationResult.fullStream) {
-              if (part.type === 'error') {
-                const error: any = part.error;
-                logger.error('Continuation stream error:', error);
-                throw error;
-              }
-            }
-
-            return;
           },
+          */
         };
 
-        dataStream.writeData({
-          type: 'progress',
-          label: 'response',
-          status: 'in-progress',
-          order: progressCounter++,
-          message: 'Generating Response',
-        } satisfies ProgressAnnotation);
+        // DEBUG: Inspect the messages going to the LLM
+        if (processedMessages.length > 0) {
+          const lastMsg = processedMessages[processedMessages.length - 1];
+          console.log('[api.chat] Last message role:', lastMsg.role);
+          console.log('[api.chat] Last message content preview:', typeof lastMsg.content === 'string' ? lastMsg.content.substring(0, 50) : '[Complex Content]');
+        }
 
         const result = await streamText({
           messages: [...processedMessages],
@@ -323,122 +281,26 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           messageSliceId,
         });
 
-        // Merge the AI stream into the data stream
-        result.mergeIntoDataStream(dataStream, {
-          onChunk: () => {
-            streamRecovery.updateActivity();
-          },
-        });
-
-        // Monitor for errors in the stream
-        for await (const part of result.fullStream) {
-          if (part.type === 'error') {
-            const error: any = part.error;
-            logger.error('Streaming error:', error);
-            streamRecovery.stop();
-
-            // Enhanced error handling for common streaming issues
-            if (error.message?.includes('Invalid JSON response')) {
-              logger.error('Invalid JSON response detected - likely malformed API response');
-            } else if (error.message?.includes('token')) {
-              logger.error('Token-related error detected - possible token limit exceeded');
-            }
-
-            throw error;
-          }
+        console.log('[api.chat] streamText result keys:', Object.keys(result));
+        if (result.fullStream) {
+          console.log('[api.chat] result.fullStream is present');
+        } else {
+          console.error('[api.chat] result.fullStream is MISSING');
         }
 
-        streamRecovery.stop();
-      },
-      onError: (error: any) => {
-        streamRecovery.stop();
-        logger.error('Stream error:', error);
-
-        // Provide more specific error messages for common issues
-        const errorMessage = error.message || 'Unknown error';
-
-        if (errorMessage.includes('model') && errorMessage.includes('not found')) {
-          return 'Custom error: Invalid model selected. Please check that the model name is correct and available.';
+        // Test if we can get text from the stream
+        if (result.textStream) {
+          console.log('[api.chat] result.textStream is present');
+        }
+        if (result.toUIMessageStreamResponse) {
+          console.log('[api.chat] result.toUIMessageStreamResponse is available');
         }
 
-        if (errorMessage.includes('Invalid JSON response')) {
-          return 'Custom error: The AI service returned an invalid response. This may be due to an invalid model name, API rate limiting, or server issues. Try selecting a different model or check your API key.';
-        }
+    streamRecovery.stop();
 
-        if (
-          errorMessage.includes('API key') ||
-          errorMessage.includes('unauthorized') ||
-          errorMessage.includes('authentication')
-        ) {
-          return 'Custom error: Invalid or missing API key. Please check your API key configuration.';
-        }
-
-        if (errorMessage.includes('token') && errorMessage.includes('limit')) {
-          return 'Custom error: Token limit exceeded. The conversation is too long for the selected model. Try using a model with larger context window or start a new conversation.';
-        }
-
-        if (errorMessage.includes('rate limit') || errorMessage.includes('429')) {
-          return 'Custom error: API rate limit exceeded. Please wait a moment before trying again.';
-        }
-
-        if (errorMessage.includes('network') || errorMessage.includes('timeout')) {
-          return 'Custom error: Network error. Please check your internet connection and try again.';
-        }
-
-        if (errorMessage.includes('Overloaded')) {
-          return 'Custom error: The selected model is currently overloaded. Please try again later or switch to a different model (e.g., Claude 3.5 Sonnet).';
-        }
-
-        return `Custom error: ${errorMessage}`;
-      },
-    }).pipeThrough(
-      new TransformStream({
-        transform: (chunk, controller) => {
-          if (!lastChunk) {
-            lastChunk = ' ';
-          }
-
-          if (typeof chunk === 'string') {
-            if (chunk.startsWith('g') && !lastChunk.startsWith('g')) {
-              controller.enqueue(encoder.encode(`0:${JSON.stringify('<div class="__boltThought__">')}\n`));
-            }
-
-            if (lastChunk.startsWith('g') && !chunk.startsWith('g')) {
-              controller.enqueue(encoder.encode(`0:${JSON.stringify('</div>\n')}\n`));
-            }
-          }
-
-          lastChunk = chunk;
-
-          let transformedChunk = chunk;
-
-          if (typeof chunk === 'string' && chunk.startsWith('g')) {
-            let content = chunk.split(':').slice(1).join(':');
-
-            if (content.endsWith('\n')) {
-              content = content.slice(0, content.length - 1);
-            }
-
-            // Content from 'g:' chunks is already JSON-encoded
-            transformedChunk = `0:${content}\n`;
-          }
-
-          // Convert the string stream to a byte stream
-          const str = typeof transformedChunk === 'string' ? transformedChunk : JSON.stringify(transformedChunk);
-          controller.enqueue(encoder.encode(str));
-        },
-      }),
-    );
-
-    return new Response(dataStream, {
-      status: 200,
-      headers: {
-        'Content-Type': 'text/event-stream; charset=utf-8',
-        Connection: 'keep-alive',
-        'Cache-Control': 'no-cache',
-        'Text-Encoding': 'chunked',
-      },
-    });
+    // Use AI SDK 6.0's built-in response formatter
+    console.log('[api.chat] Returning toUIMessageStreamResponse()');
+    return result.toUIMessageStreamResponse();
   } catch (error: any) {
     logger.error(error);
 

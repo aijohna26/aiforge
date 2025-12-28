@@ -71,7 +71,15 @@ export function UserMessage({ content, parts }: UserMessageProps) {
     );
   }
 
-  const textContent = stripMetadata(content);
+  // AI SDK 6.0: Extract text from parts if content is not a string
+  let textContent = '';
+  if (typeof content === 'string') {
+    textContent = stripMetadata(content);
+  } else if (parts) {
+    // Extract text from parts
+    const textParts = parts.filter((p): p is TextUIPart => p.type === 'text');
+    textContent = stripMetadata(textParts.map((p) => p.text).join(''));
+  }
 
   return (
     <div className="flex flex-col bg-accent-500/10 backdrop-blur-sm px-5 p-3.5 w-auto rounded-lg ml-auto">
@@ -95,7 +103,8 @@ export function UserMessage({ content, parts }: UserMessageProps) {
   );
 }
 
-function stripMetadata(content: string) {
+function stripMetadata(content: string | undefined | null) {
+  if (!content) return '';
   const artifactRegex = /<boltArtifact\s+[^>]*>[\s\S]*?<\/boltArtifact>/gm;
   return content.replace(MODEL_REGEX, '').replace(PROVIDER_REGEX, '').replace(artifactRegex, '');
 }

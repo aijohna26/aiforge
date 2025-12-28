@@ -55,10 +55,16 @@ export default function Dashboard() {
   const [promptInput, setPromptInput] = useState('');
 
   // Handle initial prompt from landing page if it exists
+  // Only redirect if user explicitly wants to start a new project (has auto-redirect flag)
   useEffect(() => {
-    if (typeof window !== 'undefined' && localStorage.getItem('bolt_seed_prompt')) {
-      console.log('[Dashboard] Found seed prompt, redirecting to chat (design mode)');
-      navigate('/chat');
+    if (typeof window !== 'undefined') {
+      const shouldAutoRedirect = sessionStorage.getItem('bolt_auto_redirect');
+
+      if (shouldAutoRedirect === 'true') {
+        console.log('[Dashboard] Auto-redirect flag set, navigating to editor');
+        sessionStorage.removeItem('bolt_auto_redirect'); // Clear the flag
+        navigate('/editor');
+      }
     }
   }, [navigate]);
 
@@ -87,7 +93,7 @@ export default function Dashboard() {
 
     localStorage.setItem('bolt_seed_prompt', promptInput.trim());
     setIsPromptModalOpen(false);
-    navigate('/chat');
+    navigate('/editor');
   };
 
   const handleLogout = async () => {

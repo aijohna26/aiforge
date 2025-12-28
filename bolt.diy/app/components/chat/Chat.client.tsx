@@ -1,6 +1,7 @@
 import { useStore } from '@nanostores/react';
 import type { Message } from 'ai';
 import { useChat } from '@ai-sdk/react';
+import { DefaultChatTransport } from 'ai';
 import { useAnimate } from 'framer-motion';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
@@ -202,46 +203,48 @@ export const ChatImpl = memo(
       }
     }, [currentView]);
 
+    // AI SDK 6.0: Input state is managed manually
+    const [input, setInput] = useState(Cookies.get(PROMPT_COOKIE_KEY) || '');
+    const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      setInput(e.target.value);
+    }, []);
+
     const {
       messages = [],
-      isLoading,
-      input = '',
-      handleInputChange,
-      setInput,
+      status,
       stop,
-      append,
+      sendMessage,
       setMessages,
-      reload,
+      regenerate,
       error,
-      data: chatData,
-      setData,
       addToolResult,
     } = useChat({
-      api: '/api/chat',
-      body: {
-        apiKeys,
-        files,
-        promptId,
-        contextOptimization: contextOptimizationEnabled,
-        chatMode,
-        designScheme,
-        supabase: {
-          isConnected: supabaseConn.isConnected,
-          hasSelectedProject: !!selectedProject,
-          credentials: {
-            supabaseUrl: supabaseConn?.credentials?.supabaseUrl,
-            anonKey: supabaseConn?.credentials?.anonKey,
+      transport: new DefaultChatTransport({
+        api: '/api/chat-simple',
+        body: {
+          apiKeys,
+          files,
+          promptId,
+          contextOptimization: contextOptimizationEnabled,
+          chatMode,
+          designScheme,
+          supabase: {
+            isConnected: supabaseConn.isConnected,
+            hasSelectedProject: !!selectedProject,
+            credentials: {
+              supabaseUrl: supabaseConn?.credentials?.supabaseUrl,
+              anonKey: supabaseConn?.credentials?.anonKey,
+            },
           },
+          maxLLMSteps: mcpSettings.maxLLMSteps,
         },
-        maxLLMSteps: mcpSettings.maxLLMSteps,
-      },
-      sendExtraMessageFields: true,
-      onError: (e) => {
+      }),
+      onError: (error) => {
         setFakeLoading(false);
-        handleError(e, 'chat');
+        handleError(error, 'chat');
       },
-      onFinish: (message, response) => {
-        const usage = response.usage;
+      onFinish: ({ message }) => {
+        const usage = (message as any).usage;
         setData(undefined);
 
         // Handle automated ticket transitions
@@ -277,71 +280,106 @@ export const ChatImpl = memo(
 
         if (usage) {
           console.log('Token usage:', usage);
+
+          // AI SDK 6.0: Get message length safely from parts or content
+          let messageLength = 0;
+          if ((message as any).content) {
+            messageLength = (message as any).content.length;
+          } else if ((message as any).parts) {
+            messageLength = (message as any).parts
+              .filter((p: any) => p.type === 'text')
+              .reduce((len: number, p: any) => len + (p.text?.length || 0), 0);
+          }
+
           logStore.logProvider('Chat response completed', {
             component: 'Chat',
             action: 'response',
             model,
             provider: provider.name,
             usage,
-            messageLength: message.content.length,
+            messageLength,
           });
         }
 
         logger.debug('Finished streaming');
       },
-      initialMessages,
-      initialInput: Cookies.get(PROMPT_COOKIE_KEY) || '',
+      messages: initialMessages,
     });
 
+    // AI SDK 6.0: Create backward-compatible aliases
+    const isLoading = status === 'streaming' || status === 'submitted';
+    const append = sendMessage;
+    const reload = regenerate;
+
+    // Placeholder for data/setData (not used in AI SDK 6.0)
+    const [chatData, setChatData] = useState<any>(undefined);
+    const setData = setChatData;
+
+    // Debug: Log what useChat returns
+    const useChatReturn = { messages, status, isLoading, input, handleInputChange, setInput, stop, sendMessage, append, setMessages, regenerate, reload, error };
+
     // Handle initial prompt from landing page (seedPrompt)
+    // Split into two effects: one for state setup, one for sending the message
     useEffect(() => {
       if (typeof window === 'undefined' || !seedPrompt || seedPromptProcessed.current) {
         return;
       }
 
+
+      // 1. Set both view and mode to design if not already
+      if (currentView !== 'design') {
+        workbenchStore.currentView.set('design');
+        return;
+      }
+
+      if (chatMode !== 'design') {
+        setChatMode('design');
+        return;
+      }
+    }, [seedPrompt, currentView, chatMode]);
+
+    // Second effect: Wait for append to be ready and send the message
+    useEffect(() => {
+      if (typeof window === 'undefined' || !seedPrompt || seedPromptProcessed.current) {
+        return;
+      }
+
+      // Only proceed when state is ready AND append function exists
+      if (currentView !== 'design' || chatMode !== 'design') {
+        return;
+      }
+
+      // Critical: Wait for append to be defined
+      if (!append) {
+        return;
+      }
+
+
       const processSeedPrompt = async () => {
-        // 1. Ensure we are on the design view
-        if (currentView !== 'design') {
-          workbenchStore.currentView.set('design');
-          return;
-        }
-
-        // Also ensure chatMode is in design
-        if (chatMode !== 'design') {
-          setChatMode('design');
-          return;
-        }
-
-        // Ensure useChat functions are ready
-        if (typeof append !== 'function' || typeof setInput !== 'function') {
-          return;
-        }
-
-        // 2. Once state has settled, hydrate the wizard and append the message
         seedPromptProcessed.current = true;
 
         // Hydrate the wizard with the initial prompt description
         const { setCurrentStep, resetDesignWizard } = await import('~/lib/stores/designWizard');
         resetDesignWizard();
-
-        // updateStep1Data({ description: seedPrompt }); // Removed as per user request
         setCurrentStep(1);
 
+        // Small delay to ensure wizard state is set
         const timer = setTimeout(() => {
           setSearchParams({});
 
           append({
-            role: 'user',
-            content: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${seedPrompt}`,
+            text: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${seedPrompt}`,
           });
 
-          // 3. Clear the prompt so it doesn't trigger again (e.g. on navigation back)
+          // Clear the prompt so it doesn't trigger again
           localStorage.removeItem('bolt_seed_prompt');
 
-          // 4. Clear the input box and cookie as we've consumed the prompt
+          // Clear the input box and cookie as we've consumed the prompt
           setInput('');
           Cookies.remove(PROMPT_COOKIE_KEY);
         }, 100);
+
+        return () => clearTimeout(timer);
       };
 
       processSeedPrompt();
@@ -353,15 +391,13 @@ export const ChatImpl = memo(
         const { bootstrapPrompt } = chatStore.get();
 
         if (bootstrapPrompt) {
-          console.log('[Chat] Received bootstrap prompt, initiating build...');
 
           // Switch to build mode
           setChatMode('build');
           workbenchStore.currentView.set('code');
 
           append({
-            role: 'user',
-            content: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${bootstrapPrompt}`,
+            text: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${bootstrapPrompt}`,
           });
 
           // Clear from store
@@ -387,8 +423,7 @@ export const ChatImpl = memo(
         runAnimation();
         workbenchStore.currentView.set('code');
         append({
-          role: 'user',
-          content: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${prompt}`,
+          text: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${prompt}`,
         });
       }
     }, [model, provider, searchParams, append]);
@@ -437,8 +472,7 @@ export const ChatImpl = memo(
 
         // Append message
         append({
-          role: 'user',
-          content: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${prompt}`,
+          text: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${prompt}`,
         });
       };
 
@@ -646,7 +680,7 @@ export const ChatImpl = memo(
       return attachments;
     };
 
-    const sendMessage = async (_event: React.UIEvent, messageInput?: string) => {
+    const handleSendMessage = async (_event: React.UIEvent, messageInput?: string) => {
       const messageContent = messageInput || input;
 
       if (!messageContent?.trim()) {
@@ -745,33 +779,12 @@ export const ChatImpl = memo(
         const userMessageText = `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${finalMessageContent}`;
         const attachments = uploadedFiles.length > 0 ? await filesToAttachments(uploadedFiles) : undefined;
 
-        if (typeof reload === 'function') {
-          setMessages([
-            {
-              id: `${new Date().getTime()}`,
-              role: 'user',
-              content: userMessageText,
-              parts: createMessageParts(userMessageText, imageDataList),
-              experimental_attachments: attachments,
-            },
-          ]);
-          reload(attachments ? { experimental_attachments: attachments } : undefined);
-        } else if (typeof append === 'function') {
-          console.warn('reload function is not available, falling back to append');
-          append(
-            {
-              role: 'user',
-              content: userMessageText,
-              parts: createMessageParts(userMessageText, imageDataList),
-            },
-            attachments ? { experimental_attachments: attachments } : undefined,
-          );
-        } else {
-          console.error('Neither reload nor append functions are available');
-          setFakeLoading(false);
-
-          return;
-        }
+        // AI SDK 6.0: Send message with parts
+        append({
+          parts: createMessageParts(userMessageText, imageDataList),
+          // @ts-ignore - experimental_attachments not in types yet
+          experimental_attachments: attachments,
+        });
 
         setFakeLoading(false);
         setInput('');
@@ -802,14 +815,11 @@ export const ChatImpl = memo(
         const attachmentOptions =
           uploadedFiles.length > 0 ? { experimental_attachments: await filesToAttachments(uploadedFiles) } : undefined;
 
-        append(
-          {
-            role: 'user',
-            content: messageText,
-            parts: createMessageParts(messageText, imageDataList),
-          },
-          attachmentOptions,
-        );
+        append({
+          parts: createMessageParts(messageText, imageDataList),
+          // @ts-ignore - experimental_attachments not in types yet
+          ...attachmentOptions,
+        });
 
         workbenchStore.resetAllFileModifications();
       } else {
@@ -818,14 +828,11 @@ export const ChatImpl = memo(
         const attachmentOptions =
           uploadedFiles.length > 0 ? { experimental_attachments: await filesToAttachments(uploadedFiles) } : undefined;
 
-        append(
-          {
-            role: 'user',
-            content: messageText,
-            parts: createMessageParts(messageText, imageDataList),
-          },
-          attachmentOptions,
-        );
+        append({
+          parts: createMessageParts(messageText, imageDataList),
+          // @ts-ignore - experimental_attachments not in types yet
+          ...attachmentOptions,
+        });
       }
 
       setInput('');
@@ -949,6 +956,29 @@ export const ChatImpl = memo(
 
         let buffer = '';
 
+        const processChunk = (line: string) => {
+          const trimmedLine = line.trim();
+          if (!trimmedLine) return;
+
+          try {
+            if (trimmedLine.startsWith('0:')) {
+              const text = JSON.parse(trimmedLine.substring(2));
+              if (typeof text === 'string') {
+                assistantMessage.content += text;
+              }
+            } else if (trimmedLine.startsWith('2:')) {
+              // Protocol 2: Data/Progress
+            } else if (trimmedLine.startsWith('3:')) {
+              const error = JSON.parse(trimmedLine.substring(2));
+              console.error('S: Error', error);
+              toast.error(`Stream error: ${error}`);
+              assistantMessage.content += `\n[Error: ${error}]\n`;
+            }
+          } catch (e) {
+            console.error('Error parsing line:', trimmedLine, e);
+          }
+        };
+
         while (true) {
           const { done, value } = await reader.read();
 
@@ -965,42 +995,12 @@ export const ChatImpl = memo(
           }
 
           const lines = buffer.split('\n');
-          // Keep the last line in the buffer if it's potentially incomplete
           buffer = lines.pop() || '';
 
           for (const line of lines) {
             processChunk(line);
           }
 
-          function processChunk(line: string) {
-            if (!line.trim()) return;
-
-            try {
-              if (line.startsWith('0:')) {
-                const text = JSON.parse(line.substring(2));
-                if (typeof text === 'string') {
-                  assistantMessage.content += text;
-                }
-              } else if (line.startsWith('2:')) {
-                // Protocol 2: Data/Progress
-                // const data = JSON.parse(line.substring(2));
-                // console.log('S: Data', data);
-              } else if (line.startsWith('3:')) {
-                // Protocol 3: Error
-                const error = JSON.parse(line.substring(2));
-                console.error('S: Error', error);
-                toast.error(`Stream error: ${error}`);
-                assistantMessage.content += `\n[Error: ${error}]\n`;
-              } else if (line.startsWith('8:')) {
-                // Protocol 8: Annotations
-                // const annotation = JSON.parse(line.substring(2));
-                // console.log('S: Annotation', annotation);
-              }
-            } catch (e) {
-              // Ignore parse errors for now
-            }
-          }
-          // Update the assistant message in state
           setLocalMessages([...newMessages, { ...assistantMessage }]);
         }
       } catch (err) {
@@ -1032,9 +1032,9 @@ export const ChatImpl = memo(
             setLocalInput('');
           }
 
-          // Check if we can use standard sendMessage or need manual
+          // Check if we can use standard handleSendMessage or need manual
           if (typeof sendMessage === 'function' && typeof append === 'function') {
-            sendMessage(e, messageContent);
+            handleSendMessage(e, messageContent);
           } else {
             // Fallback to manual
             const usrMsg: Message = { id: `user-${Date.now()}`, role: 'user', content: messageContent };
@@ -1059,9 +1059,12 @@ export const ChatImpl = memo(
             return message;
           }
 
+          // Bypass parser for debugging to ensure raw text is visible
+          if (message.content) {
+          }
           return {
             ...message,
-            content: parsedMessages[i] || message.content || '',
+            content: message.content || '',
           };
         })}
         enhancePrompt={() => {

@@ -80,6 +80,7 @@ export default function LandingPage() {
   const handleAuth = () => {
     if (prompt.trim()) {
       localStorage.setItem('bolt_seed_prompt', prompt.trim());
+      sessionStorage.setItem('bolt_auto_redirect', 'true'); // Set flag to auto-redirect to editor
     }
 
     setIsAuthModalOpen(true);

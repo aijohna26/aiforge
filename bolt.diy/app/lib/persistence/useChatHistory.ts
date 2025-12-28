@@ -283,11 +283,21 @@ ${value.content}
 
       let _urlId = urlId;
 
-      if (!urlId && firstArtifact?.id) {
-        const urlId = await getUrlId(db, firstArtifact.id);
-        _urlId = urlId;
-        navigateChat(urlId);
-        setUrlId(urlId);
+      // Create chat ID even if no artifact exists (for discussion-only chats)
+      if (!urlId) {
+        if (firstArtifact?.id) {
+          const newUrlId = await getUrlId(db, firstArtifact.id);
+          _urlId = newUrlId;
+          navigateChat(newUrlId);
+          setUrlId(newUrlId);
+        } else if (!chatId.get()) {
+          // No artifact and no chat ID - create one from timestamp
+          const timestamp = Date.now().toString();
+          const newUrlId = await getUrlId(db, timestamp);
+          _urlId = newUrlId;
+          navigateChat(newUrlId);
+          setUrlId(newUrlId);
+        }
       }
 
       let chatSummary: string | undefined = undefined;
@@ -336,11 +346,18 @@ ${value.content}
         db,
         finalChatId, // Use the potentially updated chatId
         [...archivedMessages, ...messages],
-        urlId,
+        _urlId,
         description.get(),
         undefined,
         chatMetadata.get(),
       );
+
+      console.log('✅ Chat saved successfully:', {
+        chatId: finalChatId,
+        urlId: _urlId,
+        messageCount: messages.length,
+        description: description.get(),
+      });
     },
     duplicateCurrentChat: async (listItemId: string) => {
       if (!db || (!mixedId && !listItemId)) {
