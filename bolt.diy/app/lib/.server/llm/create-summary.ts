@@ -16,7 +16,8 @@ export async function createSummary(props: {
   contextOptimization?: boolean;
   onFinish?: (resp: GenerateTextResult<Record<string, CoreTool<any, any>>, never>) => void;
 }) {
-  const { messages, env: serverEnv, apiKeys, providerSettings, onFinish } = props;
+  let { messages, env: serverEnv, apiKeys, providerSettings, onFinish } = props;
+  if (!messages) { messages = []; }
   let currentModel = DEFAULT_MODEL;
   let currentProvider = DEFAULT_PROVIDER.name;
   const processedMessages = messages.map((message) => {

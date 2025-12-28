@@ -8,10 +8,13 @@
 import { screenGeneration } from './screen-generation';
 import { screenshotExport } from './screenshot-export';
 import { imageGeneration } from './image-generation';
-// TODO: Implement remaining functions
-// import { chatContext } from './chat-context';
-// import { styleExtraction } from './style-extraction';
-// import { cleanupStaleJobs } from './cleanup-stale-jobs';
+
+/*
+ * TODO: Implement remaining functions
+ * import { chatContext } from './chat-context';
+ * import { styleExtraction } from './style-extraction';
+ * import { cleanupStaleJobs } from './cleanup-stale-jobs';
+ */
 
 /**
  * Array of all Inngest functions to be served
@@ -21,7 +24,10 @@ export const functions = [
   screenGeneration,
   screenshotExport,
   imageGeneration,
-  // chatContext,
-  // styleExtraction,
-  // cleanupStaleJobs,
+
+  /*
+   * chatContext,
+   * styleExtraction,
+   * cleanupStaleJobs,
+   */
 ];

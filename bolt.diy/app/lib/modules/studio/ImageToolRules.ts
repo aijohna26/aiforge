@@ -70,9 +70,11 @@ export interface ImageToolRule {
  * - Custom: FULL ACCESS (flexibility)
  */
 export const IMAGE_TOOL_RULES: Record<ScreenType, ImageToolRule> = {
-  // ========================================
-  // AUTHENTICATION SCREENS - HARD BLOCKS
-  // ========================================
+  /*
+   * ========================================
+   * AUTHENTICATION SCREENS - HARD BLOCKS
+   * ========================================
+   */
 
   signin: {
     allowGenerateImage: false,
@@ -166,12 +168,15 @@ Use only:
 - Subtle borders and dividers
 
 Settings are purely functional. No imagery needed.`,
-    reasoning: 'Settings screens are utility interfaces. Icons and clean UI are all that\'s needed. Images add zero value.',
+    reasoning:
+      "Settings screens are utility interfaces. Icons and clean UI are all that's needed. Images add zero value.",
   },
 
-  // ========================================
-  // BRANDING SCREENS - SPARING USE
-  // ========================================
+  /*
+   * ========================================
+   * BRANDING SCREENS - SPARING USE
+   * ========================================
+   */
 
   splash: {
     allowGenerateImage: true,
@@ -242,9 +247,11 @@ OVERRIDE: User can explicitly request searchImages for specific content needs.`,
       'Onboarding teaches users about YOUR app. Custom-generated illustrations by default enhance comprehension and reinforce brand. Stock photos only for explicit content requests.',
   },
 
-  // ========================================
-  // CONTEXTUAL SCREENS - SMART DECISIONS
-  // ========================================
+  /*
+   * ========================================
+   * CONTEXTUAL SCREENS - SMART DECISIONS
+   * ========================================
+   */
 
   home: {
     allowGenerateImage: true,
@@ -315,9 +322,11 @@ DEFAULT: No images. Scanner UI is functional (camera viewfinder, capture button,
     reasoning: 'Scanner screens are camera-based interactions. Images are rarely needed beyond instructional overlays.',
   },
 
-  // ========================================
-  // FLEXIBLE SCREENS - FULL ACCESS
-  // ========================================
+  /*
+   * ========================================
+   * FLEXIBLE SCREENS - FULL ACCESS
+   * ========================================
+   */
 
   custom: {
     allowGenerateImage: true,

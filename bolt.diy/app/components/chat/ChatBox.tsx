@@ -223,7 +223,7 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
                   props.handleSendMessage?.(event);
                 }
               }}
-              value={props.input}
+              value={props.input || ''}
               onChange={(event) => {
                 props.handleInputChange?.(event);
               }}
@@ -246,7 +246,11 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
                 <SendButton
                   show={true}
                   isStreaming={props.isStreaming}
-                  disabled={(!props.providerList || props.providerList.length === 0) || (props.input.length === 0 && !props.isStreaming && props.uploadedFiles.length === 0)}
+                  disabled={
+                    !props.providerList ||
+                    props.providerList.length === 0 ||
+                    (props.input.length === 0 && !props.isStreaming && props.uploadedFiles.length === 0)
+                  }
                   onClick={(event) => {
                     if (props.isStreaming) {
                       props.handleStop?.();

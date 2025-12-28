@@ -129,7 +129,6 @@ export const ModelSelector = ({
 
   // Debounce search queries
 
-
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedProviderSearchQuery(providerSearchQuery);
@@ -209,7 +208,6 @@ export const ModelSelector = ({
 
   // Clear search functions
 
-
   const clearProviderSearch = useCallback(() => {
     setProviderSearchQuery('');
     setDebouncedProviderSearchQuery('');
@@ -218,8 +216,6 @@ export const ModelSelector = ({
       providerSearchInputRef.current.focus();
     }
   }, []);
-
-
 
   useEffect(() => {
     if (isProviderDropdownOpen && providerSearchInputRef.current) {
@@ -261,7 +257,6 @@ export const ModelSelector = ({
         }
 
         break;
-
     }
   };
 
@@ -662,7 +657,6 @@ export const ModelSelector = ({
                           <span className="text-xs text-bolt-elements-textTertiary">
                             {formatContextSize(modelOption.maxTokenAllowed)} tokens
                           </span>
-
                         </div>
                       </div>
                       <div className="flex items-center gap-1 ml-2">

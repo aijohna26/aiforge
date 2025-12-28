@@ -119,9 +119,7 @@ export const screenshotExport = inngest.createFunction(
         await updateJobProgress({ jobId, progress: 50 });
 
         // Enrich HTML with base styles and Tailwind
-        const baseUrl = process.env.VERCEL_URL
-          ? `https://${process.env.VERCEL_URL}`
-          : 'http://localhost:5173';
+        const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:5173';
 
         let enrichedHtml = html.includes('<head>')
           ? html.replace('<head>', `<head><base href="${baseUrl}/">`)
@@ -155,7 +153,7 @@ export const screenshotExport = inngest.createFunction(
                 background: white !important;
               }
             </style>
-          </head>`
+          </head>`,
         );
 
         await page.setContent(enrichedHtml, { waitUntil: 'load', timeout: 60000 });
@@ -180,6 +178,7 @@ export const screenshotExport = inngest.createFunction(
 
         if (format === 'pdf') {
           console.log('[Inngest] Exporting as PDF...');
+
           const pdfBuffer = await page.pdf({
             format: 'A4',
             printBackground: true,
@@ -190,9 +189,10 @@ export const screenshotExport = inngest.createFunction(
           contentType = 'application/pdf';
         } else {
           console.log('[Inngest] Capturing PNG...');
+
           const screenshot = await page.screenshot({
             type: 'png',
-            clip: clip,
+            clip,
             fullPage: !clip,
             omitBackground: true,
           });
@@ -239,5 +239,5 @@ export const screenshotExport = inngest.createFunction(
       await browser.close();
       console.log('[Inngest] Browser closed');
     }
-  }
+  },
 );

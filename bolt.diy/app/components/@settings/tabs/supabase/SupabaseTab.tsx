@@ -612,8 +612,11 @@ export default function SupabaseTab() {
   const handleMigrateImages = async (table: 'saved_logos' | 'saved_screens') => {
     const isLogos = table === 'saved_logos';
 
-    if (isLogos) setIsMigratingLogos(true);
-    else setIsMigratingScreens(true);
+    if (isLogos) {
+      setIsMigratingLogos(true);
+    } else {
+      setIsMigratingScreens(true);
+    }
 
     setMigrationStatus({ table: isLogos ? 'Logos' : 'Screens', status: 'Migrating...' });
 
@@ -621,17 +624,18 @@ export default function SupabaseTab() {
       const response = await fetch('/api/admin/migrate-images', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ table })
+        body: JSON.stringify({ table }),
       });
 
       const data = await response.json();
 
       if (data.success) {
         toast.success(`Migration complete for ${isLogos ? 'Logos' : 'Screens'}!`);
+
         if (data.summary) {
           setMigrationStatus({
             table: isLogos ? 'Logos' : 'Screens',
-            status: `Done: ${data.summary.migrated} migrated, ${data.summary.errors} errors`
+            status: `Done: ${data.summary.migrated} migrated, ${data.summary.errors} errors`,
           });
         }
       } else {
@@ -642,8 +646,11 @@ export default function SupabaseTab() {
       toast.error('Failed to trigger migration');
       setMigrationStatus({ table: isLogos ? 'Logos' : 'Screens', status: 'Error' });
     } finally {
-      if (isLogos) setIsMigratingLogos(false);
-      else setIsMigratingScreens(false);
+      if (isLogos) {
+        setIsMigratingLogos(false);
+      } else {
+        setIsMigratingScreens(false);
+      }
     }
   };
 
@@ -880,11 +887,11 @@ export default function SupabaseTab() {
                             const avgTablesPerProject =
                               totalProjects > 0
                                 ? Math.round(
-                                  (connection.stats?.projects?.reduce(
-                                    (sum, p) => sum + (p.stats?.database?.tables || 0),
-                                    0,
-                                  ) || 0) / totalProjects,
-                                )
+                                    (connection.stats?.projects?.reduce(
+                                      (sum, p) => sum + (p.stats?.database?.tables || 0),
+                                      0,
+                                    ) || 0) / totalProjects,
+                                  )
                                 : 0;
 
                             return [
@@ -1156,11 +1163,7 @@ export default function SupabaseTab() {
                         disabled={isMigratingLogos || isMigratingScreens}
                         className="flex-1 text-xs"
                       >
-                        {isMigratingLogos ? (
-                          <div className="i-ph:spinner-gap animate-spin" />
-                        ) : (
-                          'Migrate Logos'
-                        )}
+                        {isMigratingLogos ? <div className="i-ph:spinner-gap animate-spin" /> : 'Migrate Logos'}
                       </Button>
                       <Button
                         size="sm"
@@ -1169,11 +1172,7 @@ export default function SupabaseTab() {
                         disabled={isMigratingLogos || isMigratingScreens}
                         className="flex-1 text-xs"
                       >
-                        {isMigratingScreens ? (
-                          <div className="i-ph:spinner-gap animate-spin" />
-                        ) : (
-                          'Migrate Screens'
-                        )}
+                        {isMigratingScreens ? <div className="i-ph:spinner-gap animate-spin" /> : 'Migrate Screens'}
                       </Button>
                     </div>
                   </div>

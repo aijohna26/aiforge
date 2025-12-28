@@ -1,119 +1,134 @@
-import { json, type ActionFunctionArgs } from "@remix-run/node";
-import Anthropic from "@anthropic-ai/sdk";
-import { Buffer } from "node:buffer";
+import { json, type ActionFunctionArgs } from '@remix-run/node';
+import Anthropic from '@anthropic-ai/sdk';
+import { Buffer } from 'node:buffer';
 
 const MODEL_ID = process.env.STYLE_GUIDE_MODEL ?? 'claude-sonnet-4-5';
 
 type ClaudeImagePart = {
-    type: 'image';
-    source: {
-        type: 'base64';
-        media_type: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
-        data: string;
-    };
+  type: 'image';
+  source: {
+    type: 'base64';
+    media_type: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+    data: string;
+  };
 };
 
 const stripJson = (content: string) => {
-    const trimmed = content.trim();
-    const fenceMatch = trimmed.match(/```json([\s\S]*?)```/i);
-    if (fenceMatch) {
-        return fenceMatch[1].trim();
-    }
-    const start = trimmed.indexOf('{');
-    const end = trimmed.lastIndexOf('}');
-    if (start === -1 || end === -1) return trimmed;
-    return trimmed.slice(start, end + 1);
+  const trimmed = content.trim();
+  const fenceMatch = trimmed.match(/```json([\s\S]*?)```/i);
+
+  if (fenceMatch) {
+    return fenceMatch[1].trim();
+  }
+
+  const start = trimmed.indexOf('{');
+  const end = trimmed.lastIndexOf('}');
+
+  if (start === -1 || end === -1) {
+    return trimmed;
+  }
+
+  return trimmed.slice(start, end + 1);
 };
 
 const buildInlineImage = async (url: string, request: Request): Promise<ClaudeImagePart> => {
-    let resolved = url;
-    if (resolved.startsWith('/')) {
-        const absolute = new URL(resolved, request.url).toString();
-        resolved = absolute;
-    }
-    if (resolved.includes('/api/image-proxy')) {
-        const u = new URL(resolved, request.url);
-        const original = u.searchParams.get('url');
-        if (original) {
-            resolved = decodeURIComponent(original);
-        }
-    }
+  let resolved = url;
 
-    if (resolved.startsWith('data:')) {
-        const [meta, data] = resolved.split(',');
-        const match = meta.match(/data:(.*);base64/);
-        const mimeTypeRaw = match?.[1] || 'image/png';
-        const mimeType = (['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(mimeTypeRaw)
-            ? mimeTypeRaw
-            : 'image/png') as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
-        return {
-            type: 'image',
-            source: {
-                type: 'base64',
-                media_type: mimeType,
-                data,
-            },
-        };
-    }
+  if (resolved.startsWith('/')) {
+    const absolute = new URL(resolved, request.url).toString();
+    resolved = absolute;
+  }
 
-    const response = await fetch(resolved);
-    if (!response.ok) {
-        throw new Error(`Failed to fetch image ${resolved}`);
+  if (resolved.includes('/api/image-proxy')) {
+    const u = new URL(resolved, request.url);
+    const original = u.searchParams.get('url');
+
+    if (original) {
+      resolved = decodeURIComponent(original);
     }
-    const mimeTypeRaw = response.headers.get('content-type') || 'image/png';
-    const mimeType = (['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(mimeTypeRaw)
-        ? mimeTypeRaw
-        : 'image/png') as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
-    const buffer = Buffer.from(await response.arrayBuffer()).toString('base64');
+  }
+
+  if (resolved.startsWith('data:')) {
+    const [meta, data] = resolved.split(',');
+    const match = meta.match(/data:(.*);base64/);
+    const mimeTypeRaw = match?.[1] || 'image/png';
+    const mimeType = (
+      ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(mimeTypeRaw) ? mimeTypeRaw : 'image/png'
+    ) as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+
     return {
-        type: 'image',
-        source: {
-            type: 'base64',
-            media_type: mimeType,
-            data: buffer,
-        },
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: mimeType,
+        data,
+      },
     };
+  }
+
+  const response = await fetch(resolved);
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch image ${resolved}`);
+  }
+
+  const mimeTypeRaw = response.headers.get('content-type') || 'image/png';
+  const mimeType = (
+    ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(mimeTypeRaw) ? mimeTypeRaw : 'image/png'
+  ) as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+  const buffer = Buffer.from(await response.arrayBuffer()).toString('base64');
+
+  return {
+    type: 'image',
+    source: {
+      type: 'base64',
+      media_type: mimeType,
+      data: buffer,
+    },
+  };
 };
 
 export async function action({ request }: ActionFunctionArgs) {
-    if (request.method !== 'POST') {
-        return json({ error: 'Method not allowed' }, { status: 405 });
+  if (request.method !== 'POST') {
+    return json({ error: 'Method not allowed' }, { status: 405 });
+  }
+
+  try {
+    const { images } = await request.json<{ images: string[] }>();
+
+    if (!Array.isArray(images) || images.length === 0) {
+      return json({ error: 'Provide at least one image' }, { status: 400 });
     }
 
-    try {
-        const { images } = await request.json<{ images: string[] }>();
-        if (!Array.isArray(images) || images.length === 0) {
-            return json({ error: 'Provide at least one image' }, { status: 400 });
-        }
+    const apiKey = process.env.ANTHROPIC_API_KEY || process.env.APPFORGE_ANTHROPIC_API_KEY;
 
-        const apiKey = process.env.ANTHROPIC_API_KEY || process.env.APPFORGE_ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return json({ error: 'Anthropic API key not configured' }, { status: 500 });
+    }
 
-        if (!apiKey) {
-            return json({ error: 'Anthropic API key not configured' }, { status: 500 });
-        }
+    const anthropic = new Anthropic({
+      apiKey,
+      defaultHeaders: {
+        'anthropic-beta': 'output-128k-2025-02-19',
+      },
+    });
 
-        const anthropic = new Anthropic({
-            apiKey,
-            defaultHeaders: {
-                'anthropic-beta': 'output-128k-2025-02-19',
-            },
-        });
+    const inlineImages = await Promise.all(
+      images.slice(0, 5).map((url) =>
+        buildInlineImage(url, request).catch((error) => {
+          console.error('[style-guide] failed to load image', error);
+          return null;
+        }),
+      ),
+    );
 
-        const inlineImages = await Promise.all(
-            images
-                .slice(0, 5)
-                .map((url) => buildInlineImage(url, request).catch((error) => {
-                    console.error('[style-guide] failed to load image', error);
-                    return null;
-                })),
-        );
+    const validImages = inlineImages.filter((part): part is ClaudeImagePart => Boolean(part));
 
-        const validImages = inlineImages.filter((part): part is ClaudeImagePart => Boolean(part));
-        if (!validImages.length) {
-            return json({ error: 'Unable to load reference images' }, { status: 400 });
-        }
+    if (!validImages.length) {
+      return json({ error: 'Unable to load reference images' }, { status: 400 });
+    }
 
-        const prompt = `
+    const prompt = `
 You are an expert product designer. Analyze the supplied UI inspiration images and output JSON describing inferred design tokens.
 
 IMPORTANT: For typography, use only commonly available web-safe fonts or popular Google Fonts that closely match the visual style. Suggest the nearest-looking alternative if you see uncommon fonts.
@@ -176,44 +191,44 @@ Return JSON with this shape (no markdown):
 Include at least 3 palettes, 3 typography options, and 3 styles. Hex codes must use #RRGGBB format.
 `;
 
-        const response = await anthropic.messages.create({
-            model: MODEL_ID,
-            max_tokens: 8000,
-            temperature: 0.2,
-            system: 'You are an expert product designer. Respond with strictly valid JSON.',
-            messages: [
-                {
-                    role: 'user',
-                    content: [
-                        ...validImages,
-                        { type: 'text', text: prompt },
-                    ],
-                },
-            ],
-        });
+    const response = await anthropic.messages.create({
+      model: MODEL_ID,
+      max_tokens: 8000,
+      temperature: 0.2,
+      system: 'You are an expert product designer. Respond with strictly valid JSON.',
+      messages: [
+        {
+          role: 'user',
+          content: [...validImages, { type: 'text', text: prompt }],
+        },
+      ],
+    });
 
-        const textPart = response.content.find((part) => part.type === 'text');
-        if (!textPart || !('text' in textPart)) {
-            throw new Error('Claude did not return textual content');
-        }
-        const text = textPart.text || '';
-        const jsonPayload = stripJson(text);
-        let parsed;
-        try {
-            parsed = JSON.parse(jsonPayload);
-        } catch (parseError) {
-            const sanitized = jsonPayload.replace(/,\s*(?=[}\]])/g, '');
-            parsed = JSON.parse(sanitized);
-        }
+    const textPart = response.content.find((part) => part.type === 'text');
 
-        return json({
-            success: true,
-            palettes: parsed.palettes || [],
-            typography: parsed.typography || [],
-            styles: parsed.styles || [],
-        });
-    } catch (error: any) {
-        console.error('[style-guide] extraction error', error);
-        return json({ success: false, error: error.message || 'Failed to analyze mood board' }, { status: 500 });
+    if (!textPart || !('text' in textPart)) {
+      throw new Error('Claude did not return textual content');
     }
+
+    const text = textPart.text || '';
+    const jsonPayload = stripJson(text);
+    let parsed;
+
+    try {
+      parsed = JSON.parse(jsonPayload);
+    } catch (parseError) {
+      const sanitized = jsonPayload.replace(/,\s*(?=[}\]])/g, '');
+      parsed = JSON.parse(sanitized);
+    }
+
+    return json({
+      success: true,
+      palettes: parsed.palettes || [],
+      typography: parsed.typography || [],
+      styles: parsed.styles || [],
+    });
+  } catch (error: any) {
+    console.error('[style-guide] extraction error', error);
+    return json({ success: false, error: error.message || 'Failed to analyze mood board' }, { status: 500 });
+  }
 }

@@ -64,13 +64,16 @@ export const screenGeneration = inngest.createFunction(
       });
 
       const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+
       if (!apiKey) {
         throw new Error('GOOGLE_GENERATIVE_AI_API_KEY not configured');
       }
+
       const agent = new StudioAgent(apiKey);
 
       // Step 3: Generate theme if requested
       let generatedTheme = null;
+
       if (includeTheme) {
         generatedTheme = await step.run('generate-theme', async () => {
           console.log('[Inngest] Generating theme...');
@@ -95,42 +98,24 @@ export const screenGeneration = inngest.createFunction(
           }
 
           await updateJobProgress({ jobId, progress: 10 });
+
           return theme;
         });
       }
 
       // Step 4: Generate each screen in PARALLEL for massive speed gains
       const totalScreens = screens.length;
-      const generatedScreens = await Promise.all(screens.map(async (screen, i) => {
-        const screenIndex = i + 1;
+      const generatedScreens = await Promise.all(
+        screens.map(async (screen, i) => {
+          const screenIndex = i + 1;
 
-        return await step.run(`generate-of-screen-${screen.id}`, async () => {
-          console.log(`[Inngest] Generating screen ${screenIndex}/${totalScreens}:`, screen.name);
+          return await step.run(`generate-of-screen-${screen.id}`, async () => {
+            console.log(`[Inngest] Generating screen ${screenIndex}/${totalScreens}:`, screen.name);
 
-          // Publish screen generation start
-          if (userId && (channel as any)?.publish) {
-            await (channel as any).publish(`user:${userId}`, {
-              type: 'screen.generating',
-              jobId,
-              screenId: screen.id,
-              screenName: screen.name,
-              screenIndex,
-              totalScreens,
-              timestamp: new Date().toISOString(),
-            });
-          }
-
-          try {
-            // Generate screen without passing 'step' to avoid nesting issues
-            // This treats the entire screen generation as one atomic unit
-            const result = await agent.generateScreen(branding, screen);
-
-            console.log(`[Inngest] Screen ${screenIndex}/${totalScreens} completed:`, screen.name);
-
-            // Publish individual screen completion for UI updates
+            // Publish screen generation start
             if (userId && (channel as any)?.publish) {
               await (channel as any).publish(`user:${userId}`, {
-                type: 'screen.complete',
+                type: 'screen.generating',
                 jobId,
                 screenId: screen.id,
                 screenName: screen.name,
@@ -140,24 +125,48 @@ export const screenGeneration = inngest.createFunction(
               });
             }
 
-            return result;
-          } catch (error) {
-            console.error(`[Inngest] Failed to generate screen ${screen.name}:`, error);
+            try {
+              /*
+               * Generate screen without passing 'step' to avoid nesting issues
+               * This treats the entire screen generation as one atomic unit
+               */
+              const result = await agent.generateScreen(branding, screen);
 
-            if (userId && (channel as any)?.publish) {
-              await (channel as any).publish(`user:${userId}`, {
-                type: 'screen.failed',
-                jobId,
-                screenId: screen.id,
-                screenName: screen.name,
-                error: error instanceof Error ? error.message : 'Unknown error',
-                timestamp: new Date().toISOString(),
-              });
+              console.log(`[Inngest] Screen ${screenIndex}/${totalScreens} completed:`, screen.name);
+
+              // Publish individual screen completion for UI updates
+              if (userId && (channel as any)?.publish) {
+                await (channel as any).publish(`user:${userId}`, {
+                  type: 'screen.complete',
+                  jobId,
+                  screenId: screen.id,
+                  screenName: screen.name,
+                  screenIndex,
+                  totalScreens,
+                  timestamp: new Date().toISOString(),
+                });
+              }
+
+              return result;
+            } catch (error) {
+              console.error(`[Inngest] Failed to generate screen ${screen.name}:`, error);
+
+              if (userId && (channel as any)?.publish) {
+                await (channel as any).publish(`user:${userId}`, {
+                  type: 'screen.failed',
+                  jobId,
+                  screenId: screen.id,
+                  screenName: screen.name,
+                  error: error instanceof Error ? error.message : 'Unknown error',
+                  timestamp: new Date().toISOString(),
+                });
+              }
+
+              throw error;
             }
-            throw error;
-          }
-        });
-      }));
+          });
+        }),
+      );
 
       // Step 5: Mark job as completed
       await step.run('complete-job', async () => {
@@ -176,9 +185,12 @@ export const screenGeneration = inngest.createFunction(
           status: 'completed',
           progress: 100,
           outputData,
-          // TODO: Track token usage from LLM responses
-          // tokenUsage: { prompt: 0, completion: 0, total: 0 },
-          // estimatedCostUsd: 0,
+
+          /*
+           * TODO: Track token usage from LLM responses
+           * tokenUsage: { prompt: 0, completion: 0, total: 0 },
+           * estimatedCostUsd: 0,
+           */
         });
 
         // Publish final completion event
@@ -231,5 +243,5 @@ export const screenGeneration = inngest.createFunction(
 
       throw error; // Re-throw to trigger Inngest's retry mechanism
     }
-  }
+  },
 );

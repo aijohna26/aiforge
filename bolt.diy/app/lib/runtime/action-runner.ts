@@ -655,11 +655,11 @@ export class ActionRunner {
 
     // Handle curl commands (robust version)
     if (trimmedCommand.includes('curl ')) {
-      const curlParts = trimmedCommand.split('&&').map(p => p.trim());
+      const curlParts = trimmedCommand.split('&&').map((p) => p.trim());
       let modified = false;
       let targetDirToCreate = null;
 
-      const enhancedParts = curlParts.map(part => {
+      const enhancedParts = curlParts.map((part) => {
         if (part.startsWith('curl ')) {
           let enhancedPart = part;
 
@@ -677,9 +677,11 @@ export class ActionRunner {
 
           // Check for output path to pre-create directory
           const outputMatch = enhancedPart.match(/-o\s+([^\s"']+)|--output\s+([^\s"']+)/);
+
           if (outputMatch) {
             let outputPath = outputMatch[1] || outputMatch[2];
             outputPath = outputPath.replace(/['"]/g, '');
+
             if (outputPath.includes('/')) {
               targetDirToCreate = outputPath.substring(0, outputPath.lastIndexOf('/'));
             }
@@ -687,11 +689,13 @@ export class ActionRunner {
 
           return enhancedPart;
         }
+
         return part;
       });
 
       if (modified || targetDirToCreate) {
         let finalCommand = enhancedParts.join(' && ');
+
         if (targetDirToCreate) {
           finalCommand = `mkdir -p ${targetDirToCreate} && ${finalCommand}`;
         }
@@ -699,7 +703,7 @@ export class ActionRunner {
         return {
           shouldModify: true,
           modifiedCommand: finalCommand,
-          warning: modified ? 'Enhanced curl command with required headers and flags' : undefined
+          warning: modified ? 'Enhanced curl command with required headers and flags' : undefined,
         };
       }
     }
@@ -710,7 +714,7 @@ export class ActionRunner {
         return {
           shouldModify: true,
           modifiedCommand: `${trimmedCommand} --legacy-peer-deps`,
-          warning: 'Added --legacy-peer-deps to handle React 19 peer dependency conflicts'
+          warning: 'Added --legacy-peer-deps to handle React 19 peer dependency conflicts',
         };
       }
     }

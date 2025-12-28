@@ -7,58 +7,58 @@ import { createJob, getJob } from '../../inngest/db';
 import { getAllowedTools, getImageToolGuidance, isToolAllowed } from './ImageToolRules';
 
 export interface StudioBranding {
-    primaryColor: string;
-    backgroundColor: string;
-    textColor: string;
-    appName: string;
-    description?: string;
-    targetAudience?: string;
-    category?: string;
-    platform?: string;
-    logo?: string;
-    footer?: string;
-    uiStyle?: string;
-    personality?: string;
-    colorPalette?: any;
-    typography?: string;
-    components?: string;
-    userId?: string;
+  primaryColor: string;
+  backgroundColor: string;
+  textColor: string;
+  appName: string;
+  description?: string;
+  targetAudience?: string;
+  category?: string;
+  platform?: string;
+  logo?: string;
+  footer?: string;
+  uiStyle?: string;
+  personality?: string;
+  colorPalette?: any;
+  typography?: string;
+  components?: string;
+  userId?: string;
 }
 
 export interface StudioScreenRequest {
-    id: string;
-    name: string;
-    type: string;
-    purpose: string;
-    keyElements: string[];
-    showLogo?: boolean;
-    showBottomNav?: boolean;
+  id: string;
+  name: string;
+  type: string;
+  purpose: string;
+  keyElements: string[];
+  showLogo?: boolean;
+  showBottomNav?: boolean;
 }
 
 export class StudioAgent {
-    private modelId = 'gemini-3-flash-preview';
+  private modelId = 'gemini-3-flash-preview';
 
-    constructor(private apiKey?: string) { }
+  constructor(private apiKey?: string) {}
 
-    private getModel() {
-        console.log('[StudioAgent] Initializing model:', this.modelId);
+  private getModel() {
+    console.log('[StudioAgent] Initializing model:', this.modelId);
 
-        if (!this.apiKey) {
-            console.error('[StudioAgent] ERROR: Missing API Key');
-            throw new Error('Google API Key is required for Studio Agent');
-        }
-
-        const google = createGoogleGenerativeAI({
-            apiKey: this.apiKey
-        });
-
-        return google(this.modelId);
+    if (!this.apiKey) {
+      console.error('[StudioAgent] ERROR: Missing API Key');
+      throw new Error('Google API Key is required for Studio Agent');
     }
 
-    async generateTheme(branding: StudioBranding) {
-        const { text } = await generateText({
-            model: this.getModel(),
-            system: `You are a world-class Design Systems Architect and Lead UI Engineer.
+    const google = createGoogleGenerativeAI({
+      apiKey: this.apiKey,
+    });
+
+    return google(this.modelId);
+  }
+
+  async generateTheme(branding: StudioBranding) {
+    const { text } = await generateText({
+      model: this.getModel(),
+      system: `You are a world-class Design Systems Architect and Lead UI Engineer.
 Your task is to create a comprehensive, high-fidelity CSS Design System (JSON format) for a mobile application.
 
 THEME ARCHITECTURE REQUIREMENTS:
@@ -90,35 +90,43 @@ VIBE & AESTHETIC GUIDELINES:
 - **Personality**: Reflect "${branding.personality || 'modern'}" and "${branding.uiStyle || 'clean'}".
 - **Contrast**: Calculate foreground colors (text on backgrounds) to ensure deep readability.
 - **Chart Colors**: Generate 5 colors that complement the primary/secondary palette for data visualization.`,
-            prompt: `Create a professional and cohesive design system for "${branding.appName}". 
+      prompt: `Create a professional and cohesive design system for "${branding.appName}". 
             Brand Description: ${branding.description || 'N/A'}
             Target Audience: ${branding.targetAudience || 'General'}
             Brand Style: ${branding.uiStyle || 'Modern'} / ${branding.personality || 'Professional'}
-            Color Palette Context: ${JSON.stringify(branding.colorPalette || { primary: branding.primaryColor, background: branding.backgroundColor, text: branding.textColor })}`
-        });
+            Color Palette Context: ${JSON.stringify(branding.colorPalette || { primary: branding.primaryColor, background: branding.backgroundColor, text: branding.textColor })}`,
+    });
 
-        const hexToRgb = (hex: string) => {
-            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-            return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : "79, 70, 229";
-        };
+    const hexToRgb = (hex: string) => {
+      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      return result
+        ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}`
+        : '79, 70, 229';
+    };
 
-        try {
-            const jsonMatch = text.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-                const themeData = JSON.parse(jsonMatch[0]);
-                if (themeData.name === "Brand Identity") {
-                    themeData.name = `${branding.appName} Design System`;
-                }
-                return themeData;
-            }
-            throw new Error('Failed to parse theme JSON');
-        } catch (e) {
-            console.error('[StudioAgent] Theme parse error:', e);
-            const priRgb = hexToRgb(branding.primaryColor);
-            return {
-                id: 'custom-brand',
-                name: `${branding.appName} Design System`,
-                style: `
+    try {
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+
+      if (jsonMatch) {
+        const themeData = JSON.parse(jsonMatch[0]);
+
+        if (themeData.name === 'Brand Identity') {
+          themeData.name = `${branding.appName} Design System`;
+        }
+
+        return themeData;
+      }
+
+      throw new Error('Failed to parse theme JSON');
+    } catch (e) {
+      console.error('[StudioAgent] Theme parse error:', e);
+
+      const priRgb = hexToRgb(branding.primaryColor);
+
+      return {
+        id: 'custom-brand',
+        name: `${branding.appName} Design System`,
+        style: `
   --background: ${branding.backgroundColor};
   --foreground: ${branding.textColor};
   --primary: ${branding.primaryColor};
@@ -145,21 +153,21 @@ VIBE & AESTHETIC GUIDELINES:
   --chart-3: #f59e0b;
   --chart-4: #8b5cf6;
   --chart-5: #ec4899;
-`
-            };
-        }
+`,
+      };
     }
+  }
 
-    /**
-     * Constructs the system prompt for screen generation with screen-type-specific guidance
-     * @param screenType - The type of screen being generated (splash, signin, home, etc.)
-     * @returns Enhanced system prompt with screen-specific image tool rules
-     */
-    private constructSystemPrompt(screenType: string): string {
-        // Get screen-specific image tool guidance
-        const imageGuidance = getImageToolGuidance(screenType);
+  /**
+   * Constructs the system prompt for screen generation with screen-type-specific guidance
+   * @param screenType - The type of screen being generated (splash, signin, home, etc.)
+   * @returns Enhanced system prompt with screen-specific image tool rules
+   */
+  private constructSystemPrompt(screenType: string): string {
+    // Get screen-specific image tool guidance
+    const imageGuidance = getImageToolGuidance(screenType);
 
-        return `You are an elite Mobile UI/UX Design Engineer specializing in high-fidelity prototypes.
+    return `You are an elite Mobile UI/UX Design Engineer specializing in high-fidelity prototypes.
       Your task is to generate beautiful, production-ready mobile screen designs using HTML and Tailwind CSS.
 
       🎨 SCREEN-SPECIFIC IMAGE TOOL GUIDANCE FOR ${screenType.toUpperCase()} SCREENS:
@@ -258,155 +266,165 @@ VIBE & AESTHETIC GUIDELINES:
       OUTPUT:
       - Return ONLY raw HTML markup starting with <div>.
       - No markdown code blocks, no <html>, <head>, or <body>.`;
+  }
+
+  async generateScreen(branding: StudioBranding, screen: StudioScreenRequest, step?: any) {
+    const prompt = this.constructPrompt(branding, screen);
+    const imageGenCount = 0;
+
+    // Get allowed tools based on screen type
+    const { allowGenerateImage, allowSearchImages } = getAllowedTools(screen.type);
+
+    console.log(
+      `[StudioAgent] Screen type: ${screen.type}, allowGenerateImage: ${allowGenerateImage}, allowSearchImages: ${allowSearchImages}`,
+    );
+
+    // Build tools object dynamically based on screen type rules
+    const availableTools: any = {};
+
+    if (allowSearchImages) {
+      availableTools.searchImages = tool({
+        description: 'Search for high-quality stock photos and images from Pexels to use in the design.',
+        parameters: z.object({
+          query: z.string().describe('The search query for images (e.g., "modern kitchen", "abstract background")'),
+          count: z.number().optional().default(5).describe('Number of images to return'),
+        }),
+        execute: async ({ query, count }) => {
+          console.log(`[StudioAgent] Searching Pexels for: ${query}`);
+
+          const images = await searchPexels(query, count);
+
+          return {
+            images: images.map((img) => ({
+              url: img.src.large,
+              alt: img.alt,
+              photographer: img.photographer,
+            })),
+          };
+        },
+      });
     }
 
-    async generateScreen(branding: StudioBranding, screen: StudioScreenRequest, step?: any) {
-        const prompt = this.constructPrompt(branding, screen);
-        let imageGenCount = 0;
-
-        // Get allowed tools based on screen type
-        const { allowGenerateImage, allowSearchImages } = getAllowedTools(screen.type);
-
-        console.log(`[StudioAgent] Screen type: ${screen.type}, allowGenerateImage: ${allowGenerateImage}, allowSearchImages: ${allowSearchImages}`);
-
-        // Build tools object dynamically based on screen type rules
-        const availableTools: any = {};
-
-        if (allowSearchImages) {
-            availableTools.searchImages = tool({
-                description: 'Search for high-quality stock photos and images from Pexels to use in the design.',
-                parameters: z.object({
-                    query: z.string().describe('The search query for images (e.g., "modern kitchen", "abstract background")'),
-                        count: z.number().optional().default(5).describe('Number of images to return'),
-                    }),
-                    execute: async ({ query, count }) => {
-                        console.log(`[StudioAgent] Searching Pexels for: ${query}`);
-                        const images = await searchPexels(query, count);
-                        return {
-                            images: images.map(img => ({
-                                url: img.src.large,
-                                alt: img.alt,
-                                photographer: img.photographer
-                            }))
-                        };
-                    },
-                });
-        }
-
-        if (allowGenerateImage) {
-            availableTools.generateImage = tool({
-                    description: `Generate custom branded images for app screens using AI.
+    if (allowGenerateImage) {
+      availableTools.generateImage = tool({
+        description: `Generate custom branded images for app screens using AI.
 Use for: hero banners, splash backgrounds, feature illustrations, onboarding graphics.
 DO NOT use for: icons, logos (use provided assets), stock photos (use searchImages).
 This tool generates high-quality custom imagery that matches your brand identity.
 IMPORTANT: Ensure the generated image does NOT contain any device frames, phones, bezels, or hardware mockups. It must be a flat UI or illustration only.`,
-                    parameters: z.object({
-                        description: z.string().optional().describe('Detailed image description'),
-                        imageType: z.enum(['hero', 'background', 'illustration', 'feature-card']).optional().describe('Type of image to generate'),
-                        aspectRatio: z.string().default('9:16').describe('Aspect ratio: 9:16 (portrait), 16:9 (landscape), 1:1 (square)'),
-                    }),
-                    execute: async (input) => {
-                        // Double-check enforcement (defense in depth)
-                        if (!isToolAllowed(screen.type, 'generateImage')) {
-                            const errorMsg = `generateImage is not allowed for ${screen.type} screens. Use CSS backgrounds or searchImages instead.`;
-                            console.error('[StudioAgent] ❌', errorMsg);
-                            throw new Error(errorMsg);
-                        }
+        parameters: z.object({
+          description: z.string().optional().describe('Detailed image description'),
+          imageType: z
+            .enum(['hero', 'background', 'illustration', 'feature-card'])
+            .optional()
+            .describe('Type of image to generate'),
+          aspectRatio: z
+            .string()
+            .default('9:16')
+            .describe('Aspect ratio: 9:16 (portrait), 16:9 (landscape), 1:1 (square)'),
+        }),
+        execute: async (input) => {
+          // Double-check enforcement (defense in depth)
+          if (!isToolAllowed(screen.type, 'generateImage')) {
+            const errorMsg = `generateImage is not allowed for ${screen.type} screens. Use CSS backgrounds or searchImages instead.`;
+            console.error('[StudioAgent] ❌', errorMsg);
+            throw new Error(errorMsg);
+          }
 
-                        const {
-                            description = 'App visualization',
-                            imageType = 'illustration',
-                            aspectRatio = '9:16'
-                        } = input || {};
+          const { description = 'App visualization', imageType = 'illustration', aspectRatio = '9:16' } = input || {};
 
-                        console.log('[StudioAgent] 🎨 generateImage tool called with:', input);
+          console.log('[StudioAgent] 🎨 generateImage tool called with:', input);
 
-                        const generateImageAsync = async () => {
-                            console.log('[StudioAgent] 🎨 Starting image generation:', { description, imageType, aspectRatio });
+          const generateImageAsync = async () => {
+            console.log('[StudioAgent] 🎨 Starting image generation:', { description, imageType, aspectRatio });
 
-                            // Enhance the prompt with branding context
-                            const enhancedPrompt = this.enhanceImagePromptForBranding(description, imageType, branding);
+            // Enhance the prompt with branding context
+            const enhancedPrompt = this.enhanceImagePromptForBranding(description, imageType, branding);
 
-                            // Create job in database
-                            const jobId = await createJob({
-                                jobType: 'image-generation',
-                                userId: branding.userId || 'system',
-                                inputData: { prompt: enhancedPrompt, imageType, aspectRatio },
-                                provider: 'kie',
-                                model: 'nano-banana',
-                            });
+            // Create job in database
+            const jobId = await createJob({
+              jobType: 'image-generation',
+              userId: branding.userId || 'system',
+              inputData: { prompt: enhancedPrompt, imageType, aspectRatio },
+              provider: 'kie',
+              model: 'nano-banana',
+            });
 
-                            // Send to Inngest (non-blocking)
-                            await inngest.send({
-                                name: 'media/generate.image',
-                                data: {
-                                    jobId,
-                                    userId: branding.userId || 'system',
-                                    prompt: enhancedPrompt,
-                                    googleModel: 'nano-banana',
-                                    outputFormat: 'png',
-                                    aspectRatio,
-                                    enhanceForUI: true,
-                                },
-                            });
+            // Send to Inngest (non-blocking)
+            await inngest.send({
+              name: 'media/generate.image',
+              data: {
+                jobId,
+                userId: branding.userId || 'system',
+                prompt: enhancedPrompt,
+                googleModel: 'nano-banana',
+                outputFormat: 'png',
+                aspectRatio,
+                enhanceForUI: true,
+              },
+            });
 
-                            // Poll for completion with shorter timeout (max 15 attempts = 30 seconds)
-                            const imageUrl = await this.pollJobCompletion(jobId, 15);
+            // Poll for completion with shorter timeout (max 15 attempts = 30 seconds)
+            const imageUrl = await this.pollJobCompletion(jobId, 15);
 
-                            console.log('[StudioAgent] ✅ Image generated successfully!');
-                            console.log('[StudioAgent] 📸 Returning imageUrl to LLM:', imageUrl);
+            console.log('[StudioAgent] ✅ Image generated successfully!');
+            console.log('[StudioAgent] 📸 Returning imageUrl to LLM:', imageUrl);
 
-                            const result = {
-                                imageUrl,
-                                alt: description,
-                                imageType,
-                            };
+            const result = {
+              imageUrl,
+              alt: description,
+              imageType,
+            };
 
-                            console.log('[StudioAgent] 📦 Full response object:', result);
-                            return result;
-                        };
+            console.log('[StudioAgent] 📦 Full response object:', result);
 
-                        // Execute directly without step.run to avoid NESTING_STEPS error
-                        // Retry behavior will be handled by the main function retry mechanism
-                        return await generateImageAsync();
-                    },
-                });
-        }
+            return result;
+          };
 
-        const { text } = await generateText({
-            model: this.getModel(),
-            stopWhen: stepCountIs(10),
-            tools: availableTools,
-            system: this.constructSystemPrompt(screen.type),
-            prompt: prompt,
-        });
-
-        console.log(`[StudioAgent] Raw response length for ${screen.id}: ${text.length}`);
-        const parsed = this.parseScreenResponse(text);
-
-        return {
-            id: screen.id,
-            title: parsed.title || screen.name,
-            html: parsed.html,
-        };
+          /*
+           * Execute directly without step.run to avoid NESTING_STEPS error
+           * Retry behavior will be handled by the main function retry mechanism
+           */
+          return await generateImageAsync();
+        },
+      });
     }
 
-    private constructPrompt(branding: StudioBranding, screen: StudioScreenRequest) {
-        // Build comprehensive context prompt
-        const audienceContext = branding.targetAudience
-            ? `\n🎯 TARGET AUDIENCE: ${branding.targetAudience}\nIMPORTANT: This is for ${branding.targetAudience}. Design accordingly with appropriate imagery, language, tone, and complexity.`
-            : '';
+    const { text } = await generateText({
+      model: this.getModel(),
+      stopWhen: stepCountIs(10),
+      tools: availableTools,
+      system: this.constructSystemPrompt(screen.type),
+      prompt,
+    });
 
-        const logoDirective = branding.logo
-            ? `\n🎨 BRAND LOGO: <img src="${branding.logo}" alt="${branding.appName} Logo" class="w-16 h-16 object-contain mix-blend-screen" crossorigin="anonymous" style="filter: drop-shadow(0 2px 8px rgba(0,0,0,0.1));" />\nCRITICAL: Use this EXACT logo image tag wherever a logo is needed. DO NOT generate or imagine a different logo. ALWAYS include crossorigin="anonymous" attribute and mix-blend-screen class to blend the logo naturally with the background.`
-            : '';
+    console.log(`[StudioAgent] Raw response length for ${screen.id}: ${text.length}`);
 
-        const navigationDirective = branding.footer
-            ? `\n🧭 BRAND NAVIGATION: <img src="${branding.footer}" alt="Navigation Bar" class="w-full h-auto object-cover" crossorigin="anonymous" />\nCRITICAL: For the bottom navigation bar/footer, use this EXACT image tag. Place it at the absolute bottom of the screen if showBottomNav is true. Ensure it spans the full width.`
-            : '';
+    const parsed = this.parseScreenResponse(text);
 
-        const colorContext = branding.colorPalette
-            ? `\n🌈 CUSTOM THEME CONTEXT (VARIABLE DEFINITIONS):
+    return {
+      id: screen.id,
+      title: parsed.title || screen.name,
+      html: parsed.html,
+    };
+  }
+
+  private constructPrompt(branding: StudioBranding, screen: StudioScreenRequest) {
+    // Build comprehensive context prompt
+    const audienceContext = branding.targetAudience
+      ? `\n🎯 TARGET AUDIENCE: ${branding.targetAudience}\nIMPORTANT: This is for ${branding.targetAudience}. Design accordingly with appropriate imagery, language, tone, and complexity.`
+      : '';
+
+    const logoDirective = branding.logo
+      ? `\n🎨 BRAND LOGO: <img src="${branding.logo}" alt="${branding.appName} Logo" class="w-16 h-16 object-contain mix-blend-screen" crossorigin="anonymous" style="filter: drop-shadow(0 2px 8px rgba(0,0,0,0.1));" />\nCRITICAL: Use this EXACT logo image tag wherever a logo is needed. DO NOT generate or imagine a different logo. ALWAYS include crossorigin="anonymous" attribute and mix-blend-screen class to blend the logo naturally with the background.`
+      : '';
+
+    const navigationDirective = branding.footer
+      ? `\n🧭 BRAND NAVIGATION: <img src="${branding.footer}" alt="Navigation Bar" class="w-full h-auto object-cover" crossorigin="anonymous" />\nCRITICAL: For the bottom navigation bar/footer, use this EXACT image tag. Place it at the absolute bottom of the screen if showBottomNav is true. Ensure it spans the full width.`
+      : '';
+
+    const colorContext = branding.colorPalette
+      ? `\n🌈 CUSTOM THEME CONTEXT (VARIABLE DEFINITIONS):
 The following hex codes are what the semantic variables currently represent in the 'Custom' theme:
 - var(--primary) is currently ${branding.colorPalette.primary}
 - var(--secondary) is currently ${branding.colorPalette.secondary}
@@ -414,15 +432,15 @@ The following hex codes are what the semantic variables currently represent in t
 - var(--background) is currently ${branding.colorPalette.background}
 - var(--foreground) is currently ${branding.colorPalette.text?.primary}
 - var(--muted) is currently ${branding.colorPalette.text?.secondary}`
-            : `\n🌈 COLORS (REFERENCE ONLY): Primary: ${branding.primaryColor}, Background: ${branding.backgroundColor}, Text: ${branding.textColor}`;
+      : `\n🌈 COLORS (REFERENCE ONLY): Primary: ${branding.primaryColor}, Background: ${branding.backgroundColor}, Text: ${branding.textColor}`;
 
-        const styleContext = `\n✨ DESIGN SYSTEM INTENT:
+    const styleContext = `\n✨ DESIGN SYSTEM INTENT:
 - UI Style: ${branding.uiStyle || 'modern'}
 - Personality: ${branding.personality || 'professional'}
 - Typography: ${branding.typography || 'sans-serif'}
 - Base Radius: ${branding.components || 'rounded'}`;
 
-        return `
+    return `
 Generate a ${screen.type} screen for "${branding.appName}".
 ${branding.description ? `\nApp Description: ${branding.description}` : ''}
 ${audienceContext}
@@ -450,109 +468,121 @@ Create a high-fidelity, production-ready mobile screen that perfectly matches AL
 🚨 ZERO TOLERANCE: DO NOT USE HEX CODES OR RGB. USE ONLY THE SEMANTIC TAILWIND CLASSES (bg-primary, text-foreground, etc.).
 DO NOT use rgba() or hsla(). Use Tailwind opacity instead (e.g., bg-primary/20).
     `;
-    }
+  }
 
-    /**
-     * Enhances an image generation prompt with branding context
-     */
-    private enhanceImagePromptForBranding(description: string, imageType: string, branding: StudioBranding): string {
-        // Inject branding context
-        const colorContext = branding.colorPalette
-            ? `dominant colors: ${branding.colorPalette.primary}, ${branding.colorPalette.accent}`
-            : `colors: ${branding.primaryColor}`;
+  /**
+   * Enhances an image generation prompt with branding context
+   */
+  private enhanceImagePromptForBranding(description: string, imageType: string, branding: StudioBranding): string {
+    // Inject branding context
+    const colorContext = branding.colorPalette
+      ? `dominant colors: ${branding.colorPalette.primary}, ${branding.colorPalette.accent}`
+      : `colors: ${branding.primaryColor}`;
 
-        const styleContext = branding.uiStyle || 'modern';
-        const personality = branding.personality || 'professional';
+    const styleContext = branding.uiStyle || 'modern';
+    const personality = branding.personality || 'professional';
 
-        return `${imageType} for ${branding.appName} mobile app. ${description}.
+    return `${imageType} for ${branding.appName} mobile app. ${description}.
 Style: ${styleContext}, ${personality}. ${colorContext}.
 Mobile-optimized, high quality, professional design.
 IMPORTANT: Do NOT include any phone frames, device mockups, or smartphone bezels. Generate ONLY the content/artwork itself without any device containers.`;
+  }
+
+  /**
+   * Polls a job until completion or timeout
+   * Default: 15 attempts × 2s = 30 seconds
+   */
+  private async pollJobCompletion(jobId: string, maxAttempts: number = 15): Promise<string> {
+    for (let i = 0; i < maxAttempts; i++) {
+      const job = await getJob(jobId);
+
+      if (!job) {
+        throw new Error(`Job ${jobId} not found`);
+      }
+
+      if (job.status === 'completed' && job.outputData?.imageUrl) {
+        console.log(`[StudioAgent] Image ready after ${i + 1} attempts (${(i + 1) * 2}s)`);
+        return job.outputData.imageUrl;
+      }
+
+      if (job.status === 'failed') {
+        throw new Error(`Image generation failed: ${job.error || 'Unknown error'}`);
+      }
+
+      // Wait 2 seconds before next poll
+      await new Promise((resolve) => setTimeout(resolve, 2000));
     }
 
-    /**
-     * Polls a job until completion or timeout
-     * Default: 15 attempts × 2s = 30 seconds
-     */
-    private async pollJobCompletion(jobId: string, maxAttempts: number = 15): Promise<string> {
-        for (let i = 0; i < maxAttempts; i++) {
-            const job = await getJob(jobId);
+    const timeoutSeconds = maxAttempts * 2;
+    throw new Error(
+      `Image generation timed out after ${timeoutSeconds} seconds. The image may still be generating in the background.`,
+    );
+  }
 
-            if (!job) {
-                throw new Error(`Job ${jobId} not found`);
-            }
-
-            if (job.status === 'completed' && job.outputData?.imageUrl) {
-                console.log(`[StudioAgent] Image ready after ${i + 1} attempts (${(i + 1) * 2}s)`);
-                return job.outputData.imageUrl;
-            }
-
-            if (job.status === 'failed') {
-                throw new Error(`Image generation failed: ${job.error || 'Unknown error'}`);
-            }
-
-            // Wait 2 seconds before next poll
-            await new Promise((resolve) => setTimeout(resolve, 2000));
-        }
-
-        const timeoutSeconds = maxAttempts * 2;
-        throw new Error(`Image generation timed out after ${timeoutSeconds} seconds. The image may still be generating in the background.`);
+  private parseScreenResponse(text: string): { html: string; title: string; id?: string } {
+    if (!text || text.trim().length < 10) {
+      throw new Error('Generated text is empty or too short');
     }
 
-    private parseScreenResponse(text: string): { html: string; title: string; id?: string } {
-        if (!text || text.trim().length < 10) {
-            throw new Error('Generated text is empty or too short');
+    try {
+      // optimized regex to strip markdown code blocks (json or plain)
+      const cleaned = text.replace(/```(?:json)?\s*([\s\S]*?)\s*```/g, '$1').trim();
+
+      // If the cleaned text starts with '{', try to parse it as JSON
+      if (cleaned.startsWith('{')) {
+        const parsed = JSON.parse(cleaned);
+
+        if (!parsed.html || parsed.html.length < 10) {
+          throw new Error('Parsed HTML is empty or too short');
         }
 
+        return parsed;
+      }
+
+      /*
+       * Legacy/Fallback: If it doesn't look like JSON, assume it's just HTML (old behavior)
+       * But we requested JSON, so this is a last resort.
+       */
+      const htmlMatch = text.match(/```html?([\s\S]*?)```/);
+
+      if (htmlMatch) {
+        return { html: htmlMatch[1].trim(), title: 'Generated Screen' };
+      }
+
+      // Final fallback: treat as raw HTML if it looks like HTML
+      const trimmed = text.trim();
+
+      if (trimmed.startsWith('<div') || trimmed.startsWith('<main')) {
+        return { html: trimmed, title: 'Generated Screen' };
+      }
+
+      throw new Error('Response does not look like JSON or HTML');
+    } catch (e) {
+      console.error('[StudioAgent] Failed to parse JSON response:', e);
+      console.error('[StudioAgent] Raw text:', text);
+
+      // Fallback: try to find the start and end of JSON object
+      const start = text.indexOf('{');
+      const end = text.lastIndexOf('}');
+
+      if (start !== -1 && end !== -1) {
         try {
-            // optimized regex to strip markdown code blocks (json or plain)
-            const cleaned = text.replace(/```(?:json)?\s*([\s\S]*?)\s*```/g, '$1').trim();
+          const parsed = JSON.parse(text.substring(start, end + 1));
 
-            // If the cleaned text starts with '{', try to parse it as JSON
-            if (cleaned.startsWith('{')) {
-                const parsed = JSON.parse(cleaned);
-                if (!parsed.html || parsed.html.length < 10) {
-                    throw new Error('Parsed HTML is empty or too short');
-                }
-                return parsed;
-            }
+          if (!parsed.html || parsed.html.length < 10) {
+            throw new Error('Parsed HTML is empty or too short (fallback)');
+          }
 
-            // Legacy/Fallback: If it doesn't look like JSON, assume it's just HTML (old behavior)
-            // But we requested JSON, so this is a last resort.
-            const htmlMatch = text.match(/```html?([\s\S]*?)```/);
-            if (htmlMatch) {
-                return { html: htmlMatch[1].trim(), title: 'Generated Screen' };
-            }
-
-            // Final fallback: treat as raw HTML if it looks like HTML
-            const trimmed = text.trim();
-            if (trimmed.startsWith('<div') || trimmed.startsWith('<main')) {
-                return { html: trimmed, title: 'Generated Screen' };
-            }
-
-            throw new Error('Response does not look like JSON or HTML');
-
-        } catch (e) {
-            console.error('[StudioAgent] Failed to parse JSON response:', e);
-            console.error('[StudioAgent] Raw text:', text);
-            // Fallback: try to find the start and end of JSON object
-            const start = text.indexOf('{');
-            const end = text.lastIndexOf('}');
-            if (start !== -1 && end !== -1) {
-                try {
-                    const parsed = JSON.parse(text.substring(start, end + 1));
-                    if (!parsed.html || parsed.html.length < 10) {
-                        throw new Error('Parsed HTML is empty or too short (fallback)');
-                    }
-                    return parsed;
-                } catch (e2) {
-                    // Last resort: treat as raw HTML
-                    if (text.length > 20) {
-                        return { html: text, title: 'Generated Screen' };
-                    }
-                }
-            }
-            throw e; // Rethrow original error if fallback fails
+          return parsed;
+        } catch (e2) {
+          // Last resort: treat as raw HTML
+          if (text.length > 20) {
+            return { html: text, title: 'Generated Screen' };
+          }
         }
+      }
+
+      throw e; // Rethrow original error if fallback fails
     }
+  }
 }

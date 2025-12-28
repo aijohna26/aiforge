@@ -6,7 +6,10 @@ import { Header } from '~/components/header/Header';
 import { createClient } from '~/lib/supabase/server';
 
 export const meta: MetaFunction = () => {
-  return [{ title: 'AppForge' }, { name: 'description', content: 'Talk with AppForge, an AI assistant from StackBlitz' }];
+  return [
+    { title: 'AppForge' },
+    { name: 'description', content: 'Talk with AppForge, an AI assistant from StackBlitz' },
+  ];
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {

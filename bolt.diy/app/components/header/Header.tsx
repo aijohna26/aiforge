@@ -10,7 +10,9 @@ export function Header() {
 
   return (
     <header
-      className={classNames('flex items-center px-4 border-b h-[var(--header-height)] bg-bolt-elements-background-depth-1 border-bolt-elements-borderColor')}
+      className={classNames(
+        'flex items-center px-4 border-b h-[var(--header-height)] bg-bolt-elements-background-depth-1 border-bolt-elements-borderColor',
+      )}
     >
       <div className="flex items-center gap-2 z-logo text-bolt-elements-textPrimary cursor-pointer">
         <div className="i-ph:sidebar-simple-duotone text-xl" />
@@ -19,7 +21,10 @@ export function Header() {
           <span className="text-bolt-elements-textSecondary font-normal">Editor</span>
         </a>
         <div className="h-4 w-px bg-bolt-elements-borderColor mx-2 hidden sm:block" />
-        <a href="/dashboard" className="text-xs font-black uppercase tracking-widest text-bolt-elements-textSecondary hover:text-accent transition-colors hidden sm:block">
+        <a
+          href="/dashboard"
+          className="text-xs font-black uppercase tracking-widest text-bolt-elements-textSecondary hover:text-accent transition-colors hidden sm:block"
+        >
           Dashboard
         </a>
       </div>

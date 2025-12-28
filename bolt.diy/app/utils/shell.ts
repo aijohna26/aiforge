@@ -207,10 +207,14 @@ export class BoltShell {
       }
 
       const webReadyMatch = '[web] Logs will appear in the browser console';
+
       if (buffer.includes(webReadyMatch)) {
         webPreviewReadyAtom.set(true);
-        // Remove the matched part to ensure we don't re-match it later
-        // and to keep buffer clean
+
+        /*
+         * Remove the matched part to ensure we don't re-match it later
+         * and to keep buffer clean
+         */
         const idx = buffer.indexOf(webReadyMatch);
         buffer = buffer.slice(idx + webReadyMatch.length);
       }

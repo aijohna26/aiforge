@@ -62,9 +62,14 @@ function getJobFilePath(jobId: string): string {
 function readJobFromFile(jobId: string): InngestJob | null {
   try {
     const filePath = getJobFilePath(jobId);
-    if (!fs.existsSync(filePath)) return null;
+
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+
     const data = fs.readFileSync(filePath, 'utf-8');
     const job = JSON.parse(data);
+
     // Convert date strings back to Date objects
     return {
       ...job,
@@ -94,24 +99,26 @@ function writeJobToFile(job: InngestJob): void {
 export async function createJob(input: CreateJobInput): Promise<string> {
   const jobId = uuidv4();
 
-  // TODO: Implement database insert
-  // Example for PostgreSQL/MySQL:
   /*
-  await db.query(`
-    INSERT INTO inngest_jobs (
-      id, job_type, status, progress, user_id, input_data, provider, model, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
-  `, [
-    jobId,
-    input.jobType,
-    'pending',
-    0,
-    input.userId || null,
-    JSON.stringify(input.inputData),
-    input.provider || null,
-    input.model || null
-  ]);
-  */
+   * TODO: Implement database insert
+   * Example for PostgreSQL/MySQL:
+   */
+  /*
+   *await db.query(`
+   *  INSERT INTO inngest_jobs (
+   *    id, job_type, status, progress, user_id, input_data, provider, model, created_at, updated_at
+   *  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+   *`, [
+   *  jobId,
+   *  input.jobType,
+   *  'pending',
+   *  0,
+   *  input.userId || null,
+   *  JSON.stringify(input.inputData),
+   *  input.provider || null,
+   *  input.model || null
+   *]);
+   */
 
   const job: InngestJob = {
     id: jobId,
@@ -147,35 +154,37 @@ export async function createJob(input: CreateJobInput): Promise<string> {
 export async function updateJobStatus(input: UpdateJobStatusInput): Promise<void> {
   const now = new Date();
 
-  // TODO: Implement database update
-  // Example for PostgreSQL/MySQL:
   /*
-  await db.query(`
-    UPDATE inngest_jobs SET
-      status = ?,
-      progress = ?,
-      output_data = ?,
-      error_message = ?,
-      token_usage_prompt = ?,
-      token_usage_completion = ?,
-      token_usage_total = ?,
-      estimated_cost_usd = ?,
-      completed_at = ?,
-      updated_at = NOW()
-    WHERE id = ?
-  `, [
-    input.status,
-    input.progress,
-    input.outputData ? JSON.stringify(input.outputData) : null,
-    input.error || null,
-    input.tokenUsage?.prompt || null,
-    input.tokenUsage?.completion || null,
-    input.tokenUsage?.total || null,
-    input.estimatedCostUsd || null,
-    input.status === 'completed' || input.status === 'failed' ? now : null,
-    input.jobId
-  ]);
-  */
+   * TODO: Implement database update
+   * Example for PostgreSQL/MySQL:
+   */
+  /*
+   *await db.query(`
+   *  UPDATE inngest_jobs SET
+   *    status = ?,
+   *    progress = ?,
+   *    output_data = ?,
+   *    error_message = ?,
+   *    token_usage_prompt = ?,
+   *    token_usage_completion = ?,
+   *    token_usage_total = ?,
+   *    estimated_cost_usd = ?,
+   *    completed_at = ?,
+   *    updated_at = NOW()
+   *  WHERE id = ?
+   *`, [
+   *  input.status,
+   *  input.progress,
+   *  input.outputData ? JSON.stringify(input.outputData) : null,
+   *  input.error || null,
+   *  input.tokenUsage?.prompt || null,
+   *  input.tokenUsage?.completion || null,
+   *  input.tokenUsage?.total || null,
+   *  input.estimatedCostUsd || null,
+   *  input.status === 'completed' || input.status === 'failed' ? now : null,
+   *  input.jobId
+   *]);
+   */
 
   console.log('[Inngest DB] Updated job status:', {
     jobId: input.jobId,
@@ -187,6 +196,7 @@ export async function updateJobStatus(input: UpdateJobStatusInput): Promise<void
 
   // Read from file, update, and write back
   const job = readJobFromFile(input.jobId);
+
   if (job) {
     Object.assign(job, {
       status: input.status,
@@ -198,9 +208,11 @@ export async function updateJobStatus(input: UpdateJobStatusInput): Promise<void
       completedAt: input.status === 'completed' || input.status === 'failed' ? now : job.completedAt,
       updatedAt: now,
     });
+
     if (input.status === 'processing' && !job.startedAt) {
       job.startedAt = now;
     }
+
     writeJobToFile(job);
   } else {
     console.warn(`[Inngest DB] Job ${input.jobId} not found for status update`);
@@ -211,16 +223,18 @@ export async function updateJobStatus(input: UpdateJobStatusInput): Promise<void
  * Updates only the progress of a job
  */
 export async function updateJobProgress(input: UpdateJobProgressInput): Promise<void> {
-  // TODO: Implement database update
-  // Example for PostgreSQL/MySQL:
   /*
-  await db.query(`
-    UPDATE inngest_jobs SET
-      progress = ?,
-      updated_at = NOW()
-    WHERE id = ?
-  `, [input.progress, input.jobId]);
-  */
+   * TODO: Implement database update
+   * Example for PostgreSQL/MySQL:
+   */
+  /*
+   *await db.query(`
+   *  UPDATE inngest_jobs SET
+   *    progress = ?,
+   *    updated_at = NOW()
+   *  WHERE id = ?
+   *`, [input.progress, input.jobId]);
+   */
 
   console.log('[Inngest DB] Updated job progress:', {
     jobId: input.jobId,
@@ -230,6 +244,7 @@ export async function updateJobProgress(input: UpdateJobProgressInput): Promise<
 
   // Read from file, update, and write back
   const job = readJobFromFile(input.jobId);
+
   if (job) {
     job.progress = input.progress;
     job.updatedAt = new Date();
@@ -241,47 +256,49 @@ export async function updateJobProgress(input: UpdateJobProgressInput): Promise<
  * Retrieves a job by ID
  */
 export async function getJob(jobId: string): Promise<InngestJob | null> {
-  // TODO: Implement database query
-  // Example for PostgreSQL/MySQL:
   /*
-  const result = await db.query(`
-    SELECT
-      id, job_type, status, progress, user_id, input_data, output_data,
-      error_message, attempts, max_attempts, provider, model,
-      token_usage_prompt, token_usage_completion, token_usage_total,
-      estimated_cost_usd, created_at, started_at, completed_at, updated_at
-    FROM inngest_jobs
-    WHERE id = ?
-  `, [jobId]);
-
-  if (!result.rows[0]) return null;
-
-  const row = result.rows[0];
-  return {
-    id: row.id,
-    jobType: row.job_type,
-    status: row.status,
-    progress: row.progress,
-    userId: row.user_id,
-    inputData: JSON.parse(row.input_data),
-    outputData: row.output_data ? JSON.parse(row.output_data) : undefined,
-    error: row.error_message,
-    attempts: row.attempts,
-    maxAttempts: row.max_attempts,
-    provider: row.provider,
-    model: row.model,
-    tokenUsage: row.token_usage_total ? {
-      prompt: row.token_usage_prompt,
-      completion: row.token_usage_completion,
-      total: row.token_usage_total
-    } : undefined,
-    estimatedCostUsd: row.estimated_cost_usd,
-    createdAt: new Date(row.created_at),
-    startedAt: row.started_at ? new Date(row.started_at) : undefined,
-    completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
-    updatedAt: new Date(row.updated_at)
-  };
-  */
+   * TODO: Implement database query
+   * Example for PostgreSQL/MySQL:
+   */
+  /*
+   *const result = await db.query(`
+   *  SELECT
+   *    id, job_type, status, progress, user_id, input_data, output_data,
+   *    error_message, attempts, max_attempts, provider, model,
+   *    token_usage_prompt, token_usage_completion, token_usage_total,
+   *    estimated_cost_usd, created_at, started_at, completed_at, updated_at
+   *  FROM inngest_jobs
+   *  WHERE id = ?
+   *`, [jobId]);
+   *
+   *if (!result.rows[0]) return null;
+   *
+   *const row = result.rows[0];
+   *return {
+   *  id: row.id,
+   *  jobType: row.job_type,
+   *  status: row.status,
+   *  progress: row.progress,
+   *  userId: row.user_id,
+   *  inputData: JSON.parse(row.input_data),
+   *  outputData: row.output_data ? JSON.parse(row.output_data) : undefined,
+   *  error: row.error_message,
+   *  attempts: row.attempts,
+   *  maxAttempts: row.max_attempts,
+   *  provider: row.provider,
+   *  model: row.model,
+   *  tokenUsage: row.token_usage_total ? {
+   *    prompt: row.token_usage_prompt,
+   *    completion: row.token_usage_completion,
+   *    total: row.token_usage_total
+   *  } : undefined,
+   *  estimatedCostUsd: row.estimated_cost_usd,
+   *  createdAt: new Date(row.created_at),
+   *  startedAt: row.started_at ? new Date(row.started_at) : undefined,
+   *  completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
+   *  updatedAt: new Date(row.updated_at)
+   *};
+   */
 
   // Read from file
   return readJobFromFile(jobId);
@@ -303,21 +320,24 @@ export async function markJobFailed(jobId: string, error: string): Promise<void>
  * Increments the attempt counter for a job
  */
 export async function incrementJobAttempts(jobId: string): Promise<void> {
-  // TODO: Implement database update
-  // Example for PostgreSQL/MySQL:
   /*
-  await db.query(`
-    UPDATE inngest_jobs SET
-      attempts = attempts + 1,
-      updated_at = NOW()
-    WHERE id = ?
-  `, [jobId]);
-  */
+   * TODO: Implement database update
+   * Example for PostgreSQL/MySQL:
+   */
+  /*
+   *await db.query(`
+   *  UPDATE inngest_jobs SET
+   *    attempts = attempts + 1,
+   *    updated_at = NOW()
+   *  WHERE id = ?
+   *`, [jobId]);
+   */
 
   console.log('[Inngest DB] Incremented job attempts:', { jobId });
 
   // Read from file, update, and write back
   const job = readJobFromFile(jobId);
+
   if (job) {
     job.attempts++;
     job.updatedAt = new Date();
@@ -329,20 +349,22 @@ export async function incrementJobAttempts(jobId: string): Promise<void> {
  * Finds jobs stuck in processing state (for cleanup cron)
  */
 export async function findStaleJobs(staleMinutes: number = 30): Promise<InngestJob[]> {
-  // TODO: Implement database query
-  // Example for PostgreSQL/MySQL:
   /*
-  const cutoffTime = new Date(Date.now() - staleMinutes * 60 * 1000);
-  const result = await db.query(`
-    SELECT * FROM inngest_jobs
-    WHERE status = 'processing'
-      AND updated_at < ?
-  `, [cutoffTime]);
-
-  return result.rows.map(row => ({
-    // ... map row to InngestJob
-  }));
-  */
+   * TODO: Implement database query
+   * Example for PostgreSQL/MySQL:
+   */
+  /*
+   *const cutoffTime = new Date(Date.now() - staleMinutes * 60 * 1000);
+   *const result = await db.query(`
+   *  SELECT * FROM inngest_jobs
+   *  WHERE status = 'processing'
+   *    AND updated_at < ?
+   *`, [cutoffTime]);
+   *
+   *return result.rows.map(row => ({
+   *  // ... map row to InngestJob
+   *}));
+   */
 
   // Read from files
   const cutoffTime = new Date(Date.now() - staleMinutes * 60 * 1000);
@@ -350,10 +372,15 @@ export async function findStaleJobs(staleMinutes: number = 30): Promise<InngestJ
 
   try {
     const files = fs.readdirSync(JOBS_DIR);
+
     for (const file of files) {
-      if (!file.endsWith('.json')) continue;
+      if (!file.endsWith('.json')) {
+        continue;
+      }
+
       const jobId = file.replace('.json', '');
       const job = readJobFromFile(jobId);
+
       if (job && job.status === 'processing' && job.updatedAt < cutoffTime) {
         staleJobs.push(job);
       }

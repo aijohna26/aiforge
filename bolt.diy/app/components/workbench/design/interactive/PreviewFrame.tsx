@@ -3,23 +3,30 @@ import type { ThemeType } from '~/utils/theme';
 import { BASE_VARIABLES } from '~/utils/theme';
 
 interface PreviewFrameProps {
-    html: string;
-    id?: string;
-    title?: string;
-    theme?: ThemeType;
-    className?: string;
-    isCapturing?: boolean;
+  html: string;
+  id?: string;
+  title?: string;
+  theme?: ThemeType;
+  className?: string;
+  isCapturing?: boolean;
 }
 
-export const PreviewFrame: React.FC<PreviewFrameProps> = ({ html, id = 'preview', title = 'Preview', theme, className, isCapturing = false }) => {
-    const iframeRef = useRef<HTMLIFrameElement>(null);
+export const PreviewFrame: React.FC<PreviewFrameProps> = ({
+  html,
+  id = 'preview',
+  title = 'Preview',
+  theme,
+  className,
+  isCapturing = false,
+}) => {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
-    // Function to construct the full HTML document with Tailwind
-    const getFullHtml = (content: string) => {
-        // Use local proxy to bypass COEP/CORP issues with cdn.tailwindcss.com
-        const tailwindUrl = `/api/image-proxy?url=${encodeURIComponent('https://cdn.tailwindcss.com')}`;
+  // Function to construct the full HTML document with Tailwind
+  const getFullHtml = (content: string) => {
+    // Use local proxy to bypass COEP/CORP issues with cdn.tailwindcss.com
+    const tailwindUrl = `/api/image-proxy?url=${encodeURIComponent('https://cdn.tailwindcss.com')}`;
 
-        return `
+    return `
             <!DOCTYPE html>
             <html lang="en">
             <head>
@@ -90,13 +97,16 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({ html, id = 'preview'
             </body>
             </html>
         `;
-    };
+  };
 
-    if (isCapturing) {
-        return (
-            <div className={`w-full h-full bg-background relative overflow-hidden ${className || ''}`} style={{ fontFamily: 'var(--font-sans), sans-serif' }}>
-                <style dangerouslySetInnerHTML={{
-                    __html: `
+  if (isCapturing) {
+    return (
+      <div
+        className={`w-full h-full bg-background relative overflow-hidden ${className || ''}`}
+        style={{ fontFamily: 'var(--font-sans), sans-serif' }}
+      >
+        <style
+          dangerouslySetInnerHTML={{__html: `
                     :root {
                         ${BASE_VARIABLES}
                         ${theme?.style || ''}
@@ -105,23 +115,25 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({ html, id = 'preview'
                         background-color: var(--background, transparent);
                         color: var(--foreground, #111827);
                     }
-                `}} />
-                <div
-                    className={`capture-root-${id} h-full w-full bg-background`}
-                    dangerouslySetInnerHTML={{ __html: html }}
-                    data-tailwind-capture="true"
-                />
-            </div>
-        );
-    }
-
-    return (
-        <iframe
-            ref={iframeRef}
-            title={title}
-            className={`w-full h-full border-0 ${className || ''}`}
-            srcDoc={getFullHtml(html)}
-            sandbox="allow-scripts allow-popups allow-forms allow-same-origin"
+                `,
+          }}
         />
+        <div
+          className={`capture-root-${id} h-full w-full bg-background`}
+          dangerouslySetInnerHTML={{ __html: html }}
+          data-tailwind-capture="true"
+        />
+      </div>
     );
+  }
+
+  return (
+    <iframe
+      ref={iframeRef}
+      title={title}
+      className={`w-full h-full border-0 ${className || ''}`}
+      srcDoc={getFullHtml(html)}
+      sandbox="allow-scripts allow-popups allow-forms allow-same-origin"
+    />
+  );
 };

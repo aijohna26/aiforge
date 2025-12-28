@@ -63,12 +63,13 @@ export default class AnthropicProvider extends BaseProvider {
       (model: any) =>
         model.type === 'model' &&
         !staticModelIds.includes(model.id) &&
+
         // Only include Claude 4 and newer models
         (model.id?.includes('claude-opus-4') ||
           model.id?.includes('claude-sonnet-4') ||
           model.id?.includes('claude-haiku-4') ||
           model.id?.includes('claude-5') ||
-          model.id?.includes('claude-6'))
+          model.id?.includes('claude-6')),
     );
 
     return data.map((m: any) => {

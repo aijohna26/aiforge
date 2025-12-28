@@ -39,10 +39,7 @@ interface JobPollingOptions {
   successMessage?: string;
 }
 
-export function useJobPolling(
-  jobId: string | null,
-  options: JobPollingOptions = {}
-) {
+export function useJobPolling(jobId: string | null, options: JobPollingOptions = {}) {
   const {
     onComplete,
     onError,
@@ -72,16 +69,20 @@ export function useJobPolling(
       const data = query.state.data;
 
       // Stop polling if no data yet
-      if (!data) return pollingInterval;
+      if (!data) {
+        return pollingInterval;
+      }
 
       // Stop polling on completion
       if (data.status === 'completed') {
         if (showToasts) {
           toast.success(successMessage, { id: `job-${jobId}` });
         }
+
         if (onComplete) {
           onComplete(data.outputData);
         }
+
         return false;
       }
 
@@ -90,9 +91,11 @@ export function useJobPolling(
         if (showToasts) {
           toast.error(`Job failed: ${data.error || 'Unknown error'}`, { id: `job-${jobId}` });
         }
+
         if (onError) {
           onError(data.error || 'Unknown error');
         }
+
         return false;
       }
 
@@ -114,7 +117,7 @@ export function useJobPolling(
  */
 export function useScreenGenerationPolling(
   jobId: string | null,
-  onComplete?: (result: { screens: any[]; theme?: any }) => void
+  onComplete?: (result: { screens: any[]; theme?: any }) => void,
 ) {
   return useJobPolling(jobId, {
     onComplete: (result) => {
@@ -131,7 +134,7 @@ export function useScreenGenerationPolling(
  */
 export function useScreenshotExportPolling(
   jobId: string | null,
-  onComplete?: (exportData: { data: string; format: string }) => void
+  onComplete?: (exportData: { data: string; format: string }) => void,
 ) {
   return useJobPolling(jobId, {
     onComplete: (result) => {

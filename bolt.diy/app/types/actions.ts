@@ -39,7 +39,14 @@ export interface QAPassAction extends BaseAction {
   ticketId: string;
 }
 
-export type BoltAction = FileAction | ShellAction | StartAction | BuildAction | SupabaseAction | DesignSyncAction | QAPassAction;
+export type BoltAction =
+  | FileAction
+  | ShellAction
+  | StartAction
+  | BuildAction
+  | SupabaseAction
+  | DesignSyncAction
+  | QAPassAction;
 
 export type BoltActionData = BoltAction | BaseAction;
 

@@ -622,12 +622,13 @@ export class WorkbenchStore {
         // Play sound if possible
         if (typeof window !== 'undefined') {
           const audio = new Audio('/notification.mp3'); // Assuming we have or will add this
-          audio.play().catch(e => console.error('Failed to play notification sound', e));
+          audio.play().catch((e) => console.error('Failed to play notification sound', e));
         }
 
         // YOLO Mode Automation: Start next ticket
         if (yoloModeStore.get()) {
           const todoTickets = getTicketsByStatus('todo');
+
           if (todoTickets.length > 0) {
             const nextTicket = todoTickets[0];
             console.log(`YOLO Mode: Starting next ticket ${nextTicket.key}`);

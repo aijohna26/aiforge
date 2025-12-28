@@ -27,7 +27,11 @@ export function JobProgressBar({
   className = '',
   showDetails = true,
 }: JobProgressBarProps) {
-  const { data: job, isLoading, error } = useJobPolling(jobId, {
+  const {
+    data: job,
+    isLoading,
+    error,
+  } = useJobPolling(jobId, {
     onComplete,
     onError,
     showToasts: false, // Handle toasts externally
@@ -77,12 +81,13 @@ export function JobProgressBar({
       <div className="flex items-center gap-3">
         <div className="flex-1 h-2 bg-white/[0.08] rounded-full overflow-hidden relative">
           <motion.div
-            className={`h-full ${isFailed
+            className={`h-full ${
+              isFailed
                 ? 'bg-red-500'
                 : isCompleted
                   ? 'bg-gradient-to-r from-green-500 to-emerald-500'
                   : 'bg-gradient-to-r from-indigo-500 to-purple-500'
-              }`}
+            }`}
             initial={{ width: '0%' }}
             animate={{ width: `${progress}%` }}
             transition={{ duration: 0.3, ease: 'easeOut' }}
@@ -101,18 +106,10 @@ export function JobProgressBar({
 
         {/* Status Icon */}
         <div className="flex items-center gap-2">
-          {isProcessing && (
-            <div className="i-ph:circle-notch-bold animate-spin text-indigo-400 text-sm" />
-          )}
-          {isCompleted && (
-            <div className="i-ph:check-circle-fill text-green-500 text-sm" />
-          )}
-          {isFailed && (
-            <div className="i-ph:x-circle-fill text-red-500 text-sm" />
-          )}
-          <span className="text-xs font-bold text-white/80 tabular-nums min-w-[3ch]">
-            {progress}%
-          </span>
+          {isProcessing && <div className="i-ph:circle-notch-bold animate-spin text-indigo-400 text-sm" />}
+          {isCompleted && <div className="i-ph:check-circle-fill text-green-500 text-sm" />}
+          {isFailed && <div className="i-ph:x-circle-fill text-red-500 text-sm" />}
+          <span className="text-xs font-bold text-white/80 tabular-nums min-w-[3ch]">{progress}%</span>
         </div>
       </div>
 
@@ -137,7 +134,9 @@ export function JobProgressBar({
               </>
             )}
             {job.attempts > 0 && job.attempts < job.maxAttempts && (
-              <span className="text-yellow-400">Retry {job.attempts}/{job.maxAttempts}</span>
+              <span className="text-yellow-400">
+                Retry {job.attempts}/{job.maxAttempts}
+              </span>
             )}
           </div>
         </div>
@@ -159,7 +158,9 @@ export function JobProgressBar({
 export function JobProgressBadge({ jobId }: { jobId: string }) {
   const { data: job } = useJobPolling(jobId, { showToasts: false });
 
-  if (!job) return null;
+  if (!job) {
+    return null;
+  }
 
   const progress = Math.min(Math.max(job.progress || 0, 0), 100);
   const isCompleted = job.status === 'completed';
@@ -167,18 +168,10 @@ export function JobProgressBadge({ jobId }: { jobId: string }) {
 
   return (
     <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/[0.06] rounded-full border border-white/[0.08]">
-      {job.status === 'processing' && (
-        <div className="i-ph:circle-notch-bold animate-spin text-indigo-400 text-xs" />
-      )}
-      {isCompleted && (
-        <div className="i-ph:check-circle-fill text-green-500 text-xs" />
-      )}
-      {isFailed && (
-        <div className="i-ph:x-circle-fill text-red-500 text-xs" />
-      )}
-      <span className="text-[10px] font-bold text-white/70 tabular-nums">
-        {progress}%
-      </span>
+      {job.status === 'processing' && <div className="i-ph:circle-notch-bold animate-spin text-indigo-400 text-xs" />}
+      {isCompleted && <div className="i-ph:check-circle-fill text-green-500 text-xs" />}
+      {isFailed && <div className="i-ph:x-circle-fill text-red-500 text-xs" />}
+      <span className="text-[10px] font-bold text-white/70 tabular-nums">{progress}%</span>
     </div>
   );
 }

@@ -154,8 +154,6 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       handleInputChangeRef.current = handleInputChange;
     }, [handleInputChange]);
 
-
-
     useEffect(() => {
       if (data) {
         const progressList = data.filter(
@@ -351,7 +349,10 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     const baseChat = (
       <div
         ref={ref}
-        className={classNames(styles.BaseChat, 'relative flex h-full w-full overflow-hidden bg-bolt-elements-background-depth-1')}
+        className={classNames(
+          styles.BaseChat,
+          'relative flex h-full w-full overflow-hidden bg-bolt-elements-background-depth-1',
+        )}
         data-chat-visible={showChat}
       >
         {/* Left Sidebar: Chat */}
@@ -362,7 +363,14 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
               <h2 className="text-lg font-semibold text-bolt-elements-textPrimary">Start a conversation</h2>
               <p className="text-xs text-bolt-elements-textSecondary">Tell AppForge what to build</p>
             </div>
-            <IconButton icon="i-ph:plus" size="md" onClick={() => { window.location.href = '/'; }} title="New Chat" />
+            <IconButton
+              icon="i-ph:plus"
+              size="md"
+              onClick={() => {
+                window.location.href = '/';
+              }}
+              title="New Chat"
+            />
           </div>
 
           {/* Messages Area */}
@@ -372,16 +380,11 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                 <div className="i-ph:chat-circle-text text-4xl mb-2 opacity-50" />
                 <p className="text-sm">No messages yet.</p>
                 <p className="text-xs">Start typing below to generate an app.</p>
-
               </div>
             )}
 
             {messages.length > 0 && (
-              <StickToBottom
-                className="h-full flex flex-col modern-scrollbar"
-                resize="smooth"
-                initial="smooth"
-              >
+              <StickToBottom className="h-full flex flex-col modern-scrollbar" resize="smooth" initial="smooth">
                 <StickToBottom.Content className="flex flex-col gap-4 px-4 py-4">
                   <Messages
                     className="flex flex-col w-full flex-1 max-w-chat pb-4 mx-auto z-1"
@@ -439,16 +442,26 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                   />
                 </div>
               )}
-              {llmErrorAlert && <div className="mb-2"><LlmErrorAlert alert={llmErrorAlert} clearAlert={() => clearLlmErrorAlert?.()} /></div>}
+              {llmErrorAlert && (
+                <div className="mb-2">
+                  <LlmErrorAlert alert={llmErrorAlert} clearAlert={() => clearLlmErrorAlert?.()} />
+                </div>
+              )}
 
-              {progressAnnotations && <div className="mb-2"><ProgressCompilation data={progressAnnotations} /></div>}
+              {progressAnnotations && (
+                <div className="mb-2">
+                  <ProgressCompilation data={progressAnnotations} />
+                </div>
+              )}
 
               <ChatBox
                 isModelSettingsCollapsed={isModelSettingsCollapsed}
                 setIsModelSettingsCollapsed={setIsModelSettingsCollapsed}
                 provider={provider}
                 setProvider={setProvider}
-                providerList={(providerList && providerList.length > 0) ? providerList : (PROVIDER_LIST as ProviderInfo[])}
+                providerList={
+                  providerList && providerList.length > 0 ? providerList : (PROVIDER_LIST as ProviderInfo[])
+                }
                 model={model}
                 setModel={setModel}
                 modelList={modelList}

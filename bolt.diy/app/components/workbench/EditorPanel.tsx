@@ -166,7 +166,10 @@ export const EditorPanel = memo(
               </PanelHeader>
               <div className="h-full flex-1 overflow-hidden modern-scrollbar">
                 {editorDocument?.isBinary && /\.(jpe?g|png|gif|svg|webp|ico)$/i.test(editorDocument.filePath) ? (
-                  <ImageViewer base64Content={editorDocument.value} fileName={editorDocument.filePath.split('/').pop() || ''} />
+                  <ImageViewer
+                    base64Content={editorDocument.value}
+                    fileName={editorDocument.filePath.split('/').pop() || ''}
+                  />
                 ) : (
                   <CodeMirrorEditor
                     theme={theme}

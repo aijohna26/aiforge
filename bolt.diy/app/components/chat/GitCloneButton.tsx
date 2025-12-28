@@ -123,21 +123,22 @@ export default function GitCloneButton({ importChat, className }: GitCloneButton
         const filesMessage: Message = {
           role: 'assistant',
           content: `Cloning the repo ${repoUrl} into ${workdir}
-${skippedFiles.length > 0
-              ? `\nSkipped files (${skippedFiles.length}):
+${
+  skippedFiles.length > 0
+    ? `\nSkipped files (${skippedFiles.length}):
 ${skippedFiles.map((f) => `- ${f}`).join('\n')}`
-              : ''
-            }
+    : ''
+}
 
 <appForgeArtifact id="imported-files" title="Git Cloned Files" type="bundled">
 ${fileContents
-              .map(
-                (file) =>
-                  `<appForgeAction type="file" filePath="${file.path}">
+  .map(
+    (file) =>
+      `<appForgeAction type="file" filePath="${file.path}">
 ${escapeBoltTags(file.content)}
 </appForgeAction>`,
-              )
-              .join('\n')}
+  )
+  .join('\n')}
 </appForgeArtifact>`,
           id: generateId(),
           createdAt: new Date(),

@@ -1,7 +1,7 @@
 export interface ThemeType {
-    id: string;
-    name: string;
-    style: string;
+  id: string;
+  name: string;
+  style: string;
 }
 
 export const FONT_VARIABLES = `
@@ -632,121 +632,125 @@ export const CYBER_THEME = `
 `;
 
 export const THEME_LIST: ThemeType[] = [
-    {
-        id: "ocean-breeze",
-        name: "Ocean Breeze",
-        style: OCEAN_BREEZE_THEME,
-    },
-    {
-        id: "netflix",
-        name: "Netflix",
-        style: NETFLIX_COLOR_THEME,
-    },
-    {
-        id: "acid-lime",
-        name: "Acid Lime",
-        style: ACID_LIME_THEME,
-    },
-    {
-        id: "purple-yellow",
-        name: "Purple & Yellow",
-        style: PURPLE_YELLOW_THEME,
-    },
-    {
-        id: "green-lime",
-        name: "Green & Lime",
-        style: GREEN_LIME_THEME,
-    },
-    {
-        id: "teal-coral",
-        name: "Teal & Coral",
-        style: TEAL_CORAL_THEME,
-    },
-    {
-        id: "lilac-teal",
-        name: "Lilac & Teal",
-        style: LILAC_TEAL_THEME,
-    },
-    {
-        id: "orange-gray",
-        name: "Orange & Gray",
-        style: ORANGE_GRAY_THEME,
-    },
-    {
-        id: "neo-brutalism",
-        name: "Neo-Brutalism",
-        style: NEO_BRUTALISM_THEME,
-    },
-    {
-        id: "glassmorphism",
-        name: "Glassmorphism",
-        style: GLASSMORPHISM_THEME,
-    },
-    {
-        id: "swiss-style",
-        name: "Swiss Style",
-        style: SWISS_STYLE_THEME,
-    },
-    {
-        id: "sunset",
-        name: "Sunset",
-        style: SUNSET_THEME,
-    },
-    {
-        id: "ocean",
-        name: "Ocean",
-        style: OCEAN_THEME,
-    },
-    {
-        id: "forest",
-        name: "Forest",
-        style: FOREST_THEME,
-    },
-    {
-        id: "lavender",
-        name: "Lavender",
-        style: LAVENDER_THEME,
-    },
-    {
-        id: "monochrome",
-        name: "Monochrome",
-        style: MONOCHROME_THEME,
-    },
-    {
-        id: "neon",
-        name: "Neon",
-        style: NEON_THEME,
-    },
-    {
-        id: "midnight",
-        name: "Midnight",
-        style: MIDNIGHT_THEME,
-    },
-    {
-        id: "peach",
-        name: "Peach",
-        style: PEACH_THEME,
-    },
-    {
-        id: "glacier",
-        name: "Glacier",
-        style: GLACIER_THEME,
-    },
-    {
-        id: "rose-gold",
-        name: "Rose Gold",
-        style: ROSE_GOLD_THEME,
-    },
-    {
-        id: "cyber",
-        name: "Cyber",
-        style: CYBER_THEME,
-    },
+  {
+    id: 'ocean-breeze',
+    name: 'Ocean Breeze',
+    style: OCEAN_BREEZE_THEME,
+  },
+  {
+    id: 'netflix',
+    name: 'Netflix',
+    style: NETFLIX_COLOR_THEME,
+  },
+  {
+    id: 'acid-lime',
+    name: 'Acid Lime',
+    style: ACID_LIME_THEME,
+  },
+  {
+    id: 'purple-yellow',
+    name: 'Purple & Yellow',
+    style: PURPLE_YELLOW_THEME,
+  },
+  {
+    id: 'green-lime',
+    name: 'Green & Lime',
+    style: GREEN_LIME_THEME,
+  },
+  {
+    id: 'teal-coral',
+    name: 'Teal & Coral',
+    style: TEAL_CORAL_THEME,
+  },
+  {
+    id: 'lilac-teal',
+    name: 'Lilac & Teal',
+    style: LILAC_TEAL_THEME,
+  },
+  {
+    id: 'orange-gray',
+    name: 'Orange & Gray',
+    style: ORANGE_GRAY_THEME,
+  },
+  {
+    id: 'neo-brutalism',
+    name: 'Neo-Brutalism',
+    style: NEO_BRUTALISM_THEME,
+  },
+  {
+    id: 'glassmorphism',
+    name: 'Glassmorphism',
+    style: GLASSMORPHISM_THEME,
+  },
+  {
+    id: 'swiss-style',
+    name: 'Swiss Style',
+    style: SWISS_STYLE_THEME,
+  },
+  {
+    id: 'sunset',
+    name: 'Sunset',
+    style: SUNSET_THEME,
+  },
+  {
+    id: 'ocean',
+    name: 'Ocean',
+    style: OCEAN_THEME,
+  },
+  {
+    id: 'forest',
+    name: 'Forest',
+    style: FOREST_THEME,
+  },
+  {
+    id: 'lavender',
+    name: 'Lavender',
+    style: LAVENDER_THEME,
+  },
+  {
+    id: 'monochrome',
+    name: 'Monochrome',
+    style: MONOCHROME_THEME,
+  },
+  {
+    id: 'neon',
+    name: 'Neon',
+    style: NEON_THEME,
+  },
+  {
+    id: 'midnight',
+    name: 'Midnight',
+    style: MIDNIGHT_THEME,
+  },
+  {
+    id: 'peach',
+    name: 'Peach',
+    style: PEACH_THEME,
+  },
+  {
+    id: 'glacier',
+    name: 'Glacier',
+    style: GLACIER_THEME,
+  },
+  {
+    id: 'rose-gold',
+    name: 'Rose Gold',
+    style: ROSE_GOLD_THEME,
+  },
+  {
+    id: 'cyber',
+    name: 'Cyber',
+    style: CYBER_THEME,
+  },
 ];
 
 export function parseThemeColors(style: string) {
-    const colors: Record<string, string> = {};
-    const matches = style.matchAll(/--([a-z-]+):\s*([^;]+)/g);
-    for (const match of matches) colors[match[1]] = match[2].trim();
-    return colors;
+  const colors: Record<string, string> = {};
+  const matches = style.matchAll(/--([a-z-]+):\s*([^;]+)/g);
+
+  for (const match of matches) {
+    colors[match[1]] = match[2].trim();
+  }
+
+  return colors;
 }

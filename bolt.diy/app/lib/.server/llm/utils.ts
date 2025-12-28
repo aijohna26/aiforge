@@ -15,6 +15,7 @@ export function extractPropertiesFromMessage(message: Omit<Message, 'id'>): {
     rawContent = (message as any).content;
   } else if (message.parts) {
     const textPart = message.parts.find((part) => part.type === 'text');
+
     if (textPart && 'text' in textPart) {
       rawContent = textPart.text;
     }

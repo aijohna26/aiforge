@@ -111,6 +111,7 @@ export const ChatImpl = memo(
         const seed = localStorage.getItem('bolt_seed_prompt');
         return seed || null;
       }
+
       return null;
     });
 
@@ -130,6 +131,7 @@ export const ChatImpl = memo(
       if (typeof window !== 'undefined' && localStorage.getItem('bolt_seed_prompt')) {
         return 'design';
       }
+
       return 'build';
     });
     const [selectedElement, setSelectedElement] = useState<ElementInfo | null>(null);
@@ -143,9 +145,13 @@ export const ChatImpl = memo(
         const hydrateProject = async () => {
           try {
             const response = await fetch(`/api/get-project/${projectId}`);
-            if (!response.ok) throw new Error('Failed to fetch project');
+
+            if (!response.ok) {
+              throw new Error('Failed to fetch project');
+            }
 
             const data = await response.json();
+
             if (data.success && data.project?.data) {
               console.log('[Chat] Hydrating design wizard state from project:', projectId);
               loadWizardData(data.project.data);
@@ -156,9 +162,13 @@ export const ChatImpl = memo(
 
               // Initialize Plan Store to fetch tickets
               const { setPlanProject } = await import('~/lib/stores/plan');
+
               // Derive a simple key from name or default to PROJ
               const projectKey = data.project.name
-                ? data.project.name.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 4)
+                ? data.project.name
+                  .toUpperCase()
+                  .replace(/[^A-Z0-9]/g, '')
+                  .substring(0, 4)
                 : 'PROJ';
 
               setPlanProject(projectId, projectKey);
@@ -193,9 +203,9 @@ export const ChatImpl = memo(
     }, [currentView]);
 
     const {
-      messages,
+      messages = [],
       isLoading,
-      input,
+      input = '',
       handleInputChange,
       setInput,
       stop,
@@ -247,14 +257,17 @@ export const ChatImpl = memo(
               updateTicketStatus(activeTicketId, 'testing');
             } else {
               // Non-YOLO: Alert user
-              toast.info(`Agent finished working on ${ticket.key}. You can ask for more changes, move it to 'Done' to complete, or to 'QA' for automated testing.`, {
-                autoClose: 15000,
-                position: 'bottom-right'
-              });
+              toast.info(
+                `Agent finished working on ${ticket.key}. You can ask for more changes, move it to 'Done' to complete, or to 'QA' for automated testing.`,
+                {
+                  autoClose: 15000,
+                  position: 'bottom-right',
+                },
+              );
 
               // Play subtle sound
               const audio = new Audio('/notification.mp3');
-              audio.play().catch(e => console.error('Failed to play sound', e));
+              audio.play().catch((e) => console.error('Failed to play sound', e));
             }
           }
 
@@ -279,6 +292,7 @@ export const ChatImpl = memo(
       initialMessages,
       initialInput: Cookies.get(PROMPT_COOKIE_KEY) || '',
     });
+
     // Handle initial prompt from landing page (seedPrompt)
     useEffect(() => {
       if (typeof window === 'undefined' || !seedPrompt || seedPromptProcessed.current) {
@@ -298,12 +312,18 @@ export const ChatImpl = memo(
           return;
         }
 
+        // Ensure useChat functions are ready
+        if (typeof append !== 'function' || typeof setInput !== 'function') {
+          return;
+        }
+
         // 2. Once state has settled, hydrate the wizard and append the message
         seedPromptProcessed.current = true;
 
         // Hydrate the wizard with the initial prompt description
         const { setCurrentStep, resetDesignWizard } = await import('~/lib/stores/designWizard');
         resetDesignWizard();
+
         // updateStep1Data({ description: seedPrompt }); // Removed as per user request
         setCurrentStep(1);
 
@@ -331,6 +351,7 @@ export const ChatImpl = memo(
     useEffect(() => {
       const checkBootstrap = () => {
         const { bootstrapPrompt } = chatStore.get();
+
         if (bootstrapPrompt) {
           console.log('[Chat] Received bootstrap prompt, initiating build...');
 
@@ -349,6 +370,7 @@ export const ChatImpl = memo(
       };
 
       const unsubscribe = chatStore.subscribe(checkBootstrap);
+
       return () => unsubscribe();
     }, [model, provider, append]);
 
@@ -697,7 +719,12 @@ export const ChatImpl = memo(
                   ? { experimental_attachments: await filesToAttachments(uploadedFiles) }
                   : undefined;
 
-              reload(reloadOptions);
+              if (typeof reload === 'function') {
+                reload(reloadOptions);
+              } else {
+                console.warn('reload function is not available');
+              }
+
               setInput('');
               Cookies.remove(PROMPT_COOKIE_KEY);
 
@@ -718,16 +745,34 @@ export const ChatImpl = memo(
         const userMessageText = `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${finalMessageContent}`;
         const attachments = uploadedFiles.length > 0 ? await filesToAttachments(uploadedFiles) : undefined;
 
-        setMessages([
-          {
-            id: `${new Date().getTime()}`,
-            role: 'user',
-            content: userMessageText,
-            parts: createMessageParts(userMessageText, imageDataList),
-            experimental_attachments: attachments,
-          },
-        ]);
-        reload(attachments ? { experimental_attachments: attachments } : undefined);
+        if (typeof reload === 'function') {
+          setMessages([
+            {
+              id: `${new Date().getTime()}`,
+              role: 'user',
+              content: userMessageText,
+              parts: createMessageParts(userMessageText, imageDataList),
+              experimental_attachments: attachments,
+            },
+          ]);
+          reload(attachments ? { experimental_attachments: attachments } : undefined);
+        } else if (typeof append === 'function') {
+          console.warn('reload function is not available, falling back to append');
+          append(
+            {
+              role: 'user',
+              content: userMessageText,
+              parts: createMessageParts(userMessageText, imageDataList),
+            },
+            attachments ? { experimental_attachments: attachments } : undefined,
+          );
+        } else {
+          console.error('Neither reload nor append functions are available');
+          setFakeLoading(false);
+
+          return;
+        }
+
         setFakeLoading(false);
         setInput('');
         Cookies.remove(PROMPT_COOKIE_KEY);
@@ -794,12 +839,30 @@ export const ChatImpl = memo(
       textareaRef.current?.blur();
     };
 
+    // Use local state for input to ensure responsiveness even if useChat is initializing
+    const [localInput, setLocalInput] = useState(input);
+
+    // Sync local input with useChat input when possible, but prioritize local interactions
+    useEffect(() => {
+      if (input && input !== localInput && localInput === '') {
+        setLocalInput(input);
+      }
+    }, [input]);
+
     /**
      * Handles the change event for the textarea and updates the input state.
      * @param event - The change event from the textarea.
      */
     const onTextareaChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-      handleInputChange(event);
+      const newValue = event.target.value;
+      setLocalInput(newValue);
+
+      // Try to sync with useChat if available
+      if (typeof handleInputChange === 'function') {
+        handleInputChange(event);
+      } else if (typeof setInput === 'function') {
+        setInput(newValue);
+      }
     };
 
     /**
@@ -832,20 +895,152 @@ export const ChatImpl = memo(
       Cookies.set('selectedProvider', newProvider.name, { expires: 30 });
     };
 
+    // Redundant local state for messages in case useChat fails
+    const [localMessages, setLocalMessages] = useState<Message[]>(initialMessages);
+    const [isManualSending, setIsManualSending] = useState(false);
+
+    // Sync local messages with useChat messages when available and valid
+    useEffect(() => {
+      if (messages && messages.length > 0) {
+        setLocalMessages(messages);
+      }
+    }, [messages]);
+
+    const manualAppend = async (message: Message) => {
+      setIsManualSending(true);
+
+      const newMessages = [...localMessages, message];
+      setLocalMessages(newMessages);
+
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: newMessages,
+            apiKeys,
+            files,
+            promptId,
+            contextOptimization: contextOptimizationEnabled,
+            chatMode,
+            designScheme,
+            maxLLMSteps: mcpSettings.maxLLMSteps,
+            supabase: {
+              isConnected: supabaseConn.isConnected,
+              hasSelectedProject: !!selectedProject,
+              credentials: {
+                supabaseUrl: supabaseConn?.credentials?.supabaseUrl,
+                anonKey: supabaseConn?.credentials?.anonKey,
+              },
+            },
+          }),
+        });
+
+        if (!response.ok || !response.body) {
+          throw new Error('Failed to send message');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let assistantMessage = { id: `ai-${Date.now()}`, role: 'assistant', content: '' } as Message;
+
+        // Add placeholder assistant message
+        setLocalMessages([...newMessages, assistantMessage]);
+
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+
+          if (value) {
+            buffer += decoder.decode(value, { stream: !done });
+          }
+
+          if (done) {
+            // Process any remaining buffer
+            if (buffer.trim()) {
+              processChunk(buffer);
+            }
+            break;
+          }
+
+          const lines = buffer.split('\n');
+          // Keep the last line in the buffer if it's potentially incomplete
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            processChunk(line);
+          }
+
+          function processChunk(line: string) {
+            if (!line.trim()) return;
+
+            try {
+              if (line.startsWith('0:')) {
+                const text = JSON.parse(line.substring(2));
+                if (typeof text === 'string') {
+                  assistantMessage.content += text;
+                }
+              } else if (line.startsWith('2:')) {
+                // Protocol 2: Data/Progress
+                // const data = JSON.parse(line.substring(2));
+                // console.log('S: Data', data);
+              } else if (line.startsWith('3:')) {
+                // Protocol 3: Error
+                const error = JSON.parse(line.substring(2));
+                console.error('S: Error', error);
+                toast.error(`Stream error: ${error}`);
+                assistantMessage.content += `\n[Error: ${error}]\n`;
+              } else if (line.startsWith('8:')) {
+                // Protocol 8: Annotations
+                // const annotation = JSON.parse(line.substring(2));
+                // console.log('S: Annotation', annotation);
+              }
+            } catch (e) {
+              // Ignore parse errors for now
+            }
+          }
+          // Update the assistant message in state
+          setLocalMessages([...newMessages, { ...assistantMessage }]);
+        }
+      } catch (err) {
+        console.error('Manual send failed', err);
+        toast.error('Failed to send message manually');
+      } finally {
+        setIsManualSending(false);
+      }
+    };
+
     return (
       <BaseChat
         ref={animationScope}
         textareaRef={textareaRef}
-        input={input}
+        input={localInput} // Use local input state
         showChat={showChat}
         chatStarted={chatStarted}
-        isStreaming={isLoading || fakeLoading}
+        isStreaming={isLoading || fakeLoading || isManualSending}
         onStreamingChange={(streaming) => {
           streamingState.set(streaming);
         }}
         enhancingPrompt={enhancingPrompt}
         promptEnhanced={promptEnhanced}
-        sendMessage={sendMessage}
+        sendMessage={(e, msg) => {
+          const messageContent = msg || localInput;
+
+          // Ensure we clear local input on send if not handled by sendMessage internally
+          if (!msg && localInput) {
+            setLocalInput('');
+          }
+
+          // Check if we can use standard sendMessage or need manual
+          if (typeof sendMessage === 'function' && typeof append === 'function') {
+            sendMessage(e, messageContent);
+          } else {
+            // Fallback to manual
+            const usrMsg: Message = { id: `user-${Date.now()}`, role: 'user', content: messageContent };
+            manualAppend(usrMsg);
+          }
+        }}
         model={model}
         setModel={handleModelChange}
         provider={provider}
@@ -859,21 +1054,22 @@ export const ChatImpl = memo(
         description={description}
         importChat={importChat}
         exportChat={exportChat}
-        messages={messages.map((message, i) => {
+        messages={(messages && messages.length > 0 ? messages : localMessages).map((message, i) => {
           if (message.role === 'user') {
             return message;
           }
 
           return {
             ...message,
-            content: parsedMessages[i] || '',
+            content: parsedMessages[i] || message.content || '',
           };
         })}
         enhancePrompt={() => {
           enhancePrompt(
-            input,
-            (input) => {
-              setInput(input);
+            localInput, // Use local input
+            (newInput) => {
+              setInput(newInput);
+              setLocalInput(newInput); // Update local state
               scrollTextArea();
             },
             model,
@@ -896,7 +1092,7 @@ export const ChatImpl = memo(
         data={chatData}
         chatMode={chatMode}
         setChatMode={setChatMode}
-        append={append}
+        append={typeof append === 'function' ? append : manualAppend}
         designScheme={designScheme}
         setDesignScheme={setDesignScheme}
         selectedElement={selectedElement}

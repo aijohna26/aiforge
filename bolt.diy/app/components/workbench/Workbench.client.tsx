@@ -427,10 +427,10 @@ export const Workbench = memo(
                         setSelectedView(selectedView === 'diff' ? 'code' : 'diff');
                       }}
                       className={classNames(
-                        "rounded-md items-center justify-center px-3 py-1.5 text-xs flex gap-1.7 transition-colors",
+                        'rounded-md items-center justify-center px-3 py-1.5 text-xs flex gap-1.7 transition-colors',
                         selectedView === 'diff'
-                          ? "bg-bolt-elements-item-backgroundAccent text-bolt-elements-item-contentAccent"
-                          : "bg-bolt-elements-button-primary-background text-bolt-elements-button-primary-text hover:text-bolt-elements-item-contentAccent hover:bg-bolt-elements-button-primary-backgroundHover"
+                          ? 'bg-bolt-elements-item-backgroundAccent text-bolt-elements-item-contentAccent'
+                          : 'bg-bolt-elements-button-primary-background text-bolt-elements-button-primary-text hover:text-bolt-elements-item-contentAccent hover:bg-bolt-elements-button-primary-backgroundHover',
                       )}
                     >
                       <div className="i-ph:git-diff" />
@@ -467,11 +467,7 @@ export const Workbench = memo(
                           disabled={isSyncing}
                         >
                           <div className="flex items-center gap-2">
-                            {isSyncing ? (
-                              <div className="i-ph:spinner" />
-                            ) : (
-                              <div className="i-ph:cloud-arrow-down" />
-                            )}
+                            {isSyncing ? <div className="i-ph:spinner" /> : <div className="i-ph:cloud-arrow-down" />}
                             <span>{isSyncing ? 'Syncing...' : 'Sync Files'}</span>
                           </div>
                         </DropdownMenu.Item>
@@ -518,7 +514,14 @@ export const Workbench = memo(
               <View
                 initial={{ x: '100%' }}
                 animate={{
-                  x: selectedView === 'code' ? '0%' : selectedView === 'plan' ? '100%' : selectedView === 'design' ? '200%' : '-100%',
+                  x:
+                    selectedView === 'code'
+                      ? '0%'
+                      : selectedView === 'plan'
+                        ? '100%'
+                        : selectedView === 'design'
+                          ? '200%'
+                          : '-100%',
                 }}
               >
                 <EditorPanel
@@ -603,10 +606,10 @@ export const Workbench = memo(
                             setSelectedView(selectedView === 'diff' ? 'code' : 'diff');
                           }}
                           className={classNames(
-                            "rounded-md items-center justify-center px-3 py-1.5 text-xs flex gap-1.7 transition-colors",
+                            'rounded-md items-center justify-center px-3 py-1.5 text-xs flex gap-1.7 transition-colors',
                             selectedView === 'diff'
-                              ? "bg-bolt-elements-item-backgroundAccent text-bolt-elements-item-contentAccent"
-                              : "bg-bolt-elements-button-primary-background text-bolt-elements-button-primary-text hover:text-bolt-elements-item-contentAccent hover:bg-bolt-elements-button-primary-backgroundHover"
+                              ? 'bg-bolt-elements-item-backgroundAccent text-bolt-elements-item-contentAccent'
+                              : 'bg-bolt-elements-button-primary-background text-bolt-elements-button-primary-text hover:text-bolt-elements-item-contentAccent hover:bg-bolt-elements-button-primary-backgroundHover',
                           )}
                         >
                           <div className="i-ph:git-diff" />
@@ -706,7 +709,14 @@ export const Workbench = memo(
                   <View
                     initial={{ x: '100%' }}
                     animate={{
-                      x: selectedView === 'code' ? '0%' : selectedView === 'plan' ? '100%' : selectedView === 'design' ? '200%' : '-100%',
+                      x:
+                        selectedView === 'code'
+                          ? '0%'
+                          : selectedView === 'plan'
+                            ? '100%'
+                            : selectedView === 'design'
+                              ? '200%'
+                              : '-100%',
                     }}
                   >
                     <EditorPanel
@@ -739,10 +749,7 @@ export const Workbench = memo(
                   >
                     <Preview setSelectedElement={setSelectedElement} />
                   </View>
-                  <View
-                    initial={{ x: '100%' }}
-                    animate={{ x: selectedView === 'qr' ? '0%' : '100%' }}
-                  >
+                  <View initial={{ x: '100%' }} animate={{ x: selectedView === 'qr' ? '0%' : '100%' }}>
                     <ExpoQrView />
                   </View>
                 </div>

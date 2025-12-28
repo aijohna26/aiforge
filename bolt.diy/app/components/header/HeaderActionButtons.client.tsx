@@ -37,23 +37,17 @@ export function HeaderActionButtons({ chatStarted: _chatStarted }: HeaderActionB
         )}
       </button>
 
-      <button
-        className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-md border border-bolt-elements-borderColor bg-transparent text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary hover:bg-bolt-elements-background-depth-2 transition-colors"
-      >
+      <button className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-md border border-bolt-elements-borderColor bg-transparent text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary hover:bg-bolt-elements-background-depth-2 transition-colors">
         <div className="i-ph:git-diff" />
         <span>Show Diff</span>
       </button>
 
-      <button
-        className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-md border border-bolt-elements-borderColor bg-transparent text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary hover:bg-bolt-elements-background-depth-2 transition-colors"
-      >
+      <button className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-md border border-bolt-elements-borderColor bg-transparent text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary hover:bg-bolt-elements-background-depth-2 transition-colors">
         <div className="i-ph:gear" />
         <span>Settings</span>
       </button>
 
-      <button
-        className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-md border border-bolt-elements-borderColor bg-transparent text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary hover:bg-bolt-elements-background-depth-2 transition-colors"
-      >
+      <button className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-md border border-bolt-elements-borderColor bg-transparent text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary hover:bg-bolt-elements-background-depth-2 transition-colors">
         <div className="i-ph:export" />
         <span>Export Code</span>
       </button>

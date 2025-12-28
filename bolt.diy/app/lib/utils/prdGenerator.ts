@@ -1,16 +1,27 @@
-import type { DesignWizardData } from "../stores/designWizard";
+import type { DesignWizardData } from '../stores/designWizard';
 
 export function generatePRD(data: DesignWizardData): string {
   const { step1, step3, step4, step5, step6, step7 } = data;
-  const selectedScreens = step5.generatedScreens.filter(s => s.selected);
-  const enabledIntegrations = step6.integrations.filter(i => i.enabled);
+  const selectedScreens = step5.generatedScreens.filter((s) => s.selected);
+  const enabledIntegrations = step6.integrations.filter((i) => i.enabled);
 
-  const integrationsPrompt = enabledIntegrations.map(i => {
-    if (i.id === 'supabase') return 'Implement Supabase for the backend (Database, Auth, Storage). Use @supabase/supabase-js.';
-    if (i.id === 'supabase-auth') return 'Enable Supabase Authentication (Email/Password, Social).';
-    if (i.id === 'ai-features') return 'Implement AI-powered features using the provided LLM context.';
-    return `Implement ${i.id} integration.`;
-  }).join('\n');
+  const integrationsPrompt = enabledIntegrations
+    .map((i) => {
+      if (i.id === 'supabase') {
+        return 'Implement Supabase for the backend (Database, Auth, Storage). Use @supabase/supabase-js.';
+      }
+
+      if (i.id === 'supabase-auth') {
+        return 'Enable Supabase Authentication (Email/Password, Social).';
+      }
+
+      if (i.id === 'ai-features') {
+        return 'Implement AI-powered features using the provided LLM context.';
+      }
+
+      return `Implement ${i.id} integration.`;
+    })
+    .join('\n');
 
   return `# ${step1.appName || 'Untitled App'} - Product Requirements Document
 
@@ -58,11 +69,15 @@ ${step1.additionalDetails || 'None provided.'}
 ### 3.1 Screen Inventory
 Total screens: ${step4.screens?.length || 0}
 
-${(step4.screens || []).map(s => `
+${(step4.screens || [])
+  .map(
+    (s) => `
 #### ${s.name || 'Untitled Screen'} (${s.type || 'standard'})
 - **Purpose:** ${s.purpose || 'N/A'}
 - **Key Elements:** ${(s.keyElements || []).join(', ')}
-`).join('\n')}
+`,
+  )
+  .join('\n')}
 
 ### 3.2 Navigation
 - **Navigation Type:** ${step4.navigation?.type === 'bottom' ? 'Bottom Tab Bar' : 'None'}
@@ -73,11 +88,15 @@ ${step4.navigation?.items?.length > 0 ? `- **Tabs:** ${step4.navigation.items.jo
 ## 4. UI Prototypes (Generated Screens)
 The following screen designs match the visual style guide:
 
-${selectedScreens.map(s => `
+${selectedScreens
+  .map(
+    (s) => `
 ### ${s.name}
 - **Design URL:** ${s.url}
 - **Prompt:** ${s.prompt}
-`).join('\n')}
+`,
+  )
+  .join('\n')}
 
 ---
 
@@ -106,7 +125,7 @@ ${selectedScreens.map(s => `
 ## 6. Visual Assets (Remote)
 - **Logo:** ${step3.logo?.url || 'N/A'}
 - **Generated Screens:**
-${selectedScreens.map(s => `  - ${s.name}: ${s.url}`).join('\n')}
+${selectedScreens.map((s) => `  - ${s.name}: ${s.url}`).join('\n')}
 
 ---
 
@@ -135,10 +154,10 @@ The following assets have been mirrored to **Supabase Storage** for permanence. 
 - **App Icons**: Reuse the Logo URL (${step3.logo?.url}) for **assets/images/icon.png**, **assets/images/favicon.png**, and **assets/images/adaptive-icon.png**.
 - **Splash Screen**: Reuse the Logo URL (${step3.logo?.url}) for **assets/images/splash.png**.
 - **Generated Screens (Reference Only)**:
-${selectedScreens.map(s => `  - ${s.name}: ${s.url}`).join('\n')}
+${selectedScreens.map((s) => `  - ${s.name}: ${s.url}`).join('\n')}
 
 **Structure & Navigation:**
-The app should include ${step4.screens.length} screens: ${step4.screens.map(s => s.name).join(', ')}.
+The app should include ${step4.screens.length} screens: ${step4.screens.map((s) => s.name).join(', ')}.
 ${step4.navigation.type === 'bottom' ? `Implement a bottom navigation bar with: ${step4.navigation.items.join(', ')}.` : ''}
 
 **Performance & Best Practices:**

@@ -19,20 +19,14 @@ export async function loader({ params }: LoaderFunctionArgs) {
   const { jobId } = params;
 
   if (!jobId) {
-    return json(
-      { error: 'Job ID is required' },
-      { status: 400 }
-    );
+    return json({ error: 'Job ID is required' }, { status: 400 });
   }
 
   try {
     const job = await getJob(jobId);
 
     if (!job) {
-      return json(
-        { error: 'Job not found', jobId },
-        { status: 404 }
-      );
+      return json({ error: 'Job not found', jobId }, { status: 404 });
     }
 
     // Return job data with computed fields
@@ -72,7 +66,7 @@ export async function loader({ params }: LoaderFunctionArgs) {
         error: 'Failed to fetch job status',
         details: error instanceof Error ? error.message : 'Unknown error',
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

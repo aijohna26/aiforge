@@ -11,14 +11,16 @@ import { createClient } from '~/lib/supabase/server';
 export const meta: MetaFunction = () => {
   return [
     { title: 'AppForge AI - The Vibe Coding IDE' },
-    { name: 'description', content: 'Build apps, games, tools, websites, UI, anything with AI.' }
+    { name: 'description', content: 'Build apps, games, tools, websites, UI, anything with AI.' },
   ];
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const headers = new Headers();
   const supabase = createClient(request, headers);
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (user) {
     return redirect('/dashboard', { headers });
@@ -43,9 +45,11 @@ export default function LandingPage() {
 
       // Check for error descriptions in the hash (Supabase often puts them there)
       const hash = window.location.hash;
+
       if (hash && hash.includes('error_description')) {
         const hashParams = new URLSearchParams(hash.substring(1));
         const errorDesc = hashParams.get('error_description');
+
         if (errorDesc) {
           toast.error(decodeURIComponent(errorDesc.replace(/\+/g, ' ')));
         }
@@ -59,6 +63,7 @@ export default function LandingPage() {
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       const cards = document.getElementsByClassName('glow-effect');
+
       for (const card of cards) {
         const rect = card.getBoundingClientRect();
         const x = e.clientX - rect.left;
@@ -68,6 +73,7 @@ export default function LandingPage() {
       }
     };
     document.addEventListener('mousemove', handleMouseMove);
+
     return () => document.removeEventListener('mousemove', handleMouseMove);
   }, []);
 
@@ -75,6 +81,7 @@ export default function LandingPage() {
     if (prompt.trim()) {
       localStorage.setItem('bolt_seed_prompt', prompt.trim());
     }
+
     setIsAuthModalOpen(true);
   };
 
@@ -91,7 +98,10 @@ export default function LandingPage() {
       <div className="absolute inset-0 z-0 pointer-events-none">
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
         <div className="absolute left-0 right-0 top-0 -z-10 m-auto h-[310px] w-[310px] rounded-full bg-accent-500 dark:bg-purple-500 opacity-20 blur-[100px] animate-pulse-glow"></div>
-        <div className="absolute right-0 top-0 -z-10 h-[300px] w-[300px] translate-x-1/2 translate-y-1/2 rounded-full bg-orange-400 dark:bg-blue-500 opacity-20 blur-[100px] animate-pulse-glow" style={{ animationDelay: '1s' }}></div>
+        <div
+          className="absolute right-0 top-0 -z-10 h-[300px] w-[300px] translate-x-1/2 translate-y-1/2 rounded-full bg-orange-400 dark:bg-blue-500 opacity-20 blur-[100px] animate-pulse-glow"
+          style={{ animationDelay: '1s' }}
+        ></div>
       </div>
 
       {/* Navigation */}
@@ -105,9 +115,15 @@ export default function LandingPage() {
         </div>
 
         <div className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-600 dark:text-gray-400">
-          <a href="#" className="hover:text-black dark:hover:text-white transition-colors">Docs</a>
-          <a href="#" className="hover:text-black dark:hover:text-white transition-colors">Pricing</a>
-          <a href="#" className="hover:text-black dark:hover:text-white transition-colors">Enterprise</a>
+          <a href="#" className="hover:text-black dark:hover:text-white transition-colors">
+            Docs
+          </a>
+          <a href="#" className="hover:text-black dark:hover:text-white transition-colors">
+            Pricing
+          </a>
+          <a href="#" className="hover:text-black dark:hover:text-white transition-colors">
+            Enterprise
+          </a>
         </div>
 
         <div className="flex items-center gap-4">
@@ -139,7 +155,6 @@ export default function LandingPage() {
 
       {/* Hero Section */}
       <main className="relative z-10 flex flex-col items-center justify-center pt-20 pb-32 px-6 text-center max-w-5xl mx-auto">
-
         {/* Headline */}
         <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6 bg-clip-text text-transparent bg-gradient-to-b from-gray-900 to-gray-500 dark:from-white dark:to-white/60 pb-2 leading-tight">
           Production ready mobile apps in minutes <br className="sm:hidden" />
@@ -152,13 +167,17 @@ export default function LandingPage() {
 
         {/* Subhead */}
         <p className="text-lg md:text-xl text-gray-600 dark:text-gray-400 max-w-2xl mb-12 leading-relaxed">
-          The best way to build <span className="text-blue-600 dark:text-blue-400">IOS</span> and <span className="text-accent-600 dark:text-purple-400">Android</span> apps with AI.
+          The best way to build <span className="text-blue-600 dark:text-blue-400">IOS</span> and{' '}
+          <span className="text-accent-600 dark:text-purple-400">Android</span> apps with AI.
         </p>
 
         {/* Chat Input */}
         <div className="w-full max-w-3xl relative group glow-effect">
           <div className="absolute -inset-1 bg-gradient-to-r from-accent-500 to-orange-400 dark:from-purple-600 dark:to-blue-600 rounded-2xl opacity-10 dark:opacity-20 blur-lg animate-pulse-glow group-hover:opacity-20 dark:group-hover:opacity-40 transition duration-500"></div>
-          <form onSubmit={handleSubmit} className="relative flex flex-col bg-white dark:bg-[#111111] border border-gray-200 dark:border-white/10 rounded-2xl shadow-xl dark:shadow-2xl overflow-hidden focus-within:border-accent-500/50 dark:focus-within:border-purple-500/50 focus-within:ring-1 focus-within:ring-accent-500/50 dark:focus-within:ring-purple-500/50 transition-all duration-300">
+          <form
+            onSubmit={handleSubmit}
+            className="relative flex flex-col bg-white dark:bg-[#111111] border border-gray-200 dark:border-white/10 rounded-2xl shadow-xl dark:shadow-2xl overflow-hidden focus-within:border-accent-500/50 dark:focus-within:border-purple-500/50 focus-within:ring-1 focus-within:ring-accent-500/50 dark:focus-within:ring-purple-500/50 transition-all duration-300"
+          >
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
@@ -202,7 +221,6 @@ export default function LandingPage() {
             <div className="i-ph:meta-logo-bold text-xl" /> Meta
           </div>
         </div>
-
       </main>
     </div>
   );

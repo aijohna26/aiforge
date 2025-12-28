@@ -210,8 +210,6 @@ export async function loader({ request, context }: { request: Request; context: 
   }
 
   try {
-
-
     // Use local template for bolt-expo-template
     if (repo === 'xKevIsDev/af-expo-template') {
       const files = import.meta.glob('../../templates/af-expo-template/**/*', {

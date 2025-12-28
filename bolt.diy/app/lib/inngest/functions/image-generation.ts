@@ -37,16 +37,8 @@ export const imageGeneration = inngest.createFunction(
   },
   { event: 'media/generate.image' },
   async ({ event, step, channel }) => {
-    const {
-      jobId,
-      userId,
-      prompt,
-      googleModel,
-      outputFormat,
-      aspectRatio,
-      referenceImages,
-      enhanceForUI,
-    } = event.data as ImageGenerationInput;
+    const { jobId, userId, prompt, googleModel, outputFormat, aspectRatio, referenceImages, enhanceForUI } =
+      event.data as ImageGenerationInput;
 
     try {
       console.log('[Inngest] Starting image generation:', {
@@ -81,19 +73,23 @@ export const imageGeneration = inngest.createFunction(
         // Image generation costs 6 platform credits ($0.06)
         const imageCost = 6;
 
-        // TODO: Integrate with wallet manager
-        // const hasCredits = await walletManager.reserve(userId, imageCost);
-        // if (!hasCredits) {
-        //   throw new Error('Insufficient credits');
-        // }
+        /*
+         * TODO: Integrate with wallet manager
+         * const hasCredits = await walletManager.reserve(userId, imageCost);
+         * if (!hasCredits) {
+         *   throw new Error('Insufficient credits');
+         * }
+         */
 
         console.log('[Inngest] Reserved credits:', imageCost);
+
         return imageCost;
       });
 
       // Step 3: Create Kie API task
       const taskId = await step.run('create-kie-task', async () => {
         const kieApiKey = process.env.KIE_API_KEY;
+
         if (!kieApiKey) {
           throw new Error('KIE_API_KEY not configured');
         }
@@ -158,8 +154,10 @@ export const imageGeneration = inngest.createFunction(
         return taskIdValue;
       });
 
-      // Step 4: Poll for completion
-      // Step 4: Poll for completion loops
+      /*
+       * Step 4: Poll for completion
+       * Step 4: Poll for completion loops
+       */
       let imageUrl: string | undefined;
       const maxAttempts = 6; // 6 * 20s = 120s = 2 minutes
 
@@ -189,7 +187,9 @@ export const imageGeneration = inngest.createFunction(
 
           // Helper function to extract URL from various response formats
           const extractUrl = (output: any): string | undefined => {
-            if (!output) return undefined;
+            if (!output) {
+              return undefined;
+            }
 
             // If output is an array
             if (Array.isArray(output)) {
@@ -197,6 +197,7 @@ export const imageGeneration = inngest.createFunction(
               if (typeof output[0] === 'string') {
                 return output[0];
               }
+
               // If first element is an object, try to extract URL from it
               if (output[0] && typeof output[0] === 'object') {
                 return output[0].image_url || output[0].imageUrl || output[0].url;
@@ -229,6 +230,7 @@ export const imageGeneration = inngest.createFunction(
             if (!url && queryData.data?.resultJson) {
               try {
                 const resultObj = JSON.parse(queryData.data.resultJson);
+
                 if (resultObj.resultUrls && Array.isArray(resultObj.resultUrls) && resultObj.resultUrls.length > 0) {
                   url = resultObj.resultUrls[0];
                 }
@@ -255,6 +257,7 @@ export const imageGeneration = inngest.createFunction(
             if (!url && queryData.data?.resultJson) {
               try {
                 const resultObj = JSON.parse(queryData.data.resultJson);
+
                 if (resultObj.resultUrls && Array.isArray(resultObj.resultUrls) && resultObj.resultUrls.length > 0) {
                   url = resultObj.resultUrls[0];
                   console.log('[Inngest] Extracted URL from resultJson:', url);
@@ -270,7 +273,10 @@ export const imageGeneration = inngest.createFunction(
             }
 
             // Log warning but do not fail immediately. Let it retry until timeout.
-            console.warn('[Inngest] Success state detected but output/url missing. Retrying...', JSON.stringify(queryData, null, 2));
+            console.warn(
+              '[Inngest] Success state detected but output/url missing. Retrying...',
+              JSON.stringify(queryData, null, 2),
+            );
           }
 
           if (['failed', 'error', 'failure'].includes(state)) {
@@ -295,6 +301,7 @@ export const imageGeneration = inngest.createFunction(
               return true;
             });
           }
+
           break;
         }
 
@@ -309,7 +316,7 @@ export const imageGeneration = inngest.createFunction(
         });
 
         // Sleep before next poll
-        await step.sleep(`wait-after-attempt-${attempt}`, "20s");
+        await step.sleep(`wait-after-attempt-${attempt}`, '20s');
       }
 
       if (!imageUrl) {
@@ -332,6 +339,7 @@ export const imageGeneration = inngest.createFunction(
 
         // Download image from Kie
         const imageRes = await fetch(imageUrl);
+
         if (!imageRes.ok) {
           throw new Error(`Failed to download image: ${imageRes.status}`);
         }
@@ -381,8 +389,10 @@ export const imageGeneration = inngest.createFunction(
 
       // Step 6: Settle credits and complete job
       await step.run('complete-job', async () => {
-        // TODO: Settle credits with wallet manager
-        // await walletManager.settle(userId, cost, cost);
+        /*
+         * TODO: Settle credits with wallet manager
+         * await walletManager.settle(userId, cost, cost);
+         */
 
         const outputData = {
           imageUrl: permanentUrl,
@@ -431,8 +441,10 @@ export const imageGeneration = inngest.createFunction(
 
       await incrementJobAttempts(jobId);
 
-      // TODO: Refund credits on failure
-      // await walletManager.refund(userId, cost);
+      /*
+       * TODO: Refund credits on failure
+       * await walletManager.refund(userId, cost);
+       */
 
       await updateJobStatus({
         jobId,
@@ -453,5 +465,5 @@ export const imageGeneration = inngest.createFunction(
 
       throw error; // Re-throw to trigger Inngest's retry mechanism
     }
-  }
+  },
 );

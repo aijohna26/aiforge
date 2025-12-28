@@ -77,7 +77,8 @@ export default class GoogleProvider extends BaseProvider {
     // Filter out models with very low token limits and experimental/unstable models
     const data = res.models.filter((model: any) => {
       const hasGoodTokenLimit = (model.outputTokenLimit || 0) > 8000;
-      const isStable = !model.name.includes('exp') || model.name.includes('flash-exp') || model.name.includes('gemini-3');
+      const isStable =
+        !model.name.includes('exp') || model.name.includes('flash-exp') || model.name.includes('gemini-3');
 
       return hasGoodTokenLimit && isStable;
     });

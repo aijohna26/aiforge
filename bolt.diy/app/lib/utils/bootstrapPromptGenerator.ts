@@ -8,12 +8,14 @@ export function generateBootstrapPrompt(data: DesignWizardData): string {
   const { step1, step3, step4, step6 } = data;
   const prd = generatePRD(data);
 
-  const brandColors = step3.colorPalette ? `
+  const brandColors = step3.colorPalette
+    ? `
         PRIMARY: ${step3.colorPalette.primary}
         SECONDARY: ${step3.colorPalette.secondary}
         ACCENT: ${step3.colorPalette.accent}
         BACKGROUND: ${step3.colorPalette.background}
-    ` : 'Standard professional dark theme';
+    `
+    : 'Standard professional dark theme';
 
   const prompt = `
 Generate a high-fidelity, production-ready Expo application based on the attached PRD and Design System.

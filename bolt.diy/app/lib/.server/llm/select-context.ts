@@ -23,7 +23,8 @@ export async function selectContext(props: {
   summary: string;
   onFinish?: (resp: GenerateTextResult<Record<string, CoreTool<any, any>>, never>) => void;
 }) {
-  const { messages, env: serverEnv, apiKeys, files, providerSettings, summary, onFinish } = props;
+  let { messages, env: serverEnv, apiKeys, files, providerSettings, summary, onFinish } = props;
+  if (!messages) { messages = []; }
   let currentModel = DEFAULT_MODEL;
   let currentProvider = DEFAULT_PROVIDER.name;
   const processedMessages = messages.map((message) => {
@@ -40,6 +41,7 @@ export async function selectContext(props: {
         content = simplifyBoltActions(content);
         content = content.replace(/<div class=\\"__boltThought__\\">.*?<\/div>/s, '');
         content = content.replace(/<think>.*?<\/think>/s, '');
+
         return { ...message, content };
       }
     }

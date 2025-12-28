@@ -66,7 +66,16 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
         };
       };
       maxLLMSteps: number;
-    }>();
+    }>().then(data => ({ ...data, messages: data.messages || [] }));
+
+  // Validate messages array
+  if (!Array.isArray(messages)) {
+    logger.error('Messages is not an array:', messages);
+    return new Response(JSON.stringify({ error: true, message: 'Invalid messages format - expected array' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 
   const cookieHeader = request.headers.get('Cookie');
   const apiKeys = JSON.parse(parseCookies(cookieHeader || '').apiKeys || '{}');
@@ -74,14 +83,11 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
     parseCookies(cookieHeader || '').providers || '{}',
   );
 
-  const stream = new SwitchableStream();
-
   const cumulativeUsage = {
     completionTokens: 0,
     promptTokens: 0,
     totalTokens: 0,
   };
-  const encoder: TextEncoder = new TextEncoder();
   let progressCounter: number = 1;
 
   try {
@@ -89,10 +95,11 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
     const totalMessageContent = messages.reduce((acc, message) => acc + message.content, '');
     logger.debug(`Total message length: ${totalMessageContent.split(' ').length}, words`);
 
+    const encoder = new TextEncoder();
     let lastChunk: string | undefined = undefined;
 
     const dataStream = createDataStream({
-      async execute(dataStream: any) {
+      async execute(dataStream) {
         streamRecovery.startMonitoring();
 
         const filePaths = getFilePaths(files || {});
@@ -244,19 +251,12 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
                 order: progressCounter++,
                 message: 'Response Generated',
               } satisfies ProgressAnnotation);
-              await new Promise((resolve) => setTimeout(resolve, 0));
 
-              // stream.close();
               return;
             }
 
-            if (stream.switches >= MAX_RESPONSE_SEGMENTS) {
-              throw Error('Cannot continue message: Maximum segments reached');
-            }
-
-            const switchesLeft = MAX_RESPONSE_SEGMENTS - stream.switches;
-
-            logger.info(`Reached max token limit (${MAX_TOKENS}): Continuing message (${switchesLeft} switches left)`);
+            // If max token limit reached, continue with a new message
+            logger.info(`Reached max token limit (${MAX_TOKENS}): Continuing message`);
 
             const lastUserMessage = processedMessages.filter((x) => x.role == 'user').slice(-1)[0];
             const { model, provider } = extractPropertiesFromMessage(lastUserMessage);
@@ -267,7 +267,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
               content: `[Model: ${model}]\n\n[Provider: ${provider}]\n\n${CONTINUE_PROMPT}`,
             });
 
-            const result = await streamText({
+            const continuationResult = await streamText({
               messages: [...processedMessages],
               env: context.cloudflare?.env,
               options,
@@ -283,18 +283,17 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
               messageSliceId,
             });
 
-            await dataStream.mergeIntoDataStream(result);
+            // Merge continuation stream
+            continuationResult.mergeIntoDataStream(dataStream);
 
-            (async () => {
-              for await (const part of result.fullStream) {
-                if (part.type === 'error') {
-                  const error: any = part.error;
-                  logger.error(`${error}`);
-
-                  return;
-                }
+            // Monitor for errors
+            for await (const part of continuationResult.fullStream) {
+              if (part.type === 'error') {
+                const error: any = part.error;
+                logger.error('Continuation stream error:', error);
+                throw error;
               }
-            })();
+            }
 
             return;
           },
@@ -324,30 +323,37 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           messageSliceId,
         });
 
-        (async () => {
-          for await (const part of result.fullStream) {
+        // Merge the AI stream into the data stream
+        result.mergeIntoDataStream(dataStream, {
+          onChunk: () => {
             streamRecovery.updateActivity();
+          },
+        });
 
-            if (part.type === 'error') {
-              const error: any = part.error;
-              logger.error('Streaming error:', error);
-              streamRecovery.stop();
+        // Monitor for errors in the stream
+        for await (const part of result.fullStream) {
+          if (part.type === 'error') {
+            const error: any = part.error;
+            logger.error('Streaming error:', error);
+            streamRecovery.stop();
 
-              // Enhanced error handling for common streaming issues
-              if (error.message?.includes('Invalid JSON response')) {
-                logger.error('Invalid JSON response detected - likely malformed API response');
-              } else if (error.message?.includes('token')) {
-                logger.error('Token-related error detected - possible token limit exceeded');
-              }
-
-              return;
+            // Enhanced error handling for common streaming issues
+            if (error.message?.includes('Invalid JSON response')) {
+              logger.error('Invalid JSON response detected - likely malformed API response');
+            } else if (error.message?.includes('token')) {
+              logger.error('Token-related error detected - possible token limit exceeded');
             }
+
+            throw error;
           }
-          streamRecovery.stop();
-        })();
-        await dataStream.mergeIntoDataStream(result);
+        }
+
+        streamRecovery.stop();
       },
       onError: (error: any) => {
+        streamRecovery.stop();
+        logger.error('Stream error:', error);
+
         // Provide more specific error messages for common issues
         const errorMessage = error.message || 'Unknown error';
 
@@ -394,11 +400,11 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
 
           if (typeof chunk === 'string') {
             if (chunk.startsWith('g') && !lastChunk.startsWith('g')) {
-              controller.enqueue(encoder.encode(`0: "<div class=\\"__boltThought__\\">"\n`));
+              controller.enqueue(encoder.encode(`0:${JSON.stringify('<div class="__boltThought__">')}\n`));
             }
 
             if (lastChunk.startsWith('g') && !chunk.startsWith('g')) {
-              controller.enqueue(encoder.encode(`0: "</div>\\n"\n`));
+              controller.enqueue(encoder.encode(`0:${JSON.stringify('</div>\n')}\n`));
             }
           }
 
@@ -413,6 +419,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
               content = content.slice(0, content.length - 1);
             }
 
+            // Content from 'g:' chunks is already JSON-encoded
             transformedChunk = `0:${content}\n`;
           }
 

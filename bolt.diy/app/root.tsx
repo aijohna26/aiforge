@@ -67,17 +67,19 @@ export const links: LinksFunction = () => [
     href: '/favicon.svg',
     type: 'image/svg+xml',
   },
+
   // Preload critical resources
   {
     rel: 'preload',
     href: fontsStyles,
-    as: 'style'
+    as: 'style',
   },
   {
     rel: 'preload',
     href: globalStyles,
-    as: 'style'
+    as: 'style',
   },
+
   // Load stylesheets in order of importance
   { rel: 'stylesheet', href: tailwindReset },
   { rel: 'stylesheet', href: fontsStyles },
@@ -161,15 +163,8 @@ function GlobalAlert() {
     return null;
   }
 
-  return (
-    <CreditAlert
-      message={alert.message}
-      description={alert.description}
-      onClose={hideAlert}
-    />
-  );
+  return <CreditAlert message={alert.message} description={alert.description} onClose={hideAlert} />;
 }
-
 
 export default function App() {
   const { session, env } = useLoaderData<typeof loader>();
