@@ -41,7 +41,19 @@ export function ChatRecoveryModal({ isOpen, onClose }: ChatRecoveryModalProps) {
     const descMatch = chat.description?.toLowerCase().includes(searchLower);
 
     const messageMatch = chat.messages.some((msg) => {
-      const content = typeof msg.content === 'string' ? msg.content.toLowerCase() : '';
+      let content = '';
+
+      // AI SDK 6.0: Handle both content and parts
+      if (typeof msg.content === 'string') {
+        content = msg.content.toLowerCase();
+      } else if (msg.content) {
+        content = JSON.stringify(msg.content).toLowerCase();
+      } else if ((msg as any).parts) {
+        // Extract text from parts array
+        const textParts = (msg as any).parts.filter((p: any) => p.type === 'text');
+        content = textParts.map((p: any) => p.text).join('').toLowerCase();
+      }
+
       return content.includes(searchLower);
     });
 
@@ -57,9 +69,19 @@ export function ChatRecoveryModal({ isOpen, onClose }: ChatRecoveryModalProps) {
   const getFirstUserMessage = (chat: ChatHistoryItem) => {
     const firstUserMsg = chat.messages.find((m) => m.role === 'user');
     if (firstUserMsg) {
-      const content = typeof firstUserMsg.content === 'string'
-        ? firstUserMsg.content
-        : JSON.stringify(firstUserMsg.content);
+      let content = '';
+
+      // AI SDK 6.0: Handle both content and parts
+      if (typeof firstUserMsg.content === 'string') {
+        content = firstUserMsg.content;
+      } else if (firstUserMsg.content) {
+        content = JSON.stringify(firstUserMsg.content);
+      } else if ((firstUserMsg as any).parts) {
+        // Extract text from parts array
+        const textParts = (firstUserMsg as any).parts.filter((p: any) => p.type === 'text');
+        content = textParts.map((p: any) => p.text).join('');
+      }
+
       return content.substring(0, 150) + (content.length > 150 ? '...' : '');
     }
     return 'No messages';

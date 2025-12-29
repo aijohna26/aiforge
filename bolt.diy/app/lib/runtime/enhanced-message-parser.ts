@@ -33,6 +33,21 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
   }
 
   parse(messageId: string, input: string): string {
+    // Debug: Log input to see what we're receiving
+    if (input.includes('design-sync') || input.includes('boltArtifact') || input.includes('boltartifact')) {
+      logger.debug(`[Enhanced] Parsing message ${messageId}, input length: ${input.length}`);
+      logger.debug(`[Enhanced] Input preview (first 200 chars): ${input.substring(0, 200)}`);
+      logger.debug(`[Enhanced] Contains 'boltArtifact': ${input.includes('boltArtifact')}`);
+      logger.debug(`[Enhanced] Contains 'design-sync': ${input.includes('design-sync')}`);
+    }
+
+    // CRITICAL FIX: Detect raw design handoff JSON and wrap it in artifact tags
+    const wrappedInput = this._wrapDesignHandoffJSON(input);
+    if (wrappedInput !== input) {
+      logger.debug(`[Enhanced] Detected and wrapped design handoff JSON`);
+      input = wrappedInput;
+    }
+
     // First try the normal parsing
     let output = super.parse(messageId, input);
 
@@ -517,6 +532,84 @@ ${content.trim()}
       // If it looks like a script, let the file detection patterns handle it
       return match;
     });
+  }
+
+  private _wrapDesignHandoffJSON(input: string): string {
+    // Detect raw JSON that contains design handoff data
+    // Look for JSON object with appName, description, and category fields
+    // We need to find the complete JSON object, so we'll search for opening { and matching closing }
+
+    // CRITICAL: Don't wrap if the input already contains artifact tags
+    if (input.includes('<boltArtifact') || input.includes('<boltAction')) {
+      logger.debug('[Enhanced] Input already contains artifact tags, skipping wrap');
+      return input;
+    }
+
+    // First check if the input contains the key fields
+    if (!input.includes('"appName"') || !input.includes('"description"') || !input.includes('"category"')) {
+      return input;
+    }
+
+    // Find the opening brace
+    const startIndex = input.indexOf('{');
+    if (startIndex === -1) {
+      return input;
+    }
+
+    // Find the matching closing brace by counting braces
+    let braceCount = 0;
+    let endIndex = -1;
+    for (let i = startIndex; i < input.length; i++) {
+      if (input[i] === '{') braceCount++;
+      if (input[i] === '}') {
+        braceCount--;
+        if (braceCount === 0) {
+          endIndex = i;
+          break;
+        }
+      }
+    }
+
+    if (endIndex === -1) {
+      return input;
+    }
+
+    const jsonString = input.substring(startIndex, endIndex + 1);
+
+    // Validate it's valid JSON
+    try {
+      JSON.parse(jsonString);
+    } catch (e) {
+      logger.debug('[Enhanced] Found design handoff pattern but JSON is invalid');
+      return input;
+    }
+
+    // Check if it's preceded by a handoff message
+    const handoffMessagePattern = /(I've gathered all the initial information|I'm now handing off to the Design Wizard|handing off to the Design Wizard)/i;
+    const hasHandoffMessage = handoffMessagePattern.test(input);
+
+    if (!hasHandoffMessage) {
+      logger.debug('[Enhanced] Found design JSON but no handoff message, skipping wrap');
+      return input;
+    }
+
+    logger.debug('[Enhanced] Wrapping design handoff JSON in artifact tags');
+    logger.debug('[Enhanced] JSON to wrap:', jsonString);
+    logger.debug('[Enhanced] Input before wrapping:', input);
+
+    // Replace the raw JSON with wrapped version
+    const wrapped = `<boltArtifact id="design-handoff" title="Design Synchronization">
+<boltAction type="design-sync">
+${jsonString}
+</boltAction>
+</boltArtifact>`;
+
+    const result = input.replace(jsonString, wrapped);
+    logger.debug('[Enhanced] Input after wrapping (first 500 chars):', result.substring(0, 500));
+    logger.debug('[Enhanced] Input after wrapping (LAST 200 chars):', result.substring(result.length - 200));
+    logger.debug('[Enhanced] Wrapped output includes </boltAction>:', result.includes('</boltAction>'));
+    logger.debug('[Enhanced] Wrapped output includes </boltArtifact>:', result.includes('</boltArtifact>'));
+    return result;
   }
 
   reset() {

@@ -1,4 +1,5 @@
 import { AnimatePresence, cubicBezier, motion } from 'framer-motion';
+import { ArrowUp, Square } from 'lucide-react';
 
 interface SendButtonProps {
   show: boolean;
@@ -29,8 +30,8 @@ export const SendButton = ({ show, isStreaming, disabled, onClick }: SendButtonP
             }
           }}
         >
-          <div className="text-lg">
-            {!isStreaming ? <div className="i-ph:arrow-up"></div> : <div className="i-ph:stop-circle-bold"></div>}
+          <div className="text-lg flex justify-center items-center">
+            {!isStreaming ? <ArrowUp className="w-5 h-5" /> : <Square className="w-4 h-4 fill-current" />}
           </div>
         </motion.button>
       ) : null}

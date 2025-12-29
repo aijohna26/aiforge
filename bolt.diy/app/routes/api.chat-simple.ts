@@ -18,9 +18,14 @@ function parseCookies(cookieHeader: string): Record<string, string> {
 
 export async function action({ context, request }: ActionFunctionArgs) {
   try {
-    const { messages } = await request.json();
+    const { messages, chatMode, designScheme } = await request.json();
 
-    logger.debug(`Received ${messages?.length || 0} messages`);
+    logger.debug(`Received ${messages?.length || 0} messages, chatMode: ${chatMode}`);
+    if (!Array.isArray(messages)) {
+      logger.error('Messages is not an array:', typeof messages);
+    } else {
+      logger.debug('First message:', messages[0]);
+    }
 
     const cookieHeader = request.headers.get('Cookie');
     const apiKeys = JSON.parse(parseCookies(cookieHeader || '').apiKeys || '{}');
@@ -32,6 +37,8 @@ export async function action({ context, request }: ActionFunctionArgs) {
       env: context.cloudflare?.env,
       apiKeys,
       providerSettings,
+      chatMode: chatMode || 'build',
+      designScheme,
     });
 
     // Return the UI message stream response

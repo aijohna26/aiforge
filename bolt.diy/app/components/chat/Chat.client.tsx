@@ -142,7 +142,10 @@ export const ChatImpl = memo(
 
     // Project Hydration Logic
     useEffect(() => {
-      if (projectId && typeof window !== 'undefined') {
+      // Only fetch project if projectId is a valid UUID (not a chat timestamp)
+      const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId || '');
+
+      if (projectId && isValidUUID && typeof window !== 'undefined') {
         const hydrateProject = async () => {
           try {
             const response = await fetch(`/api/get-project/${projectId}`);
@@ -1054,19 +1057,7 @@ export const ChatImpl = memo(
         description={description}
         importChat={importChat}
         exportChat={exportChat}
-        messages={(messages && messages.length > 0 ? messages : localMessages).map((message, i) => {
-          if (message.role === 'user') {
-            return message;
-          }
-
-          // Bypass parser for debugging to ensure raw text is visible
-          if (message.content) {
-          }
-          return {
-            ...message,
-            content: message.content || '',
-          };
-        })}
+        messages={parsedMessages.length > 0 ? parsedMessages : (messages && messages.length > 0 ? messages : localMessages)}
         enhancePrompt={() => {
           enhancePrompt(
             localInput, // Use local input

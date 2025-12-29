@@ -49,10 +49,35 @@ const messageParser = new EnhancedStreamingMessageParser({
     },
   },
 });
-const extractTextContent = (message: Message) =>
-  Array.isArray(message.content)
-    ? (message.content.find((item) => item.type === 'text')?.text as string) || ''
-    : (message.content || '');
+const extractTextContent = (message: Message) => {
+  let extracted = '';
+
+  // AI SDK 6.0: Handle both old format (content string) and new format (parts array)
+  if (typeof message.content === 'string') {
+    extracted = message.content;
+  } else if (Array.isArray(message.content)) {
+    extracted = (message.content.find((item) => item.type === 'text')?.text as string) || '';
+  } else if ((message as any).parts) {
+    // AI SDK 6.0 new format
+    const textParts = (message as any).parts.filter((p: any) => p.type === 'text');
+    extracted = textParts.map((p: any) => p.text).join('');
+  } else {
+    extracted = '';
+  }
+
+  // Debug logging
+  if (extracted.includes('boltArtifact') || extracted.includes('design-sync')) {
+    logger.debug('[useMessageParser] Extracted content contains artifact tags!');
+    logger.debug('[useMessageParser] Content length:', extracted.length);
+    logger.debug('[useMessageParser] Content preview:', extracted.substring(0, 300));
+  } else if (extracted.includes('ExamScan') || extracted.includes('appName')) {
+    logger.debug('[useMessageParser] Extracted content contains design data but NO artifact tags!');
+    logger.debug('[useMessageParser] Content preview:', extracted.substring(0, 300));
+    logger.debug('[useMessageParser] Message structure:', JSON.stringify(message, null, 2).substring(0, 500));
+  }
+
+  return extracted;
+};
 
 export function useMessageParser() {
   const [parsedMessages, setParsedMessages] = useState<{ [key: number]: string }>({});

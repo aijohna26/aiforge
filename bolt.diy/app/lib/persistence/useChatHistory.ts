@@ -281,6 +281,15 @@ ${value.content}
       const { firstArtifact } = workbenchStore;
       messages = messages.filter((m) => !m.annotations?.includes('no-store'));
 
+      // Only persist chat if there's at least one user-assistant exchange
+      const hasUserMessage = messages.some((m) => m.role === 'user');
+      const hasAssistantMessage = messages.some((m) => m.role === 'assistant');
+
+      if (!hasUserMessage || !hasAssistantMessage) {
+        // Don't create chat ID yet - wait for actual conversation
+        return;
+      }
+
       let _urlId = urlId;
 
       // Create chat ID even if no artifact exists (for discussion-only chats)
@@ -352,12 +361,12 @@ ${value.content}
         chatMetadata.get(),
       );
 
-      console.log('✅ Chat saved successfully:', {
-        chatId: finalChatId,
-        urlId: _urlId,
-        messageCount: messages.length,
-        description: description.get(),
-      });
+      // console.log('✅ Chat saved successfully:', {
+      //   chatId: finalChatId,
+      //   urlId: _urlId,
+      //   messageCount: messages.length,
+      //   description: description.get(),
+      // });
     },
     duplicateCurrentChat: async (listItemId: string) => {
       if (!db || (!mixedId && !listItemId)) {

@@ -7,6 +7,8 @@ import { toast } from 'react-toastify';
 import { themeStore, toggleTheme } from '~/lib/stores/theme';
 import { AuthModal } from '~/components/auth/AuthModal';
 import { createClient } from '~/lib/supabase/server';
+import { Zap, Sun, Moon, ArrowUp } from 'lucide-react';
+import { FaGoogle, FaMicrosoft, FaAmazon, FaMeta } from 'react-icons/fa6';
 
 export const meta: MetaFunction = () => {
   return [
@@ -110,7 +112,7 @@ export default function LandingPage() {
         <div className="flex items-center gap-2">
           {/* Logo Placeholder */}
           <div className="w-8 h-8 bg-gradient-to-tr from-accent-500 to-orange-400 dark:from-purple-500 dark:to-blue-500 rounded-lg flex items-center justify-center">
-            <div className="i-ph:lightning-duotone text-white text-xl" />
+            <Zap className="text-white w-5 h-5 fill-current" />
           </div>
           <span className="text-xl font-bold tracking-tight">AppForge</span>
         </div>
@@ -134,9 +136,9 @@ export default function LandingPage() {
             title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
           >
             {theme === 'dark' ? (
-              <div className="i-ph:sun-bold text-lg group-hover:rotate-90 transition-transform duration-500" />
+              <Sun className="w-5 h-5 group-hover:rotate-90 transition-transform duration-500" />
             ) : (
-              <div className="i-ph:moon-bold text-lg group-hover:-rotate-12 transition-transform duration-500" />
+              <Moon className="w-5 h-5 group-hover:-rotate-12 transition-transform duration-500" />
             )}
           </button>
           <button
@@ -200,7 +202,7 @@ export default function LandingPage() {
                 disabled={!prompt.trim()}
                 className="flex items-center justify-center p-2 rounded-lg bg-orange-500 text-white dark:bg-white/10 dark:text-white hover:bg-orange-600 dark:hover:bg-purple-500 dark:hover:text-white transition-all disabled:opacity-50 disabled:hover:bg-orange-500 dark:disabled:hover:bg-white/10"
               >
-                <div className="i-ph:arrow-up-bold text-lg" />
+                <ArrowUp className="w-5 h-5" />
               </button>
             </div>
           </form>
@@ -210,16 +212,16 @@ export default function LandingPage() {
         <div className="mt-16 flex flex-wrap justify-center gap-8 opacity-40 grayscale hover:grayscale-0 transition-all duration-500">
           {/* Simple SVG Placeholders for logos */}
           <div className="flex items-center gap-2 text-gray-900 dark:text-white/50 font-semibold text-sm">
-            <div className="i-ph:google-logo-bold text-xl" /> Google
+            <FaGoogle className="text-xl" /> Google
           </div>
           <div className="flex items-center gap-2 text-gray-900 dark:text-white/50 font-semibold text-sm">
-            <div className="i-ph:microsoft-logo-bold text-xl" /> Microsoft
+            <FaMicrosoft className="text-xl" /> Microsoft
           </div>
           <div className="flex items-center gap-2 text-gray-900 dark:text-white/50 font-semibold text-sm">
-            <div className="i-ph:amazon-logo-bold text-xl" /> Amazon
+            <FaAmazon className="text-xl" /> Amazon
           </div>
           <div className="flex items-center gap-2 text-gray-900 dark:text-white/50 font-semibold text-sm">
-            <div className="i-ph:meta-logo-bold text-xl" /> Meta
+            <FaMeta className="text-xl" /> Meta
           </div>
         </div>
       </main>

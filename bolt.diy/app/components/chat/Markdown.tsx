@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useMemo, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import type { BundledLanguage } from 'shiki';
 import { createScopedLogger } from '~/utils/logger';
@@ -9,6 +9,7 @@ import type { Message } from 'ai';
 import styles from './Markdown.module.scss';
 import ThoughtBox from './ThoughtBox';
 import type { ProviderInfo } from '~/types/model';
+import { File, MessageSquare, Code, Link } from 'lucide-react';
 
 const logger = createScopedLogger('MarkdownComponent');
 
@@ -179,6 +180,66 @@ export const Markdown = memo(
           }
 
           return <button {...props}>{children}</button>;
+        },
+        'bolt-quick-actions': ({ children }: any) => {
+          return <div className="flex items-center gap-2 flex-wrap mt-2">{children}</div>;
+        },
+        'bolt-quick-action': ({ node, children, ...props }: any) => {
+          const { type, message, path, href } = props;
+
+          const iconComponentMap: Record<string, ReactNode> = {
+            file: <File className="w-4 h-4" />,
+            message: <MessageSquare className="w-4 h-4" />,
+            implement: <Code className="w-4 h-4" />,
+            link: <Link className="w-4 h-4" />,
+          };
+
+          const safeType = typeof type === 'string' ? type : '';
+          const Icon = iconComponentMap[safeType] ?? <div className="i-ph:question w-4 h-4" />;
+
+          return (
+            <button
+              className="rounded-md justify-center px-3 py-1.5 text-xs bg-bolt-elements-item-backgroundAccent text-bolt-elements-item-contentAccent opacity-90 hover:opacity-100 flex items-center gap-2 cursor-pointer transition-opacity"
+              onClick={(e) => {
+                console.log('[QuickAction] Clicked:', { type, message, path, href, hasAppend: !!append, hasSetChatMode: !!setChatMode });
+
+                if (type === 'file') {
+                  console.log('[QuickAction] Opening file:', path);
+                  openArtifactInWorkbench(path);
+                } else if (type === 'message' && append) {
+                  console.log('[QuickAction] Appending message:', message);
+                  const msg = `[Model: ${model}]\n\n[Provider: ${provider?.name}]\n\n${message}`;
+                  append({
+                    role: 'user',
+                    content: msg,
+                    parts: [{ type: 'text', text: msg }],
+                  });
+                } else if (type === 'implement' && append && setChatMode) {
+                  console.log('[QuickAction] Implementing:', message);
+                  setChatMode('build');
+                  const msg = `[Model: ${model}]\n\n[Provider: ${provider?.name}]\n\n${message}`;
+                  append({
+                    role: 'user',
+                    content: msg,
+                    parts: [{ type: 'text', text: msg }],
+                  });
+                } else if (type === 'link' && typeof href === 'string') {
+                  console.log('[QuickAction] Opening link:', href);
+                  try {
+                    const url = new URL(href, window.location.origin);
+                    window.open(url.toString(), '_blank', 'noopener,noreferrer');
+                  } catch (error) {
+                    console.error('Invalid URL:', href, error);
+                  }
+                } else {
+                  console.warn('[QuickAction] Unhandled action or missing dependencies', { type, hasAppend: !!append });
+                }
+              }}
+            >
+              {Icon}
+              {children}
+            </button>
+          );
         },
       } satisfies Components;
     }, []);

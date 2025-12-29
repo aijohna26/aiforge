@@ -57,6 +57,10 @@ export const allowedHTMLElements = [
   'var',
   'think',
   'header',
+  'bolt-quick-actions',
+  'bolt-quick-action',
+  'boltArtifact',
+  'boltAction',
 ];
 
 // Add custom rehype plugin
@@ -97,8 +101,12 @@ const rehypeSanitizeOptions: RehypeSanitizeOptions = {
       'disabled',
       'name',
       'value',
+      'value',
       ['className', '__boltArtifact__', '__boltThought__', '__boltQuickAction'],
     ],
+    'bolt-quick-action': ['type', 'message', 'path', 'href'],
+    boltArtifact: ['id', 'title'],
+    boltAction: ['type'],
   },
   strip: [],
 };

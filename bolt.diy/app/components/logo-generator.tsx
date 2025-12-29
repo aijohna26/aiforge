@@ -1,5 +1,23 @@
+'use client';
+
 import { useState, useEffect } from 'react';
-import { Button } from '~/components/ui/Button';
+import { Button } from './ui/Button';
+import {
+  Loader2,
+  Play,
+  AlertCircle,
+  Coins,
+  Pencil,
+  Check,
+  RotateCcw,
+  Plus,
+  Eye,
+  Copy,
+  Save,
+  X,
+  ChevronDown,
+  Sparkles
+} from 'lucide-react';
 
 interface AppInfo {
   name: string;
@@ -67,7 +85,7 @@ export function LogoGenerator({ appInfo, onSave, stylePreferences }: LogoGenerat
   // Generate smart prompt based on app info
   const generatePrompt = () => {
     // Use the provided color scheme directly as it now contains detailed hex codes from the wizard
-    const colors = appInfo.colorScheme ? `Color palette: ${appInfo.colorScheme}` : 'professional color palette';
+    const colors = appInfo.colorScheme ? 'Color palette: ' + appInfo.colorScheme : 'professional color palette';
 
     const styleContextParts: string[] = [];
 
@@ -82,28 +100,28 @@ export function LogoGenerator({ appInfo, onSave, stylePreferences }: LogoGenerat
     }
 
     if (stylePreferences?.personality && stylePreferences.personality.length > 0) {
-      styleContextParts.push(`Brand personality: ${stylePreferences.personality.join(', ')}`);
+      styleContextParts.push(`Brand personality: ${stylePreferences.personality.join(', ')} `);
     }
 
     if (stylePreferences?.keywords && stylePreferences.keywords.length > 0) {
-      styleContextParts.push(`Mood board keywords: ${stylePreferences.keywords.join(', ')}`);
+      styleContextParts.push(`Mood board keywords: ${stylePreferences.keywords.join(', ')} `);
     }
 
     if (stylePreferences?.components) {
       styleContextParts.push(
         `Components should use ${stylePreferences.components.corners === 'rounded' ? 'rounded' : 'sharp'} corners` +
-          (stylePreferences.components.gradient ? ' with gradient fills.' : ' with solid fills.'),
+        (stylePreferences.components.gradient ? ' with gradient fills.' : ' with solid fills.'),
       );
     }
 
     if (stylePreferences?.notes?.trim()) {
-      styleContextParts.push(`Creative direction: ${stylePreferences.notes.trim()}`);
+      styleContextParts.push(`Creative direction: ${stylePreferences.notes.trim()} `);
     }
 
     const styleContext = styleContextParts.join(' ');
 
     // Build a comprehensive, professional prompt with strong exclusions
-    return `App icon for '${appInfo.name}', a ${appInfo.category.toLowerCase()} app. ${appInfo.description}. Target audience: ${appInfo.targetAudience}. Create a clean, professional app icon using either: (1) a simple bold symbol/glyph representing ${appInfo.category.toLowerCase()}, OR (2) stylized typography with app name or initials. ${styleContext} Flat vector style, crisp edges, uniform stroke weight. ${colors}. Square icon with rounded corners, centered composition, Apple iOS 18 app icon aesthetic. High clarity, high contrast, balanced negative space. CRITICAL: TRANSPARENT BACKGROUND - no white background, no colored background, pure transparency (PNG with alpha channel). IMPORTANT: Icon design ONLY - absolutely NO buttons, NO UI elements, NO input fields, NO screens, NO mockups, NO interface components, NO shadows, NO watermarks. Just the icon itself with optional text/wordmark if appropriate on transparent background. Pure app icon design.`;
+    return `App icon for '${appInfo.name}', a ${appInfo.category.toLowerCase()} app.${appInfo.description}. Target audience: ${appInfo.targetAudience}. Create a clean, professional app icon using either: (1) a simple bold symbol/glyph representing ${appInfo.category.toLowerCase()}, OR (2) stylized typography with app name or initials. ${styleContext} Flat vector style, crisp edges, uniform stroke weight. ${colors}. Square icon with rounded corners, centered composition, Apple iOS 18 app icon aesthetic. High clarity, high contrast, balanced negative space. CRITICAL: TRANSPARENT BACKGROUND - no white background, no colored background, pure transparency (PNG with alpha channel). IMPORTANT: Icon design ONLY - absolutely NO buttons, NO UI elements, NO input fields, NO screens, NO mockups, NO interface components, NO shadows, NO watermarks. Just the icon itself with optional text/wordmark if appropriate on transparent background.Pure app icon design.`;
   };
 
   // Set initial prompt when component mounts or appInfo changes
@@ -247,10 +265,10 @@ export function LogoGenerator({ appInfo, onSave, stylePreferences }: LogoGenerat
             onChange={(e) => setProvider(e.target.value as Provider)}
             className="px-3 py-2 pr-8 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
           >
-            <option value="gemini">🌟 Gemini 3</option>
-            <option value="openai">🤖 OpenAI</option>
+            <option value="gemini">Gemini 3</option>
+            <option value="openai">OpenAI</option>
           </select>
-          <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">▼</div>
+          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 w-4 h-4" />
         </div>
 
         {/* Model Dropdown - Gemini */}
@@ -265,9 +283,7 @@ export function LogoGenerator({ appInfo, onSave, stylePreferences }: LogoGenerat
               <option value="nano-banana-pro">Nano Banana Pro</option>
               <option value="nano-banana-edit">Nano Banana Edit</option>
             </select>
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">
-              ▼
-            </div>
+            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 w-4 h-4" />
           </div>
         )}
 
@@ -283,9 +299,7 @@ export function LogoGenerator({ appInfo, onSave, stylePreferences }: LogoGenerat
               <option value="dall-e-3">DALL-E 3</option>
               <option value="dall-e-2">DALL-E 2</option>
             </select>
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">
-              ▼
-            </div>
+            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 w-4 h-4" />
           </div>
         )}
 
@@ -300,7 +314,7 @@ export function LogoGenerator({ appInfo, onSave, stylePreferences }: LogoGenerat
             <option value="jpg">JPG</option>
             <option value="webp">WebP</option>
           </select>
-          <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">▼</div>
+          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 w-4 h-4" />
         </div>
 
         {/* Aspect Ratio Dropdown */}
@@ -316,7 +330,7 @@ export function LogoGenerator({ appInfo, onSave, stylePreferences }: LogoGenerat
             <option value="4:3">4:3</option>
             <option value="3:4">3:4</option>
           </select>
-          <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">▼</div>
+          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 w-4 h-4" />
         </div>
 
         {/* Quantity Dropdown */}
@@ -331,12 +345,12 @@ export function LogoGenerator({ appInfo, onSave, stylePreferences }: LogoGenerat
             <option value={3}>3 images</option>
             <option value={4}>4 images</option>
           </select>
-          <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">▼</div>
+          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 w-4 h-4" />
         </div>
 
         {/* Generate Button */}
         <Button onClick={handleGenerate} disabled={isGenerating || !prompt.trim()} className="ml-auto">
-          {isGenerating ? '⚙️ Generating...' : '+ Run'}
+          {isGenerating ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating...</> : <><Play className="w-4 h-4 mr-2" /> Run</>}
         </Button>
       </div>
 
@@ -358,7 +372,7 @@ export function LogoGenerator({ appInfo, onSave, stylePreferences }: LogoGenerat
       {error && (
         <div className="bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 border rounded-lg p-4 text-sm flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span>{error.includes('credits') ? '💰' : '❌'}</span>
+            <span>{error.includes('credits') ? <Coins className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}</span>
             <span>{error}</span>
           </div>
           {error.includes('credits') && (
@@ -389,7 +403,7 @@ export function LogoGenerator({ appInfo, onSave, stylePreferences }: LogoGenerat
           <h3 className="font-semibold">Generated Logos ({logoUrls.length})</h3>
 
           {/* Logo Grid */}
-          <div className={`grid gap-4 ${logoUrls.length === 1 ? 'grid-cols-1 max-w-sm mx-auto' : 'grid-cols-2'}`}>
+          <div className={`grid gap - 4 ${logoUrls.length === 1 ? 'grid-cols-1 max-w-sm mx-auto' : 'grid-cols-2'} `}>
             {logoUrls.map((url, index) => (
               <div
                 key={index}
@@ -401,29 +415,30 @@ export function LogoGenerator({ appInfo, onSave, stylePreferences }: LogoGenerat
                     onSave(url, prompt);
                   }
                 }}
-                className={`border-2 rounded-lg overflow-hidden bg-white dark:bg-slate-900 p-4 cursor-pointer transition-all ${
-                  selectedLogo === url
-                    ? 'border-blue-500 shadow-lg'
-                    : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
-                }`}
+                className={`border - 2 rounded - lg overflow - hidden bg - white dark: bg - slate - 900 p - 4 cursor - pointer transition - all ${selectedLogo === url
+                  ? 'border-blue-500 shadow-lg'
+                  : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                  } `}
               >
                 <div className="relative group">
-                  <img src={url} alt={`${appInfo.name} logo ${index + 1}`} className="w-full h-auto" />
+                  <img src={url} alt={`${appInfo.name} logo ${index + 1} `} className="w-full h-auto" />
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       setSelectedLogo(url);
                       setIsEditModalOpen(true);
                     }}
-                    className="absolute top-2 right-2 bg-white/90 dark:bg-slate-800/90 hover:bg-white dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 p-2 rounded-full shadow-lg border border-slate-200 dark:border-slate-600 transition-all group-hover:opacity-100 focus:opacity-100 opacity-60 hover:opacity-100"
+                    className="absolute top-2 right-2 bg-white/90 dark:bg-slate-800/90 hover:bg-white dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 p-2 rounded-full shadow-lg border border-slate-200 dark:border-slate-600 transition-all group-hover:opacity-100 focus:opacity-100 opacity-60"
                     title="Edit this logo"
                   >
-                    ✏️
+                    <Pencil className="w-4 h-4" />
                   </button>
                 </div>
                 {selectedLogo === url && (
                   <div className="mt-2 text-center">
-                    <span className="text-xs bg-blue-500 text-white px-2 py-1 rounded">✓ Selected</span>
+                    <span className="text-xs bg-blue-500 text-white px-2 py-1 rounded flex items-center justify-center">
+                      <Check className="w-3 h-3 mr-1" /> Selected
+                    </span>
                   </div>
                 )}
               </div>
@@ -433,69 +448,57 @@ export function LogoGenerator({ appInfo, onSave, stylePreferences }: LogoGenerat
           {/* Action Buttons */}
           {selectedLogo && (
             <div className="flex gap-2 justify-center flex-wrap">
-              <Button
-                onClick={() => {
-                  setLogoUrls([]);
-                  setSelectedLogo(null);
-                }}
-                variant="outline"
-                size="sm"
-              >
-                🔄 Start Over
+              <Button onClick={() => {
+                setLogoUrls([]);
+                setSelectedLogo(null);
+              }} variant="outline" size="sm">
+                <RotateCcw className="w-4 h-4 mr-2" /> Start Over
               </Button>
-              <Button
-                onClick={async () => {
-                  // Generate more variations and add to existing
-                  setIsGenerating(true);
-
-                  try {
-                    const promises = Array.from({ length: quantity }, async () => {
-                      const response = await fetch('/api/test/image', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          prompt,
-                          provider: 'gemini',
-                          googleModel,
-                          outputFormat,
-                          aspectRatio,
-                        }),
-                      });
-
-                      if (response.status === 402) {
-                        throw new Error('Insufficient credits. Please top up your wallet.');
-                      }
-
-                      const data: any = await response.json();
-
-                      return data.success && data.imageUrl ? data.imageUrl : null;
+              <Button onClick={async () => {
+                // Generate more variations and add to existing
+                setIsGenerating(true);
+                try {
+                  const promises = Array.from({ length: quantity }, async () => {
+                    const response = await fetch('/api/test/image', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        prompt,
+                        provider: 'gemini',
+                        googleModel,
+                        outputFormat,
+                        aspectRatio,
+                      }),
                     });
 
-                    const results = await Promise.all(promises);
-                    const validUrls = results.filter((url: any): url is string => url !== null);
-
-                    if (validUrls.length > 0) {
-                      setLogoUrls((prev) => [...prev, ...validUrls]);
+                    if (response.status === 402) {
+                      throw new Error('Insufficient credits. Please top up your wallet.');
                     }
-                  } catch (err: any) {
-                    setError(err.message || 'An error occurred while generating more logos');
 
-                    // console.error(err);
-                  } finally {
-                    setIsGenerating(false);
+                    const data = await response.json();
+                    return data.success && data.imageUrl ? data.imageUrl : null;
+                  });
+
+                  const results = await Promise.all(promises);
+                  const validUrls = results.filter((url): url is string => url !== null);
+
+                  if (validUrls.length > 0) {
+                    setLogoUrls(prev => [...prev, ...validUrls]);
                   }
-                }}
-                variant="outline"
-                size="sm"
-                disabled={isGenerating}
-              >
-                ➕ Generate More
+                } catch (err: any) {
+                  setError(err.message || 'An error occurred while generating more logos');
+                  // console.error(err);
+                } finally {
+                  setIsGenerating(false);
+                }
+              }} variant="outline" size="sm" disabled={isGenerating}>
+                <Plus className="w-4 h-4 mr-2" /> Generate More
               </Button>
               <Button onClick={() => setIsEditModalOpen(true)} variant="outline" size="sm" disabled={isGenerating}>
-                ✏️ Edit
+                <Pencil className="w-4 h-4 mr-2" /> Edit
               </Button>
               <Button onClick={() => window.open(selectedLogo, '_blank')} size="sm">
-                👁️ View Full Size
+                <Eye className="w-4 h-4 mr-2" /> View Full Size
               </Button>
               <Button
                 onClick={() => {
@@ -505,7 +508,7 @@ export function LogoGenerator({ appInfo, onSave, stylePreferences }: LogoGenerat
                 variant="outline"
                 size="sm"
               >
-                📋 Copy URL
+                <Copy className="w-4 h-4 mr-2" /> Copy URL
               </Button>
               <Button
                 onClick={() => {
@@ -516,7 +519,7 @@ export function LogoGenerator({ appInfo, onSave, stylePreferences }: LogoGenerat
                 size="sm"
                 className="bg-green-500 hover:bg-green-600"
               >
-                💾 Save Selected
+                <Save className="w-4 h-4 mr-2" /> Save Selected
               </Button>
             </div>
           )}
@@ -531,9 +534,9 @@ export function LogoGenerator({ appInfo, onSave, stylePreferences }: LogoGenerat
               <h3 className="font-semibold text-sm">Edit Logo</h3>
               <button
                 onClick={() => setIsEditModalOpen(false)}
-                className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 text-lg leading-none"
+                className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -566,8 +569,8 @@ export function LogoGenerator({ appInfo, onSave, stylePreferences }: LogoGenerat
 
               {/* Error Message in Modal */}
               {error && (
-                <div className="text-xs text-red-600 bg-red-50 dark:bg-red-900/20 p-2 rounded border border-red-200 dark:border-red-800 flex items-center gap-2">
-                  <span>❌</span>
+                <div className="text-sm text-red-600 bg-red-50 dark:bg-red-900/20 p-3 rounded border border-red-200 dark:border-red-800 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4" />
                   <span>{error}</span>
                 </div>
               )}
@@ -579,7 +582,7 @@ export function LogoGenerator({ appInfo, onSave, stylePreferences }: LogoGenerat
                 Cancel
               </Button>
               <Button onClick={handleEdit} disabled={isGenerating || !editPrompt.trim()} size="sm">
-                {isGenerating ? '⚙️ Generate' : '✨ Generate'}
+                {isGenerating ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generate</> : <><Sparkles className="w-4 h-4 mr-2" /> Generate</>}
               </Button>
             </div>
           </div>

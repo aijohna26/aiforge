@@ -77,9 +77,15 @@ export class StreamingMessageParser {
   #messages = new Map<string, MessageState>();
   #artifactCounter = 0;
 
-  constructor(private _options: StreamingMessageParserOptions = {}) {}
+  constructor(private _options: StreamingMessageParserOptions = {}) { }
 
   parse(messageId: string, input: string) {
+    // Debug: Log when we're parsing design-sync content
+    if (input.includes('design-sync')) {
+      logger.debug(`[MessageParser] Parsing input with design-sync, length: ${input.length}`);
+      logger.debug(`[MessageParser] Input starts with: ${input.substring(0, 150)}`);
+    }
+
     let state = this.#messages.get(messageId);
 
     if (!state) {
@@ -93,6 +99,16 @@ export class StreamingMessageParser {
       };
 
       this.#messages.set(messageId, state);
+    }
+
+    // Debug: Check if input contains artifact tags
+    if (input.includes('<boltArtifact') || input.includes('<boltartifact')) {
+      logger.debug(`[Parser] Input contains boltArtifact tag. Length: ${input.length}`);
+      logger.debug(`[Parser] State: insideArtifact=${state.insideArtifact}, position=${state.position}`);
+      const artifactIndex = input.toLowerCase().indexOf('<boltartifact');
+      if (artifactIndex >= 0) {
+        logger.debug(`[Parser] Artifact tag at index ${artifactIndex}, preview: ${input.substring(artifactIndex, artifactIndex + 100)}`);
+      }
     }
 
     let output = '';
@@ -139,26 +155,44 @@ export class StreamingMessageParser {
         }
 
         if (state.insideAction) {
-          const closeIndex = input.indexOf(ARTIFACT_ACTION_TAG_CLOSE, i);
+          const closeRegex = new RegExp(ARTIFACT_ACTION_TAG_CLOSE, 'i');
+          const closeMatch = input.slice(i).match(closeRegex);
+          const closeIndex = closeMatch ? i + closeMatch.index! : -1;
 
           const currentAction = state.currentAction;
+
+          // Debug for design-sync actions
+          if ('type' in currentAction && currentAction.type === 'design-sync') {
+            logger.debug('[MessageParser] Looking for closing tag from position:', i);
+            logger.debug('[MessageParser] Found closing tag at index:', closeIndex);
+            logger.debug('[MessageParser] Current accumulated content length:', currentAction.content.length);
+          }
 
           if (closeIndex !== -1) {
             currentAction.content += input.slice(i, closeIndex);
 
             let content = currentAction.content.trim();
 
-            if ('type' in currentAction && currentAction.type === 'file') {
-              // Remove markdown code block syntax if present and file is not markdown
-              if (!currentAction.filePath.endsWith('.md')) {
-                content = cleanoutMarkdownSyntax(content);
-                content = cleanEscapedTags(content);
+            if ('type' in currentAction) {
+              if (currentAction.type === 'file') {
+                // Remove markdown code block syntax if present and file is not markdown
+                if (!currentAction.filePath.endsWith('.md')) {
+                  content = cleanoutMarkdownSyntax(content);
+                  content = cleanEscapedTags(content);
+                }
+                content += '\n';
               }
-
-              content += '\n';
+              // For all other action types (design-sync, shell, start, qa-pass), keep content as-is
             }
 
             currentAction.content = content;
+
+            // Debug logging for design-sync actions
+            if ('type' in currentAction && currentAction.type === 'design-sync') {
+              logger.debug(`[MessageParser] design-sync action parsed with content length: ${content.length}`);
+              logger.debug(`[MessageParser] design-sync content preview: ${content.substring(0, 100)}...`);
+              logger.debug(`[MessageParser] Full content:`, content);
+            }
 
             this._options.callbacks?.onActionClose?.({
               artifactId: currentArtifact.id,
@@ -202,8 +236,14 @@ export class StreamingMessageParser {
             break;
           }
         } else {
-          const actionOpenIndex = input.indexOf(ARTIFACT_ACTION_TAG_OPEN, i);
-          const artifactCloseIndex = input.indexOf(ARTIFACT_TAG_CLOSE, i);
+          const actionOpenRegex = new RegExp(ARTIFACT_ACTION_TAG_OPEN, 'i');
+          const artifactCloseRegex = new RegExp(ARTIFACT_TAG_CLOSE, 'i');
+
+          const actionMatch = input.slice(i).match(actionOpenRegex);
+          const artifactCloseMatch = input.slice(i).match(artifactCloseRegex);
+
+          const actionOpenIndex = actionMatch ? i + actionMatch.index! : -1;
+          const artifactCloseIndex = artifactCloseMatch ? i + artifactCloseMatch.index! : -1;
 
           if (actionOpenIndex !== -1 && (artifactCloseIndex === -1 || actionOpenIndex < artifactCloseIndex)) {
             const actionEndIndex = input.indexOf('>', actionOpenIndex);
@@ -212,6 +252,14 @@ export class StreamingMessageParser {
               state.insideAction = true;
 
               state.currentAction = this.#parseActionTag(input, actionOpenIndex, actionEndIndex);
+
+              // Debug for design-sync actions
+              if ('type' in state.currentAction && state.currentAction.type === 'design-sync') {
+                logger.debug('[MessageParser] Found design-sync action tag');
+                logger.debug('[MessageParser] actionOpenIndex:', actionOpenIndex);
+                logger.debug('[MessageParser] actionEndIndex:', actionEndIndex);
+                logger.debug('[MessageParser] Next 200 chars after tag:', input.substring(actionEndIndex + 1, actionEndIndex + 201));
+              }
 
               this._options.callbacks?.onActionOpen?.({
                 artifactId: currentArtifact.id,
@@ -246,14 +294,21 @@ export class StreamingMessageParser {
         while (j < input.length && potentialTag.length < ARTIFACT_TAG_OPEN.length) {
           potentialTag += input[j];
 
-          if (potentialTag === ARTIFACT_TAG_OPEN) {
+          if (potentialTag.toLowerCase() === ARTIFACT_TAG_OPEN.toLowerCase()) {
             const nextChar = input[j + 1];
 
-            if (nextChar && nextChar !== '>' && nextChar !== ' ') {
+            logger.debug(`[Parser] Found potential boltArtifact tag at position ${i}`);
+            logger.debug(`[Parser] Next char after tag: "${nextChar}" (code: ${nextChar?.charCodeAt(0)})`);
+            logger.debug(`[Parser] Next 20 chars: ${input.substring(j + 1, j + 21)}`);
+
+            if (nextChar && nextChar !== '>' && !/^\s$/.test(nextChar)) {
+              logger.debug(`[Parser] REJECTED: nextChar failed validation. Treating as text.`);
               output += input.slice(i, j + 1);
               i = j + 1;
               break;
             }
+
+            logger.debug(`[Parser] ACCEPTED: Artifact tag validated, processing...`);
 
             const openTagEnd = input.indexOf('>', j);
 
@@ -309,7 +364,7 @@ export class StreamingMessageParser {
           j++;
         }
 
-        if (j === input.length && ARTIFACT_TAG_OPEN.startsWith(potentialTag)) {
+        if (j === input.length && ARTIFACT_TAG_OPEN.toLowerCase().startsWith(potentialTag.toLowerCase())) {
           break;
         }
       } else {

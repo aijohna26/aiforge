@@ -601,15 +601,24 @@ export class WorkbenchStore {
       }
     } else if (data.action.type === 'design-sync') {
       try {
+        console.log('[Workbench] design-sync action received');
+        console.log('[Workbench] action.content:', data.action.content);
+        console.log('[Workbench] action.content length:', data.action.content?.length || 0);
+
         const payload = JSON.parse(data.action.content);
+        console.log('[Workbench] Parsed payload:', payload);
+
         updateStep1Data(payload);
         chatStore.setKey('showChat', false);
         chatStore.setKey('handedOver', true);
 
+        console.log('[Workbench] Design handoff complete - chat hidden');
+
         // We also mark the action as executed in the runner
         await artifact.runner.runAction(data);
       } catch (error) {
-        console.error('Failed to parse design-sync payload:', error);
+        console.error('[Workbench] Failed to parse design-sync payload:', error);
+        console.error('[Workbench] Received content:', data.action.content);
       }
     } else if (data.action.type === 'qa-pass') {
       try {

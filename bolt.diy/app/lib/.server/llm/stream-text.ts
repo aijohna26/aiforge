@@ -325,6 +325,7 @@ export async function streamText(props: {
     ...tokenParams,
     messages: modelMessages,
     ...filteredOptions,
+    prompt: undefined,
 
     // Set temperature to 1 for reasoning models (required by OpenAI API)
     ...(isReasoning ? { temperature: 1 } : {}),
