@@ -50,15 +50,15 @@ export function TicketDetailModal({ ticket, onClose }: TicketDetailModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-300"
+      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 backdrop-blur-lg p-4 animate-in fade-in duration-300"
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-[#080808] rounded-3xl shadow-[0_32px_128px_rgba(0,0,0,0.4)] max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-gray-200 dark:border-white/[0.08]"
+        className="relative bg-white dark:bg-[#080808] rounded-3xl shadow-[0_32px_128px_rgba(0,0,0,0.4)] max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-gray-200 dark:border-white/[0.08]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header Section with Gradient Accent */}
-        <div className="relative overflow-hidden pt-10 pb-8 px-10 border-b border-gray-100 dark:border-white/[0.05]">
+        <div className="relative overflow-hidden pt-10 pb-8 px-10 border-b border-gray-100 dark:border-white/[0.05] bg-white dark:bg-[#080808]">
           {/* Decorative Background Element */}
           <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500/5 dark:bg-purple-500/5 blur-[80px] -mr-32 -mt-32 rounded-full" />
 
@@ -97,10 +97,9 @@ export function TicketDetailModal({ ticket, onClose }: TicketDetailModalProps) {
           </div>
         </div>
 
-        {/* Main Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-10 space-y-10 scrollbar-none">
-          {/* Visual Status & Priority Grid */}
-          <div className="grid grid-cols-2 gap-8 sticky top-0 z-20 bg-white/80 dark:bg-[#080808]/80 backdrop-blur-md pb-4 pt-2 -mt-2">
+        {/* Status & Priority Section (Fixed/Pinned) */}
+        <div className="px-10 pt-[52px] pb-6 border-b border-gray-100 dark:border-white/[0.05] bg-white dark:bg-[#080808] z-20 shrink-0">
+          <div className="grid grid-cols-2 gap-8">
             <div className="space-y-3">
               <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500 flex items-center gap-2">
                 <div className="i-ph:kanban-duotone text-sm opacity-60" />
@@ -155,6 +154,10 @@ export function TicketDetailModal({ ticket, onClose }: TicketDetailModalProps) {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Main Scrollable Content */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-10 space-y-10 scrollbar-none">
 
           {/* Description Section */}
           <div className="space-y-4">

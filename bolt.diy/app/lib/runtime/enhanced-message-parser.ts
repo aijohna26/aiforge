@@ -1,7 +1,4 @@
-import { createScopedLogger } from '~/utils/logger';
 import { StreamingMessageParser, type StreamingMessageParserOptions } from './message-parser';
-
-const logger = createScopedLogger('EnhancedMessageParser');
 
 /**
  * Enhanced message parser that detects code blocks and file patterns
@@ -33,33 +30,38 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
   }
 
   parse(messageId: string, input: string): string {
-    // Debug: Log input to see what we're receiving
-    if (input.includes('design-sync') || input.includes('boltArtifact') || input.includes('boltartifact')) {
-      logger.debug(`[Enhanced] Parsing message ${messageId}, input length: ${input.length}`);
-      logger.debug(`[Enhanced] Input preview (first 200 chars): ${input.substring(0, 200)}`);
-      logger.debug(`[Enhanced] Contains 'boltArtifact': ${input.includes('boltArtifact')}`);
-      logger.debug(`[Enhanced] Contains 'design-sync': ${input.includes('design-sync')}`);
-    }
-
     // CRITICAL FIX: Detect raw design handoff JSON and wrap it in artifact tags
     const wrappedInput = this._wrapDesignHandoffJSON(input);
     if (wrappedInput !== input) {
-      logger.debug(`[Enhanced] Detected and wrapped design handoff JSON`);
       input = wrappedInput;
+    }
+
+    // CRITICAL FIX: Detect and wrap package.json content to prevent it from appearing in chat
+    const wrappedPackageJson = this._wrapPackageJSON(messageId, input);
+    if (wrappedPackageJson !== input) {
+      input = wrappedPackageJson;
+      // Reset logic to handle retrospective wrapping
+      this.reset();
+    }
+
+    // CRITICAL FIX: Detect and remove style/theme objects from appearing in chat
+    const cleanedInput = this._removeStyleObjects(input);
+    if (cleanedInput !== input) {
+      input = cleanedInput;
     }
 
     // First try the normal parsing
     let output = super.parse(messageId, input);
 
-    // If no artifacts were detected, check for code blocks that should be files
-    if (!this._hasDetectedArtifacts(input)) {
-      const enhancedInput = this._detectAndWrapCodeBlocks(messageId, input);
+    // Always check for code blocks that should be files, even if artifacts exist
+    // This handles "mixed content" where the LLM might output some valid artifacts
+    // but also raw code blocks (like CSS or TS) that need to be captured.
+    const enhancedInput = this._detectAndWrapCodeBlocks(messageId, input);
 
-      if (enhancedInput !== input) {
-        // Reset and reparse with enhanced input
-        this.reset();
-        output = super.parse(messageId, enhancedInput);
-      }
+    if (enhancedInput !== input) {
+      // Reset and reparse with enhanced input
+      this.reset();
+      output = super.parse(messageId, enhancedInput);
     }
 
     return output;
@@ -67,6 +69,54 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
 
   private _hasDetectedArtifacts(input: string): boolean {
     return input.includes('<boltArtifact') || input.includes('</boltArtifact>');
+  }
+
+  private _findArtifactRanges(input: string): [number, number][] {
+    const ranges: [number, number][] = [];
+    const openTagRegex = /<boltArtifact/gi;
+    const closeTagRegex = /<\/boltArtifact>/gi;
+
+    let match;
+    while ((match = openTagRegex.exec(input)) !== null) {
+      const start = match.index;
+      closeTagRegex.lastIndex = start;
+      const closeMatch = closeTagRegex.exec(input);
+
+      if (closeMatch) {
+        ranges.push([start, closeMatch.index + closeMatch[0].length]);
+      } else {
+        ranges.push([start, input.length]);
+      }
+    }
+    return ranges;
+  }
+
+  private _isInsideArtifact(index: number, ranges: [number, number][]): boolean {
+    return ranges.some(([start, end]) => index >= start && index < end);
+  }
+
+  private _findActionRanges(input: string): [number, number][] {
+    const ranges: [number, number][] = [];
+    const openTagRegex = /<boltAction/gi;
+    const closeTagRegex = /<\/boltAction>/gi;
+
+    let match;
+    while ((match = openTagRegex.exec(input)) !== null) {
+      const start = match.index;
+      closeTagRegex.lastIndex = start;
+      const closeMatch = closeTagRegex.exec(input);
+
+      if (closeMatch) {
+        ranges.push([start, closeMatch.index + closeMatch[0].length]);
+      } else {
+        ranges.push([start, input.length]);
+      }
+    }
+    return ranges;
+  }
+
+  private _isInsideAction(index: number, ranges: [number, number][]): boolean {
+    return ranges.some(([start, end]) => index >= start && index < end);
   }
 
   private _detectAndWrapCodeBlocks(messageId: string, input: string): string {
@@ -115,11 +165,39 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
           /```(?:json|jsx?|tsx?|html?|vue|svelte)\n(\{[\s\S]*?"(?:name|version|scripts|dependencies|devDependencies)"[\s\S]*?\}|<\w+[^>]*>[\s\S]*?<\/\w+>[\s\S]*?)```/gi,
         type: 'structured_file',
       },
+
+      // Pattern 6: Raw package.json (no code block)
+      {
+        regex: /(?:^|\n)(\{\s*"(?:name|private|version)":[\s\S]*?(?:dependencies|devDependencies|scripts)[\s\S]*?\})(?=\n\n|$)/gi,
+        type: 'raw_package_json',
+      },
+
+      // Pattern 7: Raw CJS Module (module.exports =)
+      {
+        regex: /(?:^|\n)(module\.exports\s*=\s*[\s\S]+?)(?=\n\n(?:I|We|The|Here|Let|This|import)|$)/gi,
+        type: 'raw_cjs_module',
+      },
+
+      // Pattern 8: Raw ESM Module (imports/exports)
+      {
+        regex: /(?:^|\n)((?:import\s+[\s\S]*?from\s+['"][^'"]+['"];?\s*|export\s+(?:default\s+)?(?:class|function|const|let|var|interface|type)\s+)+[\s\S]+?)(?=\n\n(?:I|We|The|Here|Let|This|module\.exports)|$)/gi,
+        type: 'raw_esm_module',
+      },
     ];
 
     // Process each pattern in order of likelihood
     for (const pattern of patterns) {
+      // Re-calculate ranges on each pass because the string changes
+      const artifactRanges = this._findArtifactRanges(enhanced);
+      const actionRanges = this._findActionRanges(enhanced);
+
       enhanced = enhanced.replace(pattern.regex, (match, ...args) => {
+        // Check if inside existing artifact OR action
+        const offset = args[args.length - 2];
+        if (this._isInsideArtifact(offset, artifactRanges) || this._isInsideAction(offset, actionRanges)) {
+          return match;
+        }
+
         // Skip if already processed
         const blockHash = this._hashBlock(match);
 
@@ -138,6 +216,18 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
           content = args[0];
           language = pattern.regex.source.includes('json') ? 'json' : 'jsx';
           filePath = this._inferFileNameFromContent(content, language);
+        } else if (pattern.type === 'raw_package_json') {
+          content = args[0];
+          language = 'json';
+          filePath = 'package.json';
+        } else if (pattern.type === 'raw_cjs_module') {
+          content = args[0];
+          language = 'javascript';
+          filePath = 'metro.config.js'; // Good default for CJS in this context
+        } else if (pattern.type === 'raw_esm_module') {
+          content = args[0];
+          language = 'tsx'; // Assume TSX for imports/exports in this stack
+          filePath = this._inferFileNameFromContent(content, language);
         } else {
           // file_path, explicit_create, in_filename patterns
           [filePath, language, content] = args;
@@ -146,8 +236,6 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
         // Check if this should be treated as a shell command instead of a file
         if (this._isShellCommand(content, language)) {
           processed.add(blockHash);
-          logger.debug(`Auto-wrapped code block as shell command instead of file`);
-
           return this._wrapInShellAction(content, messageId);
         }
 
@@ -176,8 +264,6 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
         // Generate artifact wrapper
         const artifactId = `artifact-${messageId}-${this._artifactCounter++}`;
         const wrapped = this._wrapInArtifact(artifactId, filePath, content);
-
-        logger.debug(`Auto-wrapped code block as file: ${filePath}`);
 
         return wrapped;
       });
@@ -208,7 +294,6 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
       content = content.trim();
 
       const wrapped = this._wrapInArtifact(artifactId, filePath, content);
-      logger.debug(`Auto-wrapped file operation: ${filePath}`);
 
       return wrapped;
     });
@@ -524,14 +609,168 @@ ${content.trim()}
       // Check if this looks like commands to execute rather than a script file
       if (this._isShellCommand(content, language)) {
         processed.add(blockHash);
-        logger.debug(`Auto-wrapped shell code block as command: ${language}`);
-
         return this._wrapInShellAction(content, _messageId);
       }
 
       // If it looks like a script, let the file detection patterns handle it
       return match;
     });
+  }
+
+  private _removeStyleObjects(input: string): string {
+    // Remove style/theme configuration objects that shouldn't appear in chat
+    // These are typically JavaScript objects with CSS-like properties
+
+    // Pattern to detect style objects with properties like borderRadius, fontSize, color, etc.
+    const styleObjectPattern = /^\s*(?:[\w]+:\s*(?:'[^']*'|"[^"]*"|\d+|#[0-9A-Fa-f]{3,6}|'transparent'|{\s*[^}]+\s*}),?\s*)+$/gm;
+
+    // Remove lines that look like style definitions
+    const lines = input.split('\n');
+    const filteredLines = lines.filter(line => {
+      const trimmed = line.trim();
+
+      // Skip empty lines
+      if (!trimmed) return true;
+
+      // Check if line looks like a style property definition
+      const isStyleProperty = /^(?:[\w]+:\s*(?:'[^']*'|"[^"]*"|\d+|#[0-9A-Fa-f]{3,6}|'transparent'|{\s*[^}]+\s*}),?\s*)$/.test(trimmed);
+
+      // Check for common style property names
+      const commonStyleProps = [
+        'borderRadius', 'fontSize', 'fontWeight', 'color', 'backgroundColor',
+        'padding', 'margin', 'alignItems', 'justifyContent', 'flexDirection',
+        'borderColor', 'borderWidth', 'paddingVertical', 'paddingHorizontal'
+      ];
+
+      const hasStyleProp = commonStyleProps.some(prop => trimmed.startsWith(prop + ':'));
+
+      // Filter out style property lines
+      return !isStyleProperty && !hasStyleProp;
+    });
+
+    // If we filtered out more than 3 consecutive lines, it was likely a style object
+    const filtered = filteredLines.join('\n');
+
+    // Also remove standalone object literals that contain only style properties
+    return filtered.replace(/\{[\s\S]*?(?:borderRadius|fontSize|fontWeight|color|backgroundColor|padding|margin|alignItems)[\s\S]*?\}/g, (match) => {
+      // Only remove if it's a pure style object (contains multiple style properties)
+      const stylePropsCount = (match.match(/(?:borderRadius|fontSize|fontWeight|color|backgroundColor|padding|margin|alignItems|justifyContent)/g) || []).length;
+      return stylePropsCount >= 3 ? '' : match;
+    });
+  }
+
+  private _wrapPackageJSON(messageId: string, input: string): string {
+    // Detect package.json content and wrap it in artifact tags to prevent it from appearing in chat
+
+    // Calculate ranges of existing artifacts and ACTIONS to avoid double wrapping
+    // We need to check both because incomplete artifacts might expose raw actions
+    const artifactRanges = this._findArtifactRanges(input);
+    const actionRanges = this._findActionRanges(input);
+
+    let buffer = input;
+    let modified = '';
+    let currIndex = 0;
+
+
+    while (currIndex < buffer.length) {
+      // Find start of JSON object
+      const startIndex = buffer.indexOf('{', currIndex);
+
+      if (startIndex === -1) {
+        modified += buffer.slice(currIndex);
+        break;
+      }
+
+      // Add text before the object
+      modified += buffer.slice(currIndex, startIndex);
+
+      // Find the matching closing brace, respecting strings
+      let braceCount = 1;
+      let endIndex = -1;
+      let inString = false;
+      let isEscaped = false;
+
+      for (let i = startIndex + 1; i < buffer.length; i++) {
+        const char = buffer[i];
+
+        if (char === '\n' && inString) {
+          // Safety valve: reset string state on newlines to prevent getting stuck
+          inString = false;
+          isEscaped = false;
+          continue;
+        }
+
+        if (inString) {
+          if (char === '\\' && !isEscaped) {
+            isEscaped = true;
+          } else if (char === '"' && !isEscaped) {
+            inString = false;
+          } else {
+            isEscaped = false;
+          }
+          continue;
+        }
+
+        if (char === '"') {
+          inString = true;
+          continue;
+        }
+
+        if (char === '{') {
+          braceCount++;
+        } else if (char === '}') {
+          braceCount--;
+          if (braceCount === 0) {
+            endIndex = i;
+            break;
+          }
+        }
+      }
+
+      if (endIndex === -1) {
+        // No matching closing brace found (incomplete JSON or streaming)
+        // Just append the rest and stop
+        modified += buffer.slice(startIndex);
+        break;
+      }
+
+      // Check if this block is already inside an artifact OR an action
+      // Checking action ranges specifically guards against the case where an artifact wrapper exists 
+      // but we are deep inside the action content
+      if (this._isInsideArtifact(startIndex, artifactRanges) || this._isInsideAction(startIndex, actionRanges)) {
+        modified += buffer.slice(startIndex, endIndex + 1);
+        currIndex = endIndex + 1;
+        continue;
+      }
+
+      const jsonCandidate = buffer.slice(startIndex, endIndex + 1);
+
+      // Check if this block looks like a package.json
+      // We check for presence of multiple common keys
+      const packetJsonKeysRegex = /"(?:name|version|scripts|dependencies|devDependencies|main)"/g;
+      const matchedKeys = jsonCandidate.match(packetJsonKeysRegex) || [];
+      const uniqueKeys = new Set(matchedKeys);
+
+      if (uniqueKeys.size >= 2) {
+        // It's a package.json! Wrap it.
+        const artifactId = `artifact-${messageId}-${this._artifactCounter++}`;
+        const wrapped = `<boltArtifact id="${artifactId}" title="package.json" type="bundled">
+<boltAction type="file" filePath="/package.json">
+${jsonCandidate}
+</boltAction>
+</boltArtifact>`;
+
+        modified += wrapped;
+      } else {
+        // Not a package.json, just append the text
+        modified += jsonCandidate;
+      }
+
+      // Move index past this block
+      currIndex = endIndex + 1;
+    }
+
+    return modified;
   }
 
   private _wrapDesignHandoffJSON(input: string): string {
@@ -541,7 +780,6 @@ ${content.trim()}
 
     // CRITICAL: Don't wrap if the input already contains artifact tags
     if (input.includes('<boltArtifact') || input.includes('<boltAction')) {
-      logger.debug('[Enhanced] Input already contains artifact tags, skipping wrap');
       return input;
     }
 
@@ -580,7 +818,6 @@ ${content.trim()}
     try {
       JSON.parse(jsonString);
     } catch (e) {
-      logger.debug('[Enhanced] Found design handoff pattern but JSON is invalid');
       return input;
     }
 
@@ -589,13 +826,8 @@ ${content.trim()}
     const hasHandoffMessage = handoffMessagePattern.test(input);
 
     if (!hasHandoffMessage) {
-      logger.debug('[Enhanced] Found design JSON but no handoff message, skipping wrap');
       return input;
     }
-
-    logger.debug('[Enhanced] Wrapping design handoff JSON in artifact tags');
-    logger.debug('[Enhanced] JSON to wrap:', jsonString);
-    logger.debug('[Enhanced] Input before wrapping:', input);
 
     // Replace the raw JSON with wrapped version
     const wrapped = `<boltArtifact id="design-handoff" title="Design Synchronization">
@@ -604,12 +836,7 @@ ${jsonString}
 </boltAction>
 </boltArtifact>`;
 
-    const result = input.replace(jsonString, wrapped);
-    logger.debug('[Enhanced] Input after wrapping (first 500 chars):', result.substring(0, 500));
-    logger.debug('[Enhanced] Input after wrapping (LAST 200 chars):', result.substring(result.length - 200));
-    logger.debug('[Enhanced] Wrapped output includes </boltAction>:', result.includes('</boltAction>'));
-    logger.debug('[Enhanced] Wrapped output includes </boltArtifact>:', result.includes('</boltArtifact>'));
-    return result;
+    return input.replace(jsonString, wrapped);
   }
 
   reset() {

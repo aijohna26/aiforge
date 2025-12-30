@@ -568,6 +568,35 @@ export class ActionRunner {
   }> {
     const trimmedCommand = command.trim();
 
+    // Check if command requires node_modules (npm, npx, pnpm commands after install)
+    const requiresDeps = trimmedCommand.match(/^(npm\s+(run|start|dev|build|test)|npx\s+|pnpm\s+(run|start|dev|build|test))/);
+    const isInstallCommand = trimmedCommand.includes('npm install') || trimmedCommand.includes('pnpm install');
+
+    if (requiresDeps && !isInstallCommand) {
+      try {
+        const webcontainer = await this.#webcontainer;
+        // Check if node_modules exists and has content
+        let needsWait = false;
+        try {
+          const nodeModules = await webcontainer.fs.readdir('node_modules');
+          if (nodeModules.length === 0) {
+            needsWait = true;
+            logger.info('⏳ Waiting for dependencies to install before running:', trimmedCommand);
+          }
+        } catch {
+          needsWait = true;
+          logger.info('⏳ node_modules not found, waiting for dependencies before running:', trimmedCommand);
+        }
+
+        if (needsWait) {
+          await this.#waitForNodeModules();
+          logger.info('✅ Dependencies ready, proceeding with command:', trimmedCommand);
+        }
+      } catch (error) {
+        logger.warn('Could not validate node_modules:', error);
+      }
+    }
+
     // Handle rm commands that might fail due to missing files
     if (trimmedCommand.startsWith('rm ') && !trimmedCommand.includes(' -f')) {
       const rmMatch = trimmedCommand.match(/^rm\s+(.+)$/);
@@ -708,18 +737,81 @@ export class ActionRunner {
       }
     }
 
-    // Handle npm install to add --legacy-peer-deps (critical for React 19 / Expo 54)
+    // Handle npm install to add --legacy-peer-deps and -y (critical for React 19 / Expo 54)
     if (trimmedCommand.startsWith('npm install') || trimmedCommand === 'npm i') {
-      if (!trimmedCommand.includes('--legacy-peer-deps') && !trimmedCommand.includes('--force')) {
+      let modified = false;
+      let modifiedCommand = trimmedCommand;
+
+      // Add --legacy-peer-deps if not present
+      if (!modifiedCommand.includes('--legacy-peer-deps') && !modifiedCommand.includes('--force')) {
+        modifiedCommand = `${modifiedCommand} --legacy-peer-deps`;
+        modified = true;
+      }
+
+      // Add -y flag to avoid interactive prompts
+      if (!modifiedCommand.includes(' -y') && !modifiedCommand.includes('--yes')) {
+        modifiedCommand = `${modifiedCommand} -y`;
+        modified = true;
+      }
+
+      if (modified) {
         return {
           shouldModify: true,
-          modifiedCommand: `${trimmedCommand} --legacy-peer-deps`,
-          warning: 'Added --legacy-peer-deps to handle React 19 peer dependency conflicts',
+          modifiedCommand,
+          warning: 'Added --legacy-peer-deps and -y to handle dependency conflicts and avoid prompts',
         };
       }
     }
 
     return { shouldModify: false };
+  }
+
+  async #waitForNodeModules(maxWaitTime: number = 120000): Promise<void> {
+    const startTime = Date.now();
+    const webcontainer = await this.#webcontainer;
+    let lastCount = 0;
+    let stableCount = 0;
+    let lastCheckTime = Date.now();
+
+    while (Date.now() - startTime < maxWaitTime) {
+      try {
+        const nodeModules = await webcontainer.fs.readdir('node_modules');
+        // Check if node_modules has meaningful content (not just .package-lock.json)
+        const hasPackages = nodeModules.some((item) =>
+          item !== '.package-lock.json' &&
+          item !== '.bin' &&
+          !item.startsWith('.')
+        );
+
+        // Log progress every time we detect new packages
+        if (nodeModules.length !== lastCount) {
+          logger.info(`📦 Installing dependencies... (${nodeModules.length} packages)`);
+          lastCount = nodeModules.length;
+          lastCheckTime = Date.now();
+          stableCount = 0;
+        }
+
+        if (hasPackages && nodeModules.length > 5) {
+          // Check if count has been stable for at least 3 seconds
+          if (Date.now() - lastCheckTime > 3000) {
+            stableCount++;
+            if (stableCount >= 2) {
+              logger.info(`✅ Dependencies installed (${nodeModules.length} packages)`);
+              // Add a small buffer to ensure install is complete
+              await new Promise((resolve) => setTimeout(resolve, 2000));
+              return;
+            }
+          }
+        }
+      } catch {
+        // node_modules doesn't exist yet, continue waiting
+      }
+
+      // Wait 1000ms before checking again
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+
+    logger.warn('⚠️ Timed out waiting for node_modules to be ready after 2 minutes');
   }
 
   #createEnhancedShellError(

@@ -1,4 +1,4 @@
-import type { Message } from 'ai';
+import type { UIMessage as Message } from 'ai';
 import { useCallback, useState } from 'react';
 import { EnhancedStreamingMessageParser } from '~/lib/runtime/enhanced-message-parser';
 import { workbenchStore } from '~/lib/stores/workbench';
@@ -53,10 +53,10 @@ const extractTextContent = (message: Message) => {
   let extracted = '';
 
   // AI SDK 6.0: Handle both old format (content string) and new format (parts array)
-  if (typeof message.content === 'string') {
-    extracted = message.content;
-  } else if (Array.isArray(message.content)) {
-    extracted = (message.content.find((item) => item.type === 'text')?.text as string) || '';
+  if (typeof (message as any).content === 'string') {
+    extracted = (message as any).content;
+  } else if (Array.isArray((message as any).content)) {
+    extracted = ((message as any).content.find((item: any) => item.type === 'text')?.text as string) || '';
   } else if ((message as any).parts) {
     // AI SDK 6.0 new format
     const textParts = (message as any).parts.filter((p: any) => p.type === 'text');
@@ -65,22 +65,11 @@ const extractTextContent = (message: Message) => {
     extracted = '';
   }
 
-  // Debug logging
-  if (extracted.includes('boltArtifact') || extracted.includes('design-sync')) {
-    logger.debug('[useMessageParser] Extracted content contains artifact tags!');
-    logger.debug('[useMessageParser] Content length:', extracted.length);
-    logger.debug('[useMessageParser] Content preview:', extracted.substring(0, 300));
-  } else if (extracted.includes('ExamScan') || extracted.includes('appName')) {
-    logger.debug('[useMessageParser] Extracted content contains design data but NO artifact tags!');
-    logger.debug('[useMessageParser] Content preview:', extracted.substring(0, 300));
-    logger.debug('[useMessageParser] Message structure:', JSON.stringify(message, null, 2).substring(0, 500));
-  }
-
   return extracted;
 };
 
 export function useMessageParser() {
-  const [parsedMessages, setParsedMessages] = useState<{ [key: number]: string }>({});
+  const [parsedMessages, setParsedMessages] = useState<Message[]>([]);
 
   const parseMessages = useCallback((messages: Message[], isLoading: boolean) => {
     let reset = false;
@@ -90,15 +79,40 @@ export function useMessageParser() {
       messageParser.reset();
     }
 
-    for (const [index, message] of messages.entries()) {
+    // Create a new array with parsed content
+    const updated = messages.map((message) => {
       if (message.role === 'assistant' || message.role === 'user') {
-        const newParsedContent = messageParser.parse(message.id, extractTextContent(message));
-        setParsedMessages((prevParsed) => ({
-          ...prevParsed,
-          [index]: !reset ? (prevParsed[index] || '') + newParsedContent : newParsedContent,
-        }));
+        const parsedContent = messageParser.parse(message.id, extractTextContent(message));
+
+        // AI SDK 6.0: Handle both content string and parts array
+        // We need to update the parts array, not just the content field
+        if ((message as any).parts) {
+          const newParts = (message as any).parts.map((part: any) => {
+            if (part.type === 'text') {
+              return {
+                ...part,
+                text: parsedContent,
+              };
+            }
+            return part;
+          });
+
+          return {
+            ...message,
+            parts: newParts,
+          } as Message;
+        }
+
+        // Fallback for old format
+        return {
+          ...message,
+          content: parsedContent,
+        } as Message;
       }
-    }
+      return message;
+    });
+
+    setParsedMessages(updated);
   }, []);
 
   return { parsedMessages, parseMessages };

@@ -1,6 +1,8 @@
 import type { PlanTicket } from '~/lib/stores/plan';
+import { triggerCodingBot } from '~/lib/stores/plan';
 import { classNames } from '~/utils/classNames';
 import { Tooltip } from '~/components/ui/Tooltip';
+import { toast } from 'react-toastify';
 
 interface TicketCardProps {
   ticket: PlanTicket;
@@ -32,6 +34,14 @@ export function TicketCard({ ticket, onDragStart, onClick }: TicketCardProps) {
   const priority = priorityConfig[ticket.priority];
   const type = typeConfig[ticket.type];
 
+  const handleRerunAgent = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    triggerCodingBot(ticket);
+    toast.info('Re-running scaffolding for this ticket...');
+  };
+
+  const showRerunButton = ticket.status === 'in-progress' || ticket.status === 'testing';
+
   return (
     <div
       draggable
@@ -55,6 +65,16 @@ export function TicketCard({ ticket, onDragStart, onClick }: TicketCardProps) {
           </span>
         </div>
         <div className="flex items-center gap-1.5 translate-x-1">
+          {showRerunButton && (
+            <Tooltip content="Rerun Agent">
+              <button
+                onClick={handleRerunAgent}
+                className="flex items-center justify-center w-6 h-6 rounded-lg bg-orange-500/10 dark:bg-purple-500/10 text-orange-600 dark:text-purple-400 border border-orange-500/20 dark:border-purple-500/20 hover:bg-orange-500/20 dark:hover:bg-purple-500/20 transition-all active:scale-95 group/rerun"
+              >
+                <div className="i-ph:arrows-clockwise-bold text-xs group-hover/rerun:rotate-180 transition-transform duration-500" />
+              </button>
+            </Tooltip>
+          )}
           {ticket.parallel && (
             <Tooltip content="Parallel Development Ready">
               <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-emerald-500/10 text-emerald-500 border border-emerald-500/10">

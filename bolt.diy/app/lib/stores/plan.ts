@@ -367,7 +367,7 @@ export function resetPlan() {
 export function generateTicketsFromPRD(wizardData: DesignWizardData): PlanTicket[] {
   const tickets: PlanTicket[] = [];
   const projectKey =
-    wizardData.step7.projectName
+    (wizardData.step7?.projectName || wizardData.step1?.appName || 'Project')
       .toUpperCase()
       .replace(/[^A-Z0-9]/g, '')
       .substring(0, 4) || 'PROJ';
@@ -453,63 +453,68 @@ export function generateTicketsFromPRD(wizardData: DesignWizardData): PlanTicket
   tickets.push(designSystemTicket);
 
   // Tasks: Screen Implementation
-  wizardData.step5.generatedScreens
-    .filter((s) => s.selected)
-    .forEach((screen) => {
-      const screenData = wizardData.step4.screens.find((s) => s.id === screen.screenId);
-      const isAuthScreen = ['signin', 'signup'].includes(screenData?.type || '');
-      const isMainScreen = screenData?.type === 'home';
+  if (wizardData.step5?.generatedScreens) {
+    wizardData.step5.generatedScreens
+      .filter((s) => s.selected)
+      .forEach((screen) => {
+        const screenData = wizardData.step4?.screens?.find((s) => s.id === screen.screenId);
+        const isAuthScreen = ['signin', 'signup'].includes(screenData?.type || '');
+        const isMainScreen = screenData?.type === 'home';
 
-      tickets.push(
-        createTicket(
-          `Build ${screen.name} Screen`,
-          `Implement the ${screen.name} screen matching the design mockup. ${screenData?.purpose || ''}`,
-          'task',
-          isMainScreen ? 'highest' : isAuthScreen ? 'high' : 'medium',
-          [
-            'Screen layout matches design mockup exactly',
-            'All UI components implemented and styled',
-            'Navigation integrated correctly',
-            'Responsive design verified on multiple screen sizes',
-            'Loading and error states handled',
-          ],
-          [screen.screenId],
-          [],
-          [designSystemTicket.id],
-          ['screen', screenData?.type || 'custom'],
-          6,
-          true, // Screens can often be built in parallel
-        ),
-      );
-    });
+        tickets.push(
+          createTicket(
+            `Build ${screen.name} Screen`,
+            `Implement the ${screen.name} screen matching the design mockup. ${screenData?.purpose || ''}`,
+            'task',
+            isMainScreen ? 'highest' : isAuthScreen ? 'high' : 'medium',
+            [
+              'Screen layout matches design mockup exactly',
+              'All UI components implemented and styled',
+              'Navigation integrated correctly',
+              'Responsive design verified on multiple screen sizes',
+              'Loading and error states handled',
+            ],
+            [screen.screenId],
+            [],
+            [designSystemTicket.id],
+            ['screen', screenData?.type || 'custom'],
+            6,
+            true, // Screens can often be built in parallel
+          ),
+        );
+      });
+  }
 
   // Story: Navigation Setup
-  const navTicket = createTicket(
-    'Setup App Navigation',
-    `Configure ${wizardData.step7.codeGenerationSettings.expoRouter ? 'Expo Router' : 'React Navigation'} with all screens and navigation flows.`,
-    'story',
-    'highest',
-    [
-      'Navigation structure implemented',
-      'All screens accessible via navigation',
-      wizardData.step4.navigation.type === 'bottom' ? 'Bottom tab bar implemented' : 'Navigation type configured',
-      'Deep linking configured',
-      'Navigation transitions smooth',
-    ],
-    wizardData.step5.generatedScreens.map((s) => s.screenId),
-    [],
-    [],
-    ['navigation', 'routing'],
-    3,
-  );
-  tickets.push(navTicket);
+  if (wizardData.step4 && wizardData.step5 && wizardData.step7) {
+    const navTicket = createTicket(
+      'Setup App Navigation',
+      `Configure ${wizardData.step7.codeGenerationSettings?.expoRouter ? 'Expo Router' : 'React Navigation'} with all screens and navigation flows.`,
+      'story',
+      'highest',
+      [
+        'Navigation structure implemented',
+        'All screens accessible via navigation',
+        wizardData.step4.navigation?.type === 'bottom' ? 'Bottom tab bar implemented' : 'Navigation type configured',
+        'Deep linking configured',
+        'Navigation transitions smooth',
+      ],
+      wizardData.step5.generatedScreens?.map((s) => s.screenId) || [],
+      [],
+      [],
+      ['navigation', 'routing'],
+      3,
+    );
+    tickets.push(navTicket);
+  }
 
   // Tasks: Data Models
-  wizardData.step6.dataModels.forEach((model) => {
-    tickets.push(
-      createTicket(
-        `Implement ${model.name} Data Model`,
-        model.description,
+  if (wizardData.step6?.dataModels) {
+    wizardData.step6.dataModels.forEach((model) => {
+      tickets.push(
+        createTicket(
+          `Implement ${model.name} Data Model`,
+          model.description,
         'task',
         'medium',
         [
@@ -527,12 +532,14 @@ export function generateTicketsFromPRD(wizardData: DesignWizardData): PlanTicket
         true, // Data models can be built in parallel
       ),
     );
-  });
+    });
+  }
 
   // Tasks: Integrations
-  wizardData.step6.integrations
-    .filter((i) => i.enabled)
-    .forEach((integration) => {
+  if (wizardData.step6?.integrations) {
+    wizardData.step6.integrations
+      .filter((i) => i.enabled)
+      .forEach((integration) => {
       tickets.push(
         createTicket(
           `Setup ${integration.id} Integration`,
@@ -555,9 +562,10 @@ export function generateTicketsFromPRD(wizardData: DesignWizardData): PlanTicket
         ),
       );
     });
+  }
 
   // Story: Testing (if enabled)
-  if (wizardData.step7.codeGenerationSettings.includeTests) {
+  if (wizardData.step7?.codeGenerationSettings?.includeTests) {
     tickets.push(
       createTicket(
         'Write Unit & Integration Tests',

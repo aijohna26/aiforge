@@ -212,50 +212,37 @@ export function BrandStyleFrame() {
   const generateLogoPrompt = useCallback(() => {
     const appName = step1.appName?.trim() || 'your app';
     const category = step1.category?.trim() || 'digital';
-    const description = step1.description?.trim() || 'Create a modern digital experience.';
 
     const selectedPalette = step3.paletteOptions.find((p) => p.id === step3.selectedPaletteId);
     const colorPalette = step3.colorPalette;
-    const paletteLine =
-      selectedPalette && colorPalette
-        ? `Use the ${selectedPalette.name} palette (${selectedPalette.colors
-            .slice(0, 3)
-            .map((c) => `${c.role} ${c.hex}`)
-            .join(', ')}).`
-        : colorPalette
-          ? `Use brand colors like ${colorPalette.primary}, ${colorPalette.secondary}, ${colorPalette.accent}.`
-          : 'Use clean, high-contrast product colors.';
 
-    const selectedType = step3.typographyOptions.find((opt) => opt.id === step3.selectedTypographyId);
-    const typographyLine = selectedType
-      ? `Typography inspiration: ${selectedType.name} pairing (${selectedType.headingFont} + ${selectedType.bodyFont}).`
-      : 'Typography inspiration: geometric sans-serif letterforms.';
+    // Extract 3 main colors with their hex values
+    const colors: string[] = [];
+    if (selectedPalette && selectedPalette.colors.length > 0) {
+      colors.push(...selectedPalette.colors.slice(0, 3).map((c) => c.hex));
+    } else if (colorPalette) {
+      colors.push(colorPalette.primary, colorPalette.secondary, colorPalette.accent);
+    }
 
     const selectedStyle = step3.styleDirections.find((s) => s.id === step3.selectedStyleId);
-    const styleLine = selectedStyle
-      ? `Style direction: ${selectedStyle.name} (${selectedStyle.keywords.slice(0, 4).join(', ')}).`
-      : 'Style direction: clean, contemporary product design.';
+    const styleKeywords = selectedStyle ? selectedStyle.keywords.slice(0, 2).join(', ') : 'modern';
 
     const textDirective =
       step3.logoTextMode === 'with-text'
-        ? `Include the app name "${appName}" as a refined wordmark integrated with the icon.`
-        : 'Focus on a bold symbol-only mark without any text or lettering.';
+        ? `with "${appName}" text integrated`
+        : 'pure icon, no text';
 
-    const baseIntro = `App icon for "${appName}", a ${category.toLowerCase()} app. ${description}`;
-
-    return `${baseIntro} ${paletteLine} ${typographyLine} ${styleLine} ${textDirective} Flat vector style, Apple iOS app icon aesthetic on a rounded square canvas.`;
+    // CRITICAL: Be extremely explicit this is NOT a UI mockup
+    return `A single ${category.toLowerCase()} logo icon, ${textDirective}. Simple symbolic graphic only - NOT a phone screen, NOT an app interface, NOT a mockup. Just one clean icon symbol on gradient background. Color scheme: ${colors.join(', ')}. ${styleKeywords} style. Minimal flat design like Apple iOS home screen icons.`;
   }, [
     step1.appName,
     step1.category,
-    step1.description,
     step3.colorPalette,
     step3.logoTextMode,
     step3.paletteOptions,
     step3.selectedPaletteId,
     step3.selectedStyleId,
-    step3.selectedTypographyId,
     step3.styleDirections,
-    step3.typographyOptions,
   ]);
 
   useEffect(() => {

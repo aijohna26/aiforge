@@ -84,44 +84,47 @@ export function LogoGenerator({ appInfo, onSave, stylePreferences }: LogoGenerat
 
   // Generate smart prompt based on app info
   const generatePrompt = () => {
-    // Use the provided color scheme directly as it now contains detailed hex codes from the wizard
-    const colors = appInfo.colorScheme ? 'Color palette: ' + appInfo.colorScheme : 'professional color palette';
+    // Extract all colors from the color scheme
+    let colors: string[] = [];
+    if (appInfo.colorScheme) {
+      const primaryMatch = appInfo.colorScheme.match(/Primary:\s*(#[0-9A-Fa-f]{6})/i);
+      const secondaryMatch = appInfo.colorScheme.match(/Secondary:\s*(#[0-9A-Fa-f]{6})/i);
+      const accentMatch = appInfo.colorScheme.match(/Accent:\s*(#[0-9A-Fa-f]{6})/i);
 
-    const styleContextParts: string[] = [];
-
-    if (stylePreferences?.typography) {
-      styleContextParts.push(TYPOGRAPHY_DESCRIPTIONS[stylePreferences.typography] || stylePreferences.typography);
+      if (primaryMatch) colors.push(primaryMatch[1]);
+      if (secondaryMatch) colors.push(secondaryMatch[1]);
+      if (accentMatch) colors.push(accentMatch[1]);
     }
 
-    if (stylePreferences?.uiStyle) {
-      styleContextParts.push(
-        UI_STYLE_DESCRIPTIONS[stylePreferences.uiStyle] || `${stylePreferences.uiStyle} interface style`,
-      );
+    // Get typography description
+    let typographyStyle = '';
+    if (stylePreferences?.typography && TYPOGRAPHY_DESCRIPTIONS[stylePreferences.typography]) {
+      typographyStyle = TYPOGRAPHY_DESCRIPTIONS[stylePreferences.typography];
     }
+
+    // Build style hints from preferences
+    const styleHints: string[] = [];
 
     if (stylePreferences?.personality && stylePreferences.personality.length > 0) {
-      styleContextParts.push(`Brand personality: ${stylePreferences.personality.join(', ')} `);
+      styleHints.push(stylePreferences.personality.join(', ').toLowerCase());
     }
 
-    if (stylePreferences?.keywords && stylePreferences.keywords.length > 0) {
-      styleContextParts.push(`Mood board keywords: ${stylePreferences.keywords.join(', ')} `);
+    if (stylePreferences?.components?.corners === 'rounded') {
+      styleHints.push('rounded corners');
     }
 
-    if (stylePreferences?.components) {
-      styleContextParts.push(
-        `Components should use ${stylePreferences.components.corners === 'rounded' ? 'rounded' : 'sharp'} corners` +
-        (stylePreferences.components.gradient ? ' with gradient fills.' : ' with solid fills.'),
-      );
+    if (stylePreferences?.components?.gradient) {
+      styleHints.push('subtle gradient');
     }
 
-    if (stylePreferences?.notes?.trim()) {
-      styleContextParts.push(`Creative direction: ${stylePreferences.notes.trim()} `);
-    }
+    const styleContext = styleHints.length > 0 ? `${styleHints.join(', ')} style. ` : '';
+    const colorInstruction = colors.length > 0 ? `Use colors: ${colors.join(', ')}. ` : '';
+    const typeInstruction = typographyStyle ? `${typographyStyle}. ` : '';
 
-    const styleContext = styleContextParts.join(' ');
+    // Shorten description to key concept
+    const appConcept = appInfo.description.split('.')[0]; // First sentence
 
-    // Build a comprehensive, professional prompt with strong exclusions
-    return `App icon for '${appInfo.name}', a ${appInfo.category.toLowerCase()} app.${appInfo.description}. Target audience: ${appInfo.targetAudience}. Create a clean, professional app icon using either: (1) a simple bold symbol/glyph representing ${appInfo.category.toLowerCase()}, OR (2) stylized typography with app name or initials. ${styleContext} Flat vector style, crisp edges, uniform stroke weight. ${colors}. Square icon with rounded corners, centered composition, Apple iOS 18 app icon aesthetic. High clarity, high contrast, balanced negative space. CRITICAL: TRANSPARENT BACKGROUND - no white background, no colored background, pure transparency (PNG with alpha channel). IMPORTANT: Icon design ONLY - absolutely NO buttons, NO UI elements, NO input fields, NO screens, NO mockups, NO interface components, NO shadows, NO watermarks. Just the icon itself with optional text/wordmark if appropriate on transparent background.Pure app icon design.`;
+    return `Simple app icon for "${appInfo.name}" ${appInfo.category.toLowerCase()} app. ${appConcept}. ${styleContext}${colorInstruction}${typeInstruction}Full-bleed design filling entire square, no nested frames or borders. Clean minimal iOS-style icon.`;
   };
 
   // Set initial prompt when component mounts or appInfo changes

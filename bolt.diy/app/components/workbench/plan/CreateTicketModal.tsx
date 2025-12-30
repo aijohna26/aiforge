@@ -89,7 +89,7 @@ export function CreateTicketModal({ ticket, onClose }: CreateTicketModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-300"
+      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-300"
       onClick={onClose}
     >
       <div

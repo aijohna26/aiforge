@@ -278,20 +278,16 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }:
       // 6. Success!
       setIsGenerating(false);
 
-      // Trigger AI Scaffolding automatically
-      const bootstrapPrompt = generateBootstrapPrompt(finalizedWizardData);
-      chatStore.setKey('bootstrapPrompt', bootstrapPrompt);
-
-      // Re-enable chat immediately
+      // Re-enable chat
       chatStore.setKey('handedOver', false);
       chatStore.setKey('showChat', true);
 
-      toast.success('PRD Generated! AI is now scaffolding your project baseline...');
+      toast.success('PRD Generated! Navigate to Plan view to start building.');
 
-      // Navigate to Code view instead of Plan (since we are bootstrapping)
+      // Navigate to Plan view to show tickets
       if (typeof window !== 'undefined') {
         const { workbenchStore } = await import('~/lib/stores/workbench');
-        workbenchStore.currentView.set('code');
+        workbenchStore.currentView.set('plan');
         workbenchStore.showWorkbench.set(true);
       }
     } catch (error) {

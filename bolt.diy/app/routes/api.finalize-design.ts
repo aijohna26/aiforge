@@ -17,14 +17,15 @@ export async function action({ request }: ActionFunctionArgs) {
       bodyKeys: Object.keys(body),
     });
 
-    const { logoUrl, screens } = body;
+    const { logoUrl, screens = [] } = body;
 
-    if (!screens || screens.length === 0) {
-      console.error('[Finalize Design] No screens provided');
+    // Allow finalization with just a logo (no screens required)
+    if (!logoUrl && screens.length === 0) {
+      console.error('[Finalize Design] No logo or screens provided');
       return json(
         {
           success: false,
-          error: 'No screens provided',
+          error: 'No logo or screens provided',
         },
         { status: 400, headers },
       );
@@ -46,7 +47,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
     console.log('[Finalize Design] Uploading screens...');
 
-    const newScreens = await Promise.all(
+    const newScreens = screens.length > 0 ? await Promise.all(
       screens.map(async (screen: any, index: number) => {
         try {
           console.log(`[Finalize Design] Uploading screen ${index + 1}/${screens.length}:`, screen.name || screen.id);
@@ -77,7 +78,7 @@ export async function action({ request }: ActionFunctionArgs) {
           throw screenError;
         }
       }),
-    );
+    ) : [];
 
     console.log('[Finalize Design] All uploads successful');
 
