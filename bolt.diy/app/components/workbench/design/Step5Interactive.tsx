@@ -137,7 +137,12 @@ export function Step5Interactive() {
             // Fallback position if for some reason placeholder wasn't there
             console.log(`[Inngest] Appending new frame ${screen.id}`);
 
-            const x = CANVAS_CENTER_X + (prev.length + index) * FRAME_SPACING;
+            // Fix: Calculate position relative to the last frame in the list to ensure consistent spacing
+            const lastFrame = updatedFrames[updatedFrames.length - 1];
+            const startX = lastFrame ? (lastFrame.x || CANVAS_CENTER_X) : CANVAS_CENTER_X;
+            // Use consistent 875px spacing (375 device + 500 gap)
+            const x = startX + (DEVICE_WIDTH + FRAME_SPACING);
+
             updatedFrames.push({
               id: screen.id,
               title: screen.title,
@@ -209,17 +214,30 @@ export function Step5Interactive() {
     [wizardSnapshot],
   );
 
-  // Auto-persist theme changes
+  // Auto-persist theme changes (Local -> Store)
   useEffect(() => {
     if (customTheme && customTheme !== wizardData.step5?.customTheme) {
       updateStep5Data({ customTheme });
     }
   }, [customTheme, wizardData.step5?.customTheme]);
 
-  // Auto-restore Studio state from stored frames
+  // Sync Store -> Local (Fix for theme selection not saving)
+  useEffect(() => {
+    if (wizardData.step5?.customTheme && JSON.stringify(wizardData.step5.customTheme) !== JSON.stringify(customTheme)) {
+      setCustomTheme(wizardData.step5.customTheme);
+    }
+  }, [wizardData.step5?.customTheme]);
+
+  // Auto-restore Studio state from stored frames with SELF-HEALING layout
   useEffect(() => {
     if (storedStudioFrames.length > 0 && frames.length === 0) {
-      setFrames(storedStudioFrames);
+      // FIX: Force realignment of all frames to the center Y axis to repair any cached layout drift
+      const alignedFrames = storedStudioFrames.map(frame => ({
+        ...frame,
+        y: CANVAS_CENTER_Y
+      }));
+
+      setFrames(alignedFrames);
 
       if (wizardData.step5?.customTheme) {
         setCustomTheme(wizardData.step5.customTheme);
@@ -229,9 +247,9 @@ export function Step5Interactive() {
       setIsFullscreen(true);
       hasGeneratedRef.current = true;
       snapshotRef.current = storedStudioSnapshot || wizardSnapshot;
-      console.log('[Studio] Restored', storedStudioFrames.length, 'frames from stored session');
+      console.log('[Studio] Restored & Re-aligned', storedStudioFrames.length, 'frames from stored session');
     }
-  }, [storedStudioFrames, frames.length, storedStudioSnapshot, wizardSnapshot, wizardData.step5?.customTheme]);
+  }, [storedStudioFrames, frames.length, storedStudioSnapshot, wizardSnapshot]);
 
   const [isSaving, setIsSaving] = useState(false);
   const isSavingRef = useRef(false); // Added for immediate lock
@@ -445,28 +463,28 @@ export function Step5Interactive() {
         initialBatch.length > 0
           ? initialBatch
           : [
-              {
-                id: 'screen-1',
-                name: 'Welcome',
-                type: 'splash',
-                purpose: 'Introduce the app',
-                keyElements: ['Logo', 'Get Started Button'],
-              },
-              {
-                id: 'screen-2',
-                name: 'Dashboard',
-                type: 'home',
-                purpose: 'Main overview',
-                keyElements: ['Statistics', 'Recent Activity'],
-              },
-              {
-                id: 'screen-3',
-                name: 'Profile',
-                type: 'profile',
-                purpose: 'User settings',
-                keyElements: ['Avatar', 'Logout'],
-              },
-            ];
+            {
+              id: 'screen-1',
+              name: 'Welcome',
+              type: 'splash',
+              purpose: 'Introduce the app',
+              keyElements: ['Logo', 'Get Started Button'],
+            },
+            {
+              id: 'screen-2',
+              name: 'Dashboard',
+              type: 'home',
+              purpose: 'Main overview',
+              keyElements: ['Statistics', 'Recent Activity'],
+            },
+            {
+              id: 'screen-3',
+              name: 'Profile',
+              type: 'profile',
+              purpose: 'User settings',
+              keyElements: ['Avatar', 'Logout'],
+            },
+          ];
 
       /*
        * Calculate starting X to center the entire group of screens
@@ -912,19 +930,35 @@ export function Step5Interactive() {
     [CANVAS_CENTER_X, CANVAS_CENTER_Y, FRAME_SPACING, persistStudioFrames],
   );
 
-  const handleNewFrameFromChat = useCallback(
-    (newFrame: FrameData) => {
-      console.log('[Studio Chat] Adding new frame from chatbox:', newFrame.title);
-      setFrames((prev) => {
-        const updated = [...prev, newFrame];
-        persistStudioFrames(updated);
+  // Handle new or updated frames from the Chat Agent
+  const handleNewFrameFromChat = useCallback((newFrame: FrameData) => {
+    setFrames((prev) => {
+      const existingIndex = prev.findIndex((f) => f.id === newFrame.id);
 
+      // If frame exists, update it
+      if (existingIndex >= 0) {
+        console.log(`[Studio] Updating existing frame ${newFrame.id}`);
+        const updated = [...prev];
+        updated[existingIndex] = {
+          ...updated[existingIndex],
+          ...newFrame,
+          // Preserve position if not explicitly provided in update, or if updating in place
+          x: newFrame.x ?? updated[existingIndex].x,
+          y: newFrame.y ?? updated[existingIndex].y,
+        };
+        persistStudioFrames(updated);
+        toast.success(`✨ ${newFrame.title || 'Screen'} updated!`);
         return updated;
-      });
+      }
+
+      // Otherwise append new frame
+      console.log(`[Studio] Adding new frame from chat: ${newFrame.title}`);
+      const updated = [...prev, newFrame];
+      persistStudioFrames(updated);
       toast.success(`✨ ${newFrame.title || 'New screen'} added to canvas!`);
-    },
-    [persistStudioFrames],
-  );
+      return updated;
+    });
+  }, [persistStudioFrames]);
 
   // Build branding object for chatbox
   const branding = useMemo(() => {
@@ -996,13 +1030,12 @@ export function Step5Interactive() {
               <button
                 onClick={handleSave}
                 disabled={isSaving || !hasUnsavedChanges}
-                className={`group relative px-8 py-2.5 rounded-[14px] text-[11px] font-black uppercase tracking-[0.1em] transition-all active:scale-95 overflow-hidden ${
-                  isSaving
-                    ? 'bg-gradient-to-b from-indigo-600 to-indigo-700 text-white shadow-[0_4px_16px_rgba(79,70,229,0.4)]'
-                    : hasUnsavedChanges
-                      ? 'bg-gradient-to-b from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white shadow-[0_4px_16px_rgba(79,70,229,0.4)]'
-                      : 'bg-white/[0.06] border border-white/[0.08] text-white/40 cursor-default hover:bg-white/[0.06]'
-                }`}
+                className={`group relative px-8 py-2.5 rounded-[14px] text-[11px] font-black uppercase tracking-[0.1em] transition-all active:scale-95 overflow-hidden ${isSaving
+                  ? 'bg-gradient-to-b from-indigo-600 to-indigo-700 text-white shadow-[0_4px_16px_rgba(79,70,229,0.4)]'
+                  : hasUnsavedChanges
+                    ? 'bg-gradient-to-b from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white shadow-[0_4px_16px_rgba(79,70,229,0.4)]'
+                    : 'bg-white/[0.06] border border-white/[0.08] text-white/40 cursor-default hover:bg-white/[0.06]'
+                  }`}
               >
                 <div
                   className={`absolute inset-0 bg-gradient-to-b from-white/10 to-transparent opacity-0 transition-opacity ${hasUnsavedChanges && !isSaving ? 'group-hover:opacity-100' : ''}`}
@@ -1167,6 +1200,10 @@ export function Step5Interactive() {
                 onCleanupLayout={handleCleanupLayout}
                 onDuplicateFrame={handleDuplicateFrame}
                 onNewFrame={handleNewFrameFromChat}
+                onThemeSelect={(theme) => {
+                  console.log('[Step5Interactive] Theme selected:', theme.name);
+                  setCustomTheme(theme);
+                }}
               />
             </motion.div>
           )}

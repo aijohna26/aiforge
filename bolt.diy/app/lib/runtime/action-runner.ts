@@ -1,12 +1,17 @@
 import type { WebContainer } from '@webcontainer/api';
 import { path as nodePath } from '~/utils/path';
 import { atom, map, type MapStore } from 'nanostores';
-import type { ActionAlert, BoltAction, DeployAlert, FileHistory, SupabaseAction, SupabaseAlert } from '~/types/actions';
-import { webPreviewReadyAtom } from '~/lib/stores/qrCodeStore';
+import type { ActionAlert, BoltAction, DeployAlert, FileHistory, SupabaseAction, SupabaseAlert, FileAction } from '~/types/actions';
+import { webPreviewReadyAtom, expoUrlAtom } from '~/lib/stores/qrCodeStore';
+import { workbenchStore } from '~/lib/stores/workbench';
 import { createScopedLogger } from '~/utils/logger';
 import { unreachable } from '~/utils/unreachable';
 import type { ActionCallbackData } from './message-parser';
 import type { BoltShell } from '~/utils/shell';
+import { E2BRunner } from './e2b-runner';
+import { validatePackageJson } from './package-json-validator';
+
+const isE2BEnabled = () => import.meta.env.E2B_ON === 'true';
 
 const logger = createScopedLogger('ActionRunner');
 
@@ -161,7 +166,7 @@ export class ActionRunner {
           break;
         }
         case 'file': {
-          await this.#runFileAction(action);
+          await this.#runFileAction(action, isStreaming);
           break;
         }
         case 'supabase': {
@@ -269,6 +274,71 @@ export class ActionRunner {
       action.content = validationResult.modifiedCommand;
     }
 
+    // E2B INTERCEPT
+    if (isE2BEnabled()) {
+      // CRITICAL: Wait for all pending file writes to complete before running shell commands
+      // This ensures package.json and other files are fully written before npm install runs
+      await E2BRunner.waitForAllOperations();
+      logger.info(`[E2B] Executing command: ${action.content}`);
+      shell.terminal.write(`\r\n[E2B] > ${action.content}\r\n`);
+
+      try {
+        const result = await E2BRunner.executeShell(action.content, {
+          onStdout: (data) => {
+            shell.terminal?.write(data + '\r\n');
+
+            // Strip ANSI codes for regex matching
+            const cleanData = data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+
+            // Detect Expo URL for QR code
+            const expoUrlMatch = cleanData.match(/(exp:\/\/[^ \n]+)|(exp\+[a-z0-9-]+\:\/\/[^ \n]+)/);
+            if (expoUrlMatch) {
+              const url = expoUrlMatch[0];
+              logger.info('[E2B] 📱 Found Expo URL for QR code:', url);
+              expoUrlAtom.set(url);
+              logger.info('[E2B] 📱 QR code URL set successfully');
+            }
+
+            // Log all output for debugging QR code extraction
+            if (cleanData.includes('exp://') || cleanData.includes('exp+')) {
+              logger.info('[E2B] 📱 Expo output detected:', cleanData);
+            }
+          },
+          onStderr: (data) => shell.terminal?.write(data + '\r\n'),
+        });
+
+        // Trigger Preview if it's a start command
+        if (action.content.includes('npm run dev') || action.content.includes('npx expo start') || action.content.includes('npm start')) {
+          // Use the URL returned from the command execution result
+          const previewUrl = result.url || E2BRunner.getPreviewUrl();
+          logger.info('[E2B] ========== PREVIEW URL SETUP ==========');
+          logger.info('[E2B] Command:', action.content);
+          logger.info('[E2B] Result URL:', result.url);
+          logger.info('[E2B] E2BRunner.getPreviewUrl():', E2BRunner.getPreviewUrl());
+          logger.info('[E2B] E2BRunner.sandboxId:', E2BRunner.sandboxId);
+          logger.info('[E2B] E2BRunner.activeUrl:', E2BRunner.activeUrl);
+          logger.info('[E2B] Final preview URL to use:', previewUrl);
+
+          if (previewUrl) {
+            logger.info('[E2B] ✅ Setting Preview URL in workbench:', previewUrl);
+            workbenchStore.setPreviews([{ baseUrl: previewUrl, port: 8081 }]);
+            webPreviewReadyAtom.set(true);
+            logger.info('[E2B] ✅ Preview setup complete');
+          } else {
+            logger.error('[E2B] ❌ No preview URL available! Check sandbox creation');
+          }
+          logger.info('[E2B] ======================================');
+        }
+
+        if (result.exitCode !== 0) {
+          throw new ActionCommandError('E2B Command Failed', result.output);
+        }
+        return; // Success
+      } catch (err: any) {
+        throw new ActionCommandError('E2B Execution Error', err.message || String(err));
+      }
+    }
+
     const resp = await shell.executeCommand(this.runnerId.get(), action.content, () => {
       logger.debug(`[${action.type}]:Aborting Action\n\n`, action);
       action.abort();
@@ -284,6 +354,39 @@ export class ActionRunner {
   async #runStartAction(action: ActionState) {
     if (action.type !== 'start') {
       unreachable('Expected shell action');
+    }
+
+    if (isE2BEnabled()) {
+      logger.info(`[E2B] Starting Application: ${action.content}`);
+      // We treat start action similar to shell for E2B, but we know it's long running.
+      // Since our API currently awaits, we assume it might timeout if it blocks, 
+      // BUT if we are using the "persistent" sandbox, we might just want to ensure it's running.
+      // For now, let's fire it.
+
+      try {
+        const result = await E2BRunner.executeShell(action.content, {});
+        // If valid, set preview
+        const previewUrl = E2BRunner.getPreviewUrl();
+        if (previewUrl) {
+          workbenchStore.setPreviews([{ baseUrl: previewUrl, port: 8081 }]);
+          webPreviewReadyAtom.set(true);
+        }
+        return { exitCode: 0, output: result.output || '' };
+      } catch (e: any) {
+        // If it times out, it might actually be running successfully in the background?
+        // Or we should handle verify connectivity.
+        logger.warn('[E2B] Start action completed (or timed out)', e);
+
+        // Fallback: Assume it started if we have an ID
+        const previewUrl = E2BRunner.getPreviewUrl();
+        if (previewUrl) {
+          workbenchStore.setPreviews([{ baseUrl: previewUrl, port: 8081 }]);
+          webPreviewReadyAtom.set(true);
+          return { exitCode: 0, output: '' };
+        }
+
+        throw e;
+      }
     }
 
     if (!this.#shellTerminal) {
@@ -310,9 +413,41 @@ export class ActionRunner {
     return resp;
   }
 
-  async #runFileAction(action: ActionState) {
+  // Renamed original to avoid conflict if I wrappped it, but actually I'll just leave it be in the code block below
+  // which targets #runShellAction and #runFileAction only.
+
+  async #runFileAction(action: ActionState, isStreaming: boolean = false) {
     if (action.type !== 'file') {
       unreachable('Expected file action');
+    }
+
+    const fileAction = action as FileAction;
+
+    // CRITICAL: Validate and fix package.json BEFORE writing to ANY destination
+    // This ensures browser and E2B see the SAME validated content
+    const validatedContent = validatePackageJson(action.filePath, action.content);
+
+    // E2B INTERCEPT
+    // CRITICAL: Only write to E2B when NOT streaming (i.e., when action is complete)
+    // During streaming, content is partial - writing it would create incomplete files
+    const e2bEnabled = isE2BEnabled();
+    console.log(`[E2B DEBUG] File: ${action.filePath}, isStreaming: ${isStreaming}, E2B enabled: ${e2bEnabled}, E2B_ON env: ${import.meta.env.E2B_ON}, content length: ${validatedContent.length}`);
+    logger.debug(`[E2B] File action: ${action.filePath}, isStreaming: ${isStreaming}, E2B enabled: ${e2bEnabled}, content length: ${validatedContent.length}`);
+
+    if (e2bEnabled && !isStreaming) {
+      logger.info(`[E2B] Writing file (Complete): ${action.filePath}${fileAction.encoding ? ' (binary)' : ''}, size: ${validatedContent.length} bytes`);
+      // CHANGED: Now AWAIT file writes to ensure files exist before shell commands run
+      // This prevents race conditions where npm install runs before package.json is written
+      try {
+        // Use validatedContent instead of action.content
+        await E2BRunner.writeFile(action.filePath, validatedContent, fileAction.encoding);
+        logger.info(`[E2B] ✅ File written successfully: ${action.filePath}`);
+      } catch (err) {
+        logger.error(`[E2B] ❌ Failed to write file ${action.filePath}`, err);
+        throw err; // Propagate error to stop execution
+      }
+    } else if (isE2BEnabled() && isStreaming) {
+      logger.debug(`[E2B] Skipping file write (streaming): ${action.filePath}`);
     }
 
     const webcontainer = await this.#webcontainer;
@@ -333,10 +468,23 @@ export class ActionRunner {
     }
 
     try {
-      await webcontainer.fs.writeFile(relativePath, action.content);
-      logger.debug(`File written ${relativePath}`);
+      if (fileAction.source) {
+        const response = await fetch(fileAction.source!);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch source: ${fileAction.source}`);
+        }
+        const buffer = await response.arrayBuffer();
+        await webcontainer.fs.writeFile(relativePath, new Uint8Array(buffer));
+        logger.debug(`File written from source ${relativePath}`);
+      } else {
+        // CRITICAL: Use validatedContent for WebContainer too!
+        // This ensures browser editor shows the SAME content as E2B sandbox
+        await webcontainer.fs.writeFile(relativePath, validatedContent);
+        logger.debug(`File written ${relativePath}`);
+      }
     } catch (error) {
       logger.error('Failed to write file\n\n', error);
+      throw error;
     }
   }
 
@@ -737,28 +885,41 @@ export class ActionRunner {
       }
     }
 
-    // Handle npm install to add --legacy-peer-deps and -y (critical for React 19 / Expo 54)
+    // Handle npm install to add --legacy-peer-deps and CHECK FOR package.json
     if (trimmedCommand.startsWith('npm install') || trimmedCommand === 'npm i') {
-      let modified = false;
-      let modifiedCommand = trimmedCommand;
-
-      // Add --legacy-peer-deps if not present
-      if (!modifiedCommand.includes('--legacy-peer-deps') && !modifiedCommand.includes('--force')) {
-        modifiedCommand = `${modifiedCommand} --legacy-peer-deps`;
-        modified = true;
+      // If E2B is enabled, we skip the local package.json check because the file
+      // might exist in the sandbox (created via shell) but not locally yet.
+      if (isE2BEnabled()) {
+        return { shouldModify: false };
       }
 
-      // Add -y flag to avoid interactive prompts
-      if (!modifiedCommand.includes(' -y') && !modifiedCommand.includes('--yes')) {
-        modifiedCommand = `${modifiedCommand} -y`;
-        modified = true;
+      // Check if package.json exists to prevent "too early" execution
+      try {
+        const webcontainer = await this.#webcontainer;
+        await webcontainer.fs.readFile('package.json');
+      } catch {
+        // package.json doesn't exist yet
+        throw new ActionCommandError(
+          'Setup Incomplete',
+          'Cannot run "npm install" because package.json does not exist. Please create package.json first.'
+        );
       }
 
-      if (modified) {
+      return {
+        shouldModify: false, // No modification needed for --legacy-peer-deps as .npmrc handles it.
+      };
+    }
+
+    // Handle npx commands to add --yes flag
+    if (trimmedCommand.startsWith('npx ')) {
+      // Check if --yes or -y is already present
+      if (!trimmedCommand.includes('--yes') && !trimmedCommand.includes(' -y')) {
+        // Insert --yes right after npx
+        const modifiedCommand = trimmedCommand.replace(/^npx\s+/, 'npx --yes ');
         return {
           shouldModify: true,
           modifiedCommand,
-          warning: 'Added --legacy-peer-deps and -y to handle dependency conflicts and avoid prompts',
+          warning: 'Added --yes to npx command to avoid interactive prompts',
         };
       }
     }

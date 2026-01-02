@@ -17,11 +17,12 @@ export async function action({ request, context }: ActionFunctionArgs) {
   }
 
   try {
-    const { prompt, branding, userId } = await request.json();
+    const { prompt, branding, userId, referenceHtml } = await request.json();
 
     console.log('[Studio Custom Prompt] Request:', {
       prompt: prompt?.substring(0, 100),
       appName: branding?.appName,
+      hasReferenceHtml: !!referenceHtml,
     });
 
     if (!prompt || !prompt.trim()) {
@@ -50,6 +51,11 @@ export async function action({ request, context }: ActionFunctionArgs) {
 
     // Parse the user's prompt to understand what they want
     const screenRequest = parseUserPrompt(prompt);
+
+    // If we have reference HTML, attach it to the request so the agent can use it
+    if (referenceHtml) {
+      (screenRequest as any).referenceHtml = referenceHtml;
+    }
 
     console.log('[Studio Custom Prompt] Interpreted as:', screenRequest);
 

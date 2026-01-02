@@ -59,6 +59,7 @@ export class WorkbenchStore {
   deployAlert: WritableAtom<DeployAlert | undefined> =
     import.meta.hot?.data.deployAlert ?? atom<DeployAlert | undefined>(undefined);
   modifiedFiles = new Set<string>();
+  focusedActions = new Set<string>();
   artifactIdList: string[] = [];
   #globalExecutionQueue = Promise.resolve();
   constructor() {
@@ -85,6 +86,10 @@ export class WorkbenchStore {
 
   addToExecutionQueue(callback: () => Promise<void>) {
     this.#globalExecutionQueue = this.#globalExecutionQueue.then(() => callback());
+  }
+
+  waitForExecutionQueue() {
+    return this.#globalExecutionQueue;
   }
 
   get previews() {
@@ -175,6 +180,10 @@ export class WorkbenchStore {
 
   setShowWorkbench(show: boolean) {
     this.showWorkbench.set(show);
+  }
+
+  setPreviews(previews: any[]) {
+    this.#previewsStore.previews.set(previews);
   }
 
   setCurrentDocumentContent(newContent: string) {
@@ -575,12 +584,19 @@ export class WorkbenchStore {
        * This is a more complex feature that would be implemented in a future update
        */
 
-      if (this.selectedFile.value !== fullPath) {
-        this.setSelectedFile(fullPath);
-      }
+      // Only focus the file if we haven't already done so for this action
+      // This prevents the UI from "fighting" the user if they switch files during generation
+      // and reduces potential "flashing" from repeated view state updates.
+      if (!this.focusedActions.has(data.actionId)) {
+        if (this.selectedFile.value !== fullPath) {
+          this.setSelectedFile(fullPath);
+        }
 
-      if (this.currentView.value !== 'code') {
-        this.currentView.set('code');
+        if (this.currentView.value !== 'code') {
+          this.currentView.set('code');
+        }
+
+        this.focusedActions.add(data.actionId);
       }
 
       const doc = this.#editorStore.documents.get()[fullPath];
@@ -593,6 +609,9 @@ export class WorkbenchStore {
 
       if (!isStreaming && data.action.content) {
         await this.saveFile(fullPath);
+        // Clear the tracked action when done so revisions (if any share ID? unlikely) work
+        // or just to keep memory tidy-ish, though IDs are unique per message usually.
+        // Actually, better not to clear, as unique IDs are guaranteed.
       }
 
       if (!isStreaming) {

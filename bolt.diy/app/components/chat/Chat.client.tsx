@@ -246,9 +246,24 @@ export const ChatImpl = memo(
         setFakeLoading(false);
         handleError(error, 'chat');
       },
-      onFinish: ({ message }) => {
+      onFinish: async ({ message }) => {
         const usage = (message as any).usage;
         setData(undefined);
+
+        // Wait for all queued actions to complete before showing completion message
+        // This prevents premature "finished working" notifications while files are still being written
+        try {
+          await workbenchStore.waitForExecutionQueue();
+          console.log('[Chat] All queued actions completed');
+
+          // CRITICAL: Also wait for E2B operations to complete
+          // The execution queue resolves when callbacks finish, but E2B HTTP requests may still be in flight
+          const { E2BRunner } = await import('~/lib/runtime/e2b-runner');
+          await E2BRunner.waitForAllOperations();
+          console.log('[Chat] All E2B operations completed, signaling completion');
+        } catch (err) {
+          console.error('[Chat] Error waiting for operations:', err);
+        }
 
         // Handle automated ticket transitions
         const activeTicketId = chatStore.get().activeTicketId;

@@ -129,6 +129,26 @@ export const selectStarterTemplate = async (options: { message: string; model: s
   }
 };
 
+const getLocalTemplateContent = async (
+  localPath: string,
+): Promise<{ name: string; path: string; content: string }[]> => {
+  try {
+    // Fetch from local template API endpoint
+    const response = await fetch(`/api/local-template?path=${encodeURIComponent(localPath)}`);
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const files = (await response.json()) as any;
+
+    return files;
+  } catch (error) {
+    console.error('Error fetching local template contents:', error);
+    throw error;
+  }
+};
+
 const getGitHubRepoContent = async (repoName: string): Promise<{ name: string; path: string; content: string }[]> => {
   try {
     // Instead of directly fetching from GitHub, use our own API endpoint as a proxy
@@ -155,8 +175,20 @@ export async function getTemplates(templateName: string, title?: string) {
     return null;
   }
 
-  const githubRepo = template.githubRepo;
-  const files = await getGitHubRepoContent(githubRepo);
+  // Check if template is local or from GitHub
+  let files;
+
+  if (template.localPath) {
+    files = await getLocalTemplateContent(template.localPath);
+  } else if (template.githubRepo) {
+    files = await getGitHubRepoContent(template.githubRepo);
+  } else {
+    throw new Error('Template must have either localPath or githubRepo');
+  }
+
+  // NOTE: package.json modification now happens server-side in api.local-template.ts
+  // This ensures the --tunnel flags are added before files reach the client
+  // The modification is done in /app/routes/api.local-template.ts for Expo templates
 
   let filteredFiles = files;
 
@@ -204,8 +236,8 @@ export async function getTemplates(templateName: string, title?: string) {
 <boltArtifact id="imported-files" title="${title || 'Create initial files'}" type="bundled">
 ${filesToImport.files
   .map(
-    (file) =>
-      `<boltAction type="file" filePath="${file.path}">
+    (file: any) =>
+      `<boltAction type="file" filePath="${file.path}"${file.encoding ? ` encoding="${file.encoding}"` : ''}>
 ${file.content}
 </boltAction>`,
   )
@@ -255,13 +287,31 @@ If you need to make changes to functionality, create new files instead of modify
 
   userMessage += `
 ---
-template import is done, and you can now use the imported files,
-edit only the files that need to be changed, and you can create new files as needed.
-NO NOT EDIT/WRITE ANY FILES THAT ALREADY EXIST IN THE PROJECT AND DOES NOT NEED TO BE MODIFIED
----
-Now that the Template is imported please continue with my original request
+Template import complete. The files above have been imported from the template.
 
-IMPORTANT: Dont Forget to install the dependencies before running the app by using \`npm install && npm run dev\`
+⚠️ EXPO TEMPLATE - PRE-CONFIGURED FOR E2B:
+The package.json has been automatically configured with required scripts:
+- "dev": "EXPO_NO_TELEMETRY=1 npx expo start --tunnel"
+- "start": "EXPO_NO_TELEMETRY=1 npx expo start --tunnel"
+
+These scripts are ALREADY CORRECT - DO NOT modify or remove them.
+The --tunnel flag is required for E2B sandboxes to work properly.
+
+NEXT STEPS:
+1. Review the template files above - these are now in your project
+2. Modify ONLY the files that need changes based on your requirements
+3. Follow the environment-specific instructions in your system prompt for:
+   - Package.json is already configured correctly
+   - Dependency installation sequence
+   - Project startup commands
+
+DO NOT:
+- Rewrite files that don't need changes
+- Modify the package.json scripts section
+- Skip the dependency installation step
+- Ignore environment-specific requirements
+
+Now continue with my original request, applying any necessary environment-specific modifications.
 `;
 
   return {

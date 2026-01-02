@@ -30,7 +30,11 @@ export class PromptLibrary {
     default: {
       label: 'Default Prompt',
       description: 'An fine tuned prompt for better results and less token usage',
-      get: (options) => getFineTunedPrompt(options.cwd, options.supabase, options.designScheme),
+      get: (options) => {
+        // Check if E2B is enabled via environment variable
+        const isE2B = typeof process !== 'undefined' && process.env?.E2B_ON === 'true';
+        return getFineTunedPrompt(options.cwd, options.supabase, options.designScheme, isE2B);
+      },
     },
     original: {
       label: 'Old Default Prompt',

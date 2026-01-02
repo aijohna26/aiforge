@@ -1229,12 +1229,35 @@ export function Step5Frame() {
                           )}
                         </div>
                       </div>
-                      <div className="flex flex-col items-end gap-3 min-w-[120px]">
+                      <div className="flex flex-col items-end gap-2 min-w-[120px]">
                         {generated ? (
-                          <div className="flex items-center gap-1.5 bg-green-500/10 border border-green-500/20 px-2 py-1 rounded text-[10px] font-bold text-green-400 uppercase tracking-wide">
-                            <div className="i-ph:check-bold text-sm" />
-                            {generated.variations.length} {generated.variations.length === 1 ? 'VARIANT' : 'VARIANTS'}
-                          </div>
+                          <>
+                            <div className="flex items-center gap-1.5 bg-green-500/10 border border-green-500/20 px-2 py-1 rounded text-[10px] font-bold text-green-400 uppercase tracking-wide">
+                              <div className="i-ph:check-bold text-sm" />
+                              {generated.variations.length} {generated.variations.length === 1 ? 'VARIANT' : 'VARIANTS'}
+                            </div>
+                            {generated.analysisStatus === 'analyzing' && (
+                              <div className="flex items-center gap-1.5 bg-blue-500/10 border border-blue-500/20 px-2 py-1 rounded text-[10px] font-bold text-blue-400 uppercase tracking-wide">
+                                <div className="i-ph:circle-notch animate-spin text-sm" />
+                                Analyzing
+                              </div>
+                            )}
+                            {generated.analysisStatus === 'complete' && (
+                              <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded text-[10px] font-bold text-emerald-400 uppercase tracking-wide">
+                                <div className="i-ph:check-circle-bold text-sm" />
+                                Analyzed
+                              </div>
+                            )}
+                            {generated.analysisStatus === 'error' && (
+                              <div
+                                className="flex items-center gap-1.5 bg-red-500/10 border border-red-500/20 px-2 py-1 rounded text-[10px] font-bold text-red-400 uppercase tracking-wide"
+                                title={generated.analysisError || 'Analysis failed'}
+                              >
+                                <div className="i-ph:warning-bold text-sm" />
+                                Analysis Failed
+                              </div>
+                            )}
+                          </>
                         ) : (
                           <div className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Empty</div>
                         )}

@@ -33,12 +33,13 @@ export interface StudioScreenRequest {
   keyElements: string[];
   showLogo?: boolean;
   showBottomNav?: boolean;
+  referenceHtml?: string;
 }
 
 export class StudioAgent {
   private modelId = 'gemini-3-flash-preview';
 
-  constructor(private apiKey?: string) {}
+  constructor(private apiKey?: string) { }
 
   private getModel() {
     console.log('[StudioAgent] Initializing model:', this.modelId);
@@ -286,7 +287,7 @@ VIBE & AESTHETIC GUIDELINES:
       availableTools.searchImages = tool({
         description: 'Search for high-quality stock photos and images from Pexels to use in the design.',
         parameters: z.object({
-          query: z.string().describe('The search query for images (e.g., "modern kitchen", "abstract background")'),
+          query: z.string().describe('The search query for images (e.g., "modern kitchen vertical", "abstract background", "potted plant centered"). Add "vertical" or "centered" to improve results.'),
           count: z.number().optional().default(5).describe('Number of images to return'),
         }),
         execute: async ({ query, count }) => {
@@ -420,7 +421,17 @@ IMPORTANT: Ensure the generated image does NOT contain any device frames, phones
       : '';
 
     const navigationDirective = branding.footer
-      ? `\n🧭 BRAND NAVIGATION: <img src="${branding.footer}" alt="Navigation Bar" class="w-full h-auto object-cover" crossorigin="anonymous" />\nCRITICAL: For the bottom navigation bar/footer, use this EXACT image tag. Place it at the absolute bottom of the screen if showBottomNav is true. Ensure it spans the full width.`
+      ? `\n🧭 BRAND NAVIGATION STYLE: The user has provided a reference footer (URL: ${branding.footer}). DO NOT use this image directly. Instead, recreate a sleek, professional bottom navigation bar using HTML <div> elements, Tailwind CSS, and Lucide icons. It must match the design system and be fully functional code.`
+      : '';
+
+    // NEW: Handle reference HTML for editing
+    const referenceContext = screen.referenceHtml
+      ? `\n📝 REFERENCE CODE (CURRENT STATE):
+The user wants to EDIT/MODIFY this existing screen. You must start with this code and apply the requested changes.
+--- BEGIN EXISTING HTML ---
+${screen.referenceHtml}
+--- END EXISTING HTML ---
+IMPORTANT: Preserve the structure and valid parts of the existing code unless the user explicitly asks to change them. Apply the user's modifications to this base.`
       : '';
 
     const colorContext = branding.colorPalette
@@ -444,6 +455,7 @@ The following hex codes are what the semantic variables currently represent in t
 Generate a ${screen.type} screen for "${branding.appName}".
 ${branding.description ? `\nApp Description: ${branding.description}` : ''}
 ${audienceContext}
+${referenceContext}
 
 📱 SCREEN DETAILS:
 - Name: ${screen.name}
@@ -461,7 +473,7 @@ ${navigationDirective}
 3. **Dynamic Compatibility**: Your code must work perfectly even if the colors behind the variables change.
 4. **Target Audience Adherence**: Design MUST be appropriate for ${branding.targetAudience || 'general users'}.
 5. **Logo Preference**: ${screen.showLogo === false ? '🚨 HIDDEN: DO NOT include any logo on this screen.' : branding.logo ? 'Use the EXACT logo image tag provided above.' : 'Create a simple text-based logo placeholder.'}
-6. **Navigation Preference**: ${screen.showBottomNav === false ? '🚨 HIDDEN: DO NOT include a bottom navigation bar on this screen.' : branding.footer ? 'Use the EXACT navigation image tag provided above at the bottom of the screen.' : 'Create a sleek Tailwind-based bottom navigation bar.'}
+6. **Navigation Preference**: ${screen.showBottomNav === false ? '🚨 HIDDEN: DO NOT include a bottom navigation bar on this screen.' : 'Create a polished Tailwind-based bottom navigation bar using icons. DO NOT use images for navigation.'}
 7. **Brand Identity**: Reflect "${branding.appName}" while using the semantic theme system.
 
 Create a high-fidelity, production-ready mobile screen that perfectly matches ALL the requirements above.
@@ -485,6 +497,7 @@ DO NOT use rgba() or hsla(). Use Tailwind opacity instead (e.g., bg-primary/20).
     return `${imageType} for ${branding.appName} mobile app. ${description}.
 Style: ${styleContext}, ${personality}. ${colorContext}.
 Mobile-optimized, high quality, professional design.
+COMPOSITION: Subject must be CENTERED in the frame. Minimalist background.
 IMPORTANT: Do NOT include any phone frames, device mockups, or smartphone bezels. Generate ONLY the content/artwork itself without any device containers.`;
   }
 

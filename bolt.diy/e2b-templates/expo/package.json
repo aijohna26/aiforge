@@ -1,0 +1,17 @@
+{
+  "name": "expo",
+  "version": "1.0.0",
+  "description": "This directory contains the configuration for a custom E2B template designed for Expo projects.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "e2b": "^2.9.0",
+    "tsx": "^4.21.0"
+  }
+}

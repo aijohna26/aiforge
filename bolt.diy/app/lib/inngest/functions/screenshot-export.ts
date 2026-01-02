@@ -68,8 +68,8 @@ export const screenshotExport = inngest.createFunction(
       }
     });
 
-    // Step 2: Launch browser
-    const browser = await step.run('launch-browser', async () => {
+    // Step 2: Process Export (Launch + Render + Export)
+    const exportData = await step.run('process-export', async () => {
       console.log('[Inngest] Launching browser...');
 
       const exePath =
@@ -77,36 +77,40 @@ export const screenshotExport = inngest.createFunction(
           ? 'node_modules/chromium/lib/chromium/chrome-mac/Chromium.app/Contents/MacOS/Chromium'
           : chromium.path;
 
-      const browserInstance = await puppeteer.launch({
-        executablePath: exePath,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-web-security',
-          '--font-render-hinting=none',
-          '--force-device-scale-factor=2',
-        ],
-        headless: true,
-      });
-
-      await updateJobProgress({ jobId, progress: 30 });
-
-      if (userId) {
-        await channel.publish(`user:${userId}`, {
-          type: 'export.browser_launched',
-          jobId,
-          timestamp: new Date().toISOString(),
+      let browser;
+      try {
+        browser = await puppeteer.launch({
+          executablePath: exePath,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-web-security',
+            '--font-render-hinting=none',
+            '--force-device-scale-factor=2',
+          ],
+          headless: true,
+        });
+      } catch (err) {
+        console.warn('Failed to launch with custom path, trying default chromium', err);
+        browser = await puppeteer.launch({
+          channel: 'chrome',
+          args: ['--no-sandbox'],
+          headless: true,
         });
       }
 
-      return browserInstance;
-    });
+      try {
+        await updateJobProgress({ jobId, progress: 30 });
 
-    try {
-      // Step 3: Render HTML
-      const exportData = await step.run('render-and-export', async () => {
+        if (userId) {
+          await channel.publish(`user:${userId}`, {
+            type: 'export.browser_launched',
+            jobId,
+            timestamp: new Date().toISOString(),
+          });
+        }
+
         console.log('[Inngest] Rendering HTML...');
-
         const page = await browser.newPage();
 
         // Set viewport
@@ -125,6 +129,9 @@ export const screenshotExport = inngest.createFunction(
           ? html.replace('<head>', `<head><base href="${baseUrl}/">`)
           : `<!DOCTYPE html><html><head><base href="${baseUrl}/"></head><body>${html}</body></html>`;
 
+        // Strip existing tailwind scripts to prevent duplicates
+        enrichedHtml = enrichedHtml.replace(/<script src=".*tailwindcss.*"><\/script>/g, '');
+
         // Inject Tailwind and cleanup styles
         enrichedHtml = enrichedHtml.replace(
           '</head>',
@@ -133,8 +140,6 @@ export const screenshotExport = inngest.createFunction(
             <style>
               html, body { background: transparent !important; margin: 0; padding: 0; }
               * { transition: none !important; animation-duration: 0s !important; }
-              .react-transform-component, .react-transform-element { transform: none !important; }
-              [style*="transform"] { transform: none !important; }
               #screenshot-area {
                 position: absolute !important;
                 top: 0 !important;
@@ -146,7 +151,6 @@ export const screenshotExport = inngest.createFunction(
               }
               .screenshot-exclude { display: none !important; }
               [data-screen-frame="true"] {
-                transform: none !important;
                 box-shadow: 0 40px 100px rgba(0,0,0,0.5) !important;
                 border-radius: 32px !important;
                 overflow: hidden !important;
@@ -160,6 +164,43 @@ export const screenshotExport = inngest.createFunction(
 
         // Wait for Tailwind to process
         await new Promise((resolve) => setTimeout(resolve, 5000));
+
+        let finalClip = clip;
+
+        // Dynamic Clip Calculation: If no clip provided, calculate based on rendered content
+        if (!finalClip && format !== 'pdf') {
+          console.log('[Inngest] Calculating clip from rendered content...');
+          const boundingBox = await page.evaluate(() => {
+            const frames = Array.from(document.querySelectorAll('[data-screen-frame="true"]'));
+            if (frames.length === 0) return null;
+
+            let minX = Infinity;
+            let minY = Infinity;
+            let maxX = -Infinity;
+            let maxY = -Infinity;
+
+            frames.forEach((el) => {
+              const rect = el.getBoundingClientRect();
+              minX = Math.min(minX, rect.left);
+              minY = Math.min(minY, rect.top);
+              maxX = Math.max(maxX, rect.right);
+              maxY = Math.max(maxY, rect.bottom);
+            });
+
+            const SHADOW_PADDING = 100;
+            return {
+              x: Math.max(0, minX - SHADOW_PADDING),
+              y: Math.max(0, minY - SHADOW_PADDING),
+              width: maxX - minX + SHADOW_PADDING * 2,
+              height: maxY - minY + SHADOW_PADDING * 2,
+            };
+          });
+
+          if (boundingBox) {
+            finalClip = boundingBox;
+            console.log('[Inngest] Calculated dynamic clip:', finalClip);
+          }
+        }
 
         await updateJobProgress({ jobId, progress: 70 });
 
@@ -192,52 +233,49 @@ export const screenshotExport = inngest.createFunction(
 
           const screenshot = await page.screenshot({
             type: 'png',
-            clip,
-            fullPage: !clip,
+            clip: finalClip,
+            fullPage: !finalClip,
             omitBackground: true,
           });
           data = Buffer.from(screenshot).toString('base64');
           contentType = 'image/png';
         }
 
-        await page.close();
-
         return {
           data: `data:${contentType};base64,${data}`,
           format,
         };
-      });
+      } finally {
+        if (browser) await browser.close();
+      }
+    });
 
-      // Step 4: Mark as completed
-      await step.run('complete-export', async () => {
-        await updateJobStatus({
-          jobId,
-          status: 'completed',
-          progress: 100,
-          outputData: exportData,
-        });
-
-        if (userId) {
-          await channel.publish(`user:${userId}`, {
-            type: 'export.complete',
-            jobId,
-            format,
-            timestamp: new Date().toISOString(),
-          });
-        }
-
-        console.log('[Inngest] Screenshot export completed:', jobId);
-      });
-
-      return {
-        success: true,
+    // Step 3: Mark as completed
+    await step.run('complete-export', async () => {
+      await updateJobStatus({
         jobId,
-        format,
-      };
-    } finally {
-      // Always close browser
-      await browser.close();
-      console.log('[Inngest] Browser closed');
-    }
+        status: 'completed',
+        progress: 100,
+        outputData: exportData,
+      });
+
+      if (userId) {
+        await channel.publish(`user:${userId}`, {
+          type: 'export.complete',
+          jobId,
+          format,
+          timestamp: new Date().toISOString(),
+          outputData: exportData, // Include output data so client can download it
+        });
+      }
+
+      console.log('[Inngest] Screenshot export completed:', jobId);
+    });
+
+    return {
+      success: true,
+      jobId,
+      format,
+    };
   },
 );

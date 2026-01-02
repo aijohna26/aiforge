@@ -27,7 +27,7 @@ export async function searchPexels(query: string, perPage: number = 5): Promise<
 
   try {
     const response = await fetch(
-      `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${perPage}`,
+      `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${perPage}&orientation=portrait`,
       {
         headers: {
           Authorization: apiKey,

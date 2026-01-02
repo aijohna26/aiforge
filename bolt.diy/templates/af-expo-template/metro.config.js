@@ -18,6 +18,22 @@ config.resolver.extraNodeModules = {
 // Optimize for web platform
 config.resolver.sourceExts = [...config.resolver.sourceExts, 'mjs', 'cjs'];
 
+// CRITICAL: Add asset extensions for images and other media files
+// This fixes "unsupported file type: undefined" errors for images
+config.resolver.assetExts = [
+  ...config.resolver.assetExts,
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'svg',
+  'ttf',
+  'otf',
+  'woff',
+  'woff2',
+];
+
 // Platform-specific extensions
 config.resolver.platforms = ['web', 'ios', 'android'];
 

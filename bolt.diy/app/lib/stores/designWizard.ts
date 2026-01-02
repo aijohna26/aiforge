@@ -198,6 +198,9 @@ export interface Step5Data {
       creditsUsed: number;
       createdAt: string;
     }>;
+    analysis?: import('./services/screen-analyzer').ScreenAnalysis;
+    analysisStatus?: 'pending' | 'analyzing' | 'complete' | 'error';
+    analysisError?: string;
   }>;
   totalCreditsUsed: number;
   studioFrames: Array<{
@@ -841,4 +844,97 @@ export function setStudioActive(isActive: boolean) {
     ...current,
     step5: { ...current.step5, isStudioActive: isActive },
   });
+}
+
+/**
+ * Analyzes all selected screens using vision API
+ */
+export async function analyzeScreens(): Promise<boolean> {
+  const { analyzeMultipleScreens } = await import('~/lib/services/screen-analyzer');
+  const current = designWizardStore.get();
+  const { step5, step1, step2 } = current;
+
+  // Get selected screens that have URLs
+  const screensToAnalyze = step5.generatedScreens.filter(
+    (screen) => screen.selected && screen.url && !screen.analysis
+  );
+
+  if (screensToAnalyze.length === 0) {
+    console.log('[DesignWizard] No screens to analyze');
+    return true;
+  }
+
+  try {
+    console.log(`[DesignWizard] Analyzing ${screensToAnalyze.length} screens`);
+
+    // Mark all screens as analyzing
+    const updatedScreens = step5.generatedScreens.map((screen) => {
+      if (screen.selected && screen.url && !screen.analysis) {
+        return { ...screen, analysisStatus: 'analyzing' as const };
+      }
+      return screen;
+    });
+
+    designWizardStore.set({
+      ...current,
+      step5: { ...step5, generatedScreens: updatedScreens },
+    });
+
+    // Analyze screens with additional metadata
+    const analysisMap = await analyzeMultipleScreens(screensToAnalyze, {
+      appCategory: step1.category,
+      style: step2.uiStyle,
+    });
+
+    // Update screens with analysis results
+    const finalScreens = step5.generatedScreens.map((screen) => {
+      const analysis = analysisMap.get(screen.screenId);
+
+      if (analysis) {
+        return {
+          ...screen,
+          analysis,
+          analysisStatus: 'complete' as const,
+          analysisError: undefined,
+        };
+      } else if (screen.analysisStatus === 'analyzing') {
+        return {
+          ...screen,
+          analysisStatus: 'error' as const,
+          analysisError: 'Analysis failed',
+        };
+      }
+
+      return screen;
+    });
+
+    designWizardStore.set({
+      ...current,
+      step5: { ...step5, generatedScreens: finalScreens },
+    });
+
+    console.log(`[DesignWizard] Successfully analyzed ${analysisMap.size} screens`);
+    return true;
+  } catch (error) {
+    console.error('[DesignWizard] Screen analysis failed:', error);
+
+    // Mark all analyzing screens as error
+    const errorScreens = step5.generatedScreens.map((screen) => {
+      if (screen.analysisStatus === 'analyzing') {
+        return {
+          ...screen,
+          analysisStatus: 'error' as const,
+          analysisError: error instanceof Error ? error.message : 'Analysis failed',
+        };
+      }
+      return screen;
+    });
+
+    designWizardStore.set({
+      ...current,
+      step5: { ...step5, generatedScreens: errorScreens },
+    });
+
+    return false;
+  }
 }

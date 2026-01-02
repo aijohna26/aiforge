@@ -18,6 +18,8 @@ interface DeviceFrameProps {
   scale?: number;
   onDownload?: (id: string) => Promise<void> | void;
   onDuplicate?: (id: string) => Promise<void> | void;
+  onEditFrame?: (id: string) => void;
+  isEditing?: boolean;
 }
 
 export const DeviceFrame: React.FC<DeviceFrameProps> = ({
@@ -33,11 +35,14 @@ export const DeviceFrame: React.FC<DeviceFrameProps> = ({
   scale = 1,
   onDownload,
   onDuplicate,
+  onEditFrame,
+  isEditing = false,
 }) => {
   const contentRef = useRef<HTMLDivElement>(null);
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
   const [isScrolling, setIsScrolling] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   // Always use the latest defaultX/defaultY values - this ensures positions update correctly
   const [position, setPosition] = useState({ x: defaultX, y: defaultY });
@@ -174,6 +179,12 @@ export const DeviceFrame: React.FC<DeviceFrameProps> = ({
       dragHandleClassName="handle"
       className={`group ${isActive ? 'z-50' : 'z-10'}`}
       data-screen-frame="true"
+      style={isScreenshotMode ? {
+        position: 'absolute',
+        left: position.x,
+        top: position.y,
+        transform: 'none !important',
+      } : undefined}
     >
       {/* PRO Floating Frame Header */}
       {!isScreenshotMode && (
@@ -192,6 +203,22 @@ export const DeviceFrame: React.FC<DeviceFrameProps> = ({
           </div>
 
           <div className="flex items-center gap-0.5 px-1">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+
+                if (!onEditFrame) {
+                  toast.warning('Edit not available');
+                  return;
+                }
+
+                onEditFrame(id);
+              }}
+              className="size-8 flex items-center justify-center rounded-full bg-white/[0.06] text-white/50 hover:bg-[#9333EA]/20 hover:text-[#9333EA] transition-all"
+              title="Edit Device Frame Style"
+            >
+              <div className="i-ph:paint-brush-bold text-xs" />
+            </button>
             <button
               onClick={async (e) => {
                 e.stopPropagation();
@@ -222,21 +249,25 @@ export const DeviceFrame: React.FC<DeviceFrameProps> = ({
                   return;
                 }
 
+                setIsExporting(true);
                 try {
-                  toast.loading('Preparing export...', { id: `download-${id}` });
                   await onDownload(id);
-                  toast.success('PNG downloaded', { id: `download-${id}` });
                 } catch (error) {
                   console.error('[DeviceFrame] Download failed', error);
-                  toast.error(error instanceof Error ? error.message : 'Failed to download screen', {
-                    id: `download-${id}`,
-                  });
+                  toast.error(error instanceof Error ? error.message : 'Failed to download screen');
+                } finally {
+                  setIsExporting(false);
                 }
               }}
-              className="size-8 flex items-center justify-center rounded-full bg-white/[0.06] text-white/50 hover:bg-[#9333EA]/20 hover:text-[#9333EA] transition-all"
-              title="Export"
+              disabled={isExporting}
+              className="size-8 flex items-center justify-center rounded-full bg-white/[0.06] text-white/50 hover:bg-[#9333EA]/20 hover:text-[#9333EA] transition-all disabled:opacity-30 disabled:pointer-events-none"
+              title="Take Screenshot"
             >
-              <div className="i-ph:download-simple-bold text-xs" />
+              {isExporting ? (
+                <div className="i-ph:circle-notch-bold text-xs animate-spin text-[#9333EA]" />
+              ) : (
+                <div className="i-ph:camera-bold text-xs" />
+              )}
             </button>
             <button
               onClick={(e) => {
@@ -323,8 +354,8 @@ export const DeviceFrame: React.FC<DeviceFrameProps> = ({
 
         {/* Screen Content Area */}
         <div className="absolute inset-[3px] rounded-[39px] overflow-hidden bg-background">
-          {/* Skeleton Loader - Shows when no HTML content */}
-          {!html && (
+          {/* Skeleton Loader - Shows when no HTML content or when editing */}
+          {(!html || isEditing) && (
             <div className="absolute inset-0 z-50 bg-[#0a0a0a] flex flex-col p-6 gap-4 animate-pulse">
               {/* Header Skeleton */}
               <div className="flex items-center gap-3">

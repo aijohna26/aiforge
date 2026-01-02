@@ -1,7 +1,7 @@
 import { LLMManager } from '~/lib/modules/llm/manager';
 import type { Template } from '~/types/template';
 
-export const WORK_DIR_NAME = 'project';
+export const WORK_DIR_NAME = 'user';
 export const WORK_DIR = `/home/${WORK_DIR_NAME}`;
 export const MODIFICATIONS_TAG_NAME = 'bolt_file_modifications';
 export const MODEL_REGEX = /^\[Model: (.*?)\]\n\n/;
@@ -36,7 +36,7 @@ export const STARTER_TEMPLATES: Template[] = [
     name: 'Expo App',
     label: 'Expo App',
     description: 'Expo starter template for building cross-platform mobile apps',
-    githubRepo: 'xKevIsDev/af-expo-template',
+    localPath: 'templates/af-expo-template',
     tags: ['mobile', 'expo', 'mobile-app', 'android', 'iphone'],
     icon: 'i-bolt:expo',
   },

@@ -26,6 +26,11 @@ export interface PlanTicket {
   orderIndex: number;
   createdAt: string;
   updatedAt: string;
+  metadata?: {
+    screenAnalysis?: import('./services/screen-analyzer').ScreenAnalysis;
+    screenUrl?: string;
+    [key: string]: any;
+  };
 }
 
 export interface PlanState {
@@ -387,6 +392,7 @@ export function generateTicketsFromPRD(wizardData: DesignWizardData): PlanTicket
     labels: string[] = [],
     estimatedHours?: number,
     parallel: boolean = false,
+    metadata?: PlanTicket['metadata'],
   ): PlanTicket => ({
     id: `${projectKey}-${ticketNumber}`,
     key: `${projectKey}-${ticketNumber++}`,
@@ -405,6 +411,7 @@ export function generateTicketsFromPRD(wizardData: DesignWizardData): PlanTicket
     orderIndex: orderIndex++,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    metadata,
   });
 
   // Epic: Project Setup
@@ -460,11 +467,58 @@ export function generateTicketsFromPRD(wizardData: DesignWizardData): PlanTicket
         const screenData = wizardData.step4?.screens?.find((s) => s.id === screen.screenId);
         const isAuthScreen = ['signin', 'signup'].includes(screenData?.type || '');
         const isMainScreen = screenData?.type === 'home';
+        const analysis = screen.analysis;
+
+        // Build enhanced description from analysis
+        let description = `Implement the ${screen.name} screen matching the design mockup.\n\n`;
+
+        if (screenData?.purpose) {
+          description += `**Purpose**: ${screenData.purpose}\n\n`;
+        }
+
+        if (analysis) {
+          description += `## Visual Layout\n`;
+          if (analysis.visualLayout.components.length > 0) {
+            description += `**Components**: ${analysis.visualLayout.components.map((c) => c.name).join(', ')}\n`;
+          }
+          if (analysis.visualLayout.spacing) {
+            description += `**Layout**: ${analysis.visualLayout.spacing}\n`;
+          }
+          description += `\n`;
+
+          if (analysis.interactions.buttons.length > 0 || analysis.interactions.forms.length > 0) {
+            description += `## Interactions\n`;
+            if (analysis.interactions.buttons.length > 0) {
+              description += `**Buttons**: ${analysis.interactions.buttons.map((b) => b.label).join(', ')}\n`;
+            }
+            if (analysis.interactions.forms.length > 0) {
+              description += `**Forms**: ${analysis.interactions.forms.map((f) => f.name).join(', ')}\n`;
+            }
+            description += `\n`;
+          }
+
+          if (analysis.dataRequirements.displayedData.length > 0) {
+            description += `## Data Requirements\n`;
+            analysis.dataRequirements.displayedData.forEach((field) => {
+              description += `- **${field.name}** (${field.type}): ${field.description}\n`;
+            });
+            description += `\n`;
+          }
+
+          if (analysis.accessibility.labels.length > 0) {
+            description += `## Accessibility\n`;
+            analysis.accessibility.labels.forEach((label) => {
+              description += `- ${label}\n`;
+            });
+          }
+        } else {
+          description += `${screenData?.purpose || ''}`;
+        }
 
         tickets.push(
           createTicket(
             `Build ${screen.name} Screen`,
-            `Implement the ${screen.name} screen matching the design mockup. ${screenData?.purpose || ''}`,
+            description,
             'task',
             isMainScreen ? 'highest' : isAuthScreen ? 'high' : 'medium',
             [
@@ -480,6 +534,10 @@ export function generateTicketsFromPRD(wizardData: DesignWizardData): PlanTicket
             ['screen', screenData?.type || 'custom'],
             6,
             true, // Screens can often be built in parallel
+            {
+              screenAnalysis: analysis,
+              screenUrl: screen.url || undefined,
+            },
           ),
         );
       });
@@ -657,7 +715,7 @@ function generateCodingPrompt(ticket: PlanTicket): string {
     lowest: '⚪',
   };
 
-  return `
+  let prompt = `
 # ${priorityEmoji[ticket.priority]} ${ticket.key}: ${ticket.title}
 
 **Type**: ${ticket.type.toUpperCase()}
@@ -668,6 +726,59 @@ ${ticket.description}
 
 ## Acceptance Criteria
 ${ticket.acceptanceCriteria.map((c, i) => `${i + 1}. ✅ ${c}`).join('\n')}
+
+${
+  ticket.metadata?.screenAnalysis && ticket.metadata?.screenUrl
+    ? `
+## 🎨 SCREEN DESIGN ANALYSIS
+
+**Reference Design**: ${ticket.metadata.screenUrl}
+
+### Component Structure
+${ticket.metadata.screenAnalysis.visualLayout.components
+  .map((comp) => `- **${comp.name}** (${comp.type}): ${comp.description}`)
+  .join('\n')}
+
+${
+  ticket.metadata.screenAnalysis.interactions.buttons.length > 0
+    ? `
+### Required Interactions
+${ticket.metadata.screenAnalysis.interactions.buttons.map((btn) => `- Button "${btn.label}": ${btn.action}`).join('\n')}
+`
+    : ''
+}
+
+${
+  ticket.metadata.screenAnalysis.dataRequirements.displayedData.length > 0
+    ? `
+### Data Schema
+${ticket.metadata.screenAnalysis.dataRequirements.displayedData
+  .map((field) => `- **${field.name}** (${field.type}): ${field.description}`)
+  .join('\n')}
+`
+    : ''
+}
+
+${
+  ticket.metadata.screenAnalysis.accessibility.labels.length > 0
+    ? `
+### Accessibility Requirements
+${ticket.metadata.screenAnalysis.accessibility.labels.map((label) => `- ${label}`).join('\n')}
+`
+    : ''
+}
+
+${
+  ticket.metadata.screenAnalysis.implementationNotes
+    ? `
+### Implementation Notes
+${ticket.metadata.screenAnalysis.implementationNotes}
+`
+    : ''
+}
+`
+    : ''
+}
 
 ${
   ticket.relatedScreens.length > 0
@@ -701,7 +812,9 @@ ${ticket.labels.map((l) => `\`${l}\``).join(', ')}
 ---
 
 Please implement this ${ticket.type} following best practices, ensuring all acceptance criteria are met. Write clean, maintainable code with proper error handling and TypeScript types.
-  `.trim();
+`;
+
+  return prompt.trim();
 }
 
 export function getTicketsByStatus(status: TicketStatus): PlanTicket[] {

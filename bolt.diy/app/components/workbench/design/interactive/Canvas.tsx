@@ -27,6 +27,7 @@ interface CanvasProps {
   onCleanupLayout?: () => void;
   onDuplicateFrame?: (frameId: string) => void;
   onNewFrame?: (frame: FrameData) => void; // Callback for adding new frames from chatbox
+  onThemeSelect?: (theme: ThemeType) => void;
 }
 
 const FRAME_SCREENSHOT_WIDTH = 500;
@@ -43,6 +44,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   onCleanupLayout,
   onDuplicateFrame,
   onNewFrame,
+  onThemeSelect,
 }) => {
   const [activeFrameId, setActiveFrameId] = useState<string | null>(null);
   const [selectedThemeId, setSelectedThemeId] = useState<string>(customTheme?.id || 'ocean-breeze');
@@ -50,17 +52,16 @@ export const Canvas: React.FC<CanvasProps> = ({
   const [zoom, setZoom] = useState(80);
   const [isPanningMode, setIsPanningMode] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [isHidingForScreenshot, setIsHidingForScreenshot] = useState(false);
+  const [isScreenshotMode, setIsScreenshotMode] = useState(false);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [prompt, setPrompt] = useState('');
   const [isChatGenerating, setIsChatGenerating] = useState(false);
   const transformRef = useRef<ReactZoomPanPinchRef>(null);
   const [hasAutoFocused, setHasAutoFocused] = useState(false);
+  const [editingFrameId, setEditingFrameId] = useState<string | null>(null);
 
-  const isScreenshotMode =
-    isHidingForScreenshot ||
-    (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('screenshot'));
+
 
   const EFFECTIVE_THEME_LIST = customTheme
     ? [customTheme, ...THEME_LIST.filter((t) => t.id !== customTheme.id)]
@@ -84,62 +85,40 @@ export const Canvas: React.FC<CanvasProps> = ({
     }
   }, [frames, hasAutoFocused]);
 
-  const takeScreenshot = async (format: 'png' | 'pdf' = 'png') => {
+  const takeScreenshot = async (format: 'png' | 'pdf' = 'png', targetId?: string) => {
     if (frames.length === 0) {
       toast.error('No frames to capture');
       return;
     }
 
-    const t = toast.loading(`📸 Preparing ${format.toUpperCase()} export...`);
+    // Determine target frame: specific ID -> active frame -> first frame
+    const frameIdToCapture = targetId || activeFrameId || frames[0]?.id;
+    const targetFrame = frames.find((f) => f.id === frameIdToCapture);
+
+    if (!targetFrame) {
+      toast.error('Frame not found');
+      return;
+    }
+
+    const t = toast.loading('Starting export job...');
+
+    // We no longer need setIsScreenshotMode(true) because we are building the HTML manually
+    // setIsScreenshotMode(true); 
 
     try {
-      setIsHidingForScreenshot(true);
-      await new Promise((resolve) => setTimeout(resolve, 200));
-
-      const screenshotArea = document.getElementById('screenshot-area');
-      const frameElements = document.querySelectorAll('[data-screen-frame="true"]');
-
-      if (!screenshotArea || frameElements.length === 0) {
-        throw new Error('Capture area not found');
-      }
-
-      const areaRect = screenshotArea.getBoundingClientRect();
-      let minX = Infinity,
-        minY = Infinity,
-        maxX = -Infinity,
-        maxY = -Infinity;
-
-      frameElements.forEach((el) => {
-        const rect = el.getBoundingClientRect();
-        const relX = rect.left - areaRect.left;
-        const relY = rect.top - areaRect.top;
-
-        minX = Math.min(minX, relX);
-        minY = Math.min(minY, relY);
-        maxX = Math.max(maxX, relX + rect.width);
-        maxY = Math.max(maxY, relY + rect.height);
-      });
-
-      const padding = 120;
-      const clip = {
-        x: Math.max(0, minX - padding),
-        y: Math.max(0, minY - padding),
-        width: maxX - minX + padding * 2,
-        height: maxY - minY + padding * 2,
-      };
-
-      const html = document.documentElement.outerHTML;
-      setIsHidingForScreenshot(false);
+      // Use the clean builder to generate HTML without background/HUD
+      // This ensures we get a high-quality, isolated render of the device frame
+      const doc = buildFrameExportHtml(targetFrame, selectedTheme);
 
       const response = await fetch('/api/screenshot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          html,
-          clip,
+          html: doc,
+          clip: { x: 0, y: 0, width: FRAME_SCREENSHOT_WIDTH, height: FRAME_SCREENSHOT_HEIGHT },
           format,
-          width: 8000,
-          height: 8000,
+          width: FRAME_SCREENSHOT_WIDTH,
+          height: FRAME_SCREENSHOT_HEIGHT,
         }),
       });
 
@@ -148,21 +127,63 @@ export const Canvas: React.FC<CanvasProps> = ({
         throw new Error(error.details || 'Export failed');
       }
 
-      const { data } = (await response.json()) as { data: string };
-      const link = document.createElement('a');
-      link.download = `appforge-design-${new Date().getTime()}.${format}`;
-      link.href = data;
-      link.click();
+      const { jobId } = (await response.json()) as { jobId: string };
 
-      toast.success(`✨ ${format.toUpperCase()} Exported!`, { id: t });
+      toast.loading('Processing export...', { id: t });
+
+      // Poll for completion, wrapped in a Promise to keep button disabled
+      await new Promise<void>((resolve, reject) => {
+        const pollInterval = setInterval(async () => {
+          try {
+            const statusRes = await fetch(`/api/jobs?id=${jobId}`);
+            if (!statusRes.ok) return; // Keep polling if status check fails temporarily
+
+            const job = await statusRes.json();
+
+            if (job.status === 'completed' && job.outputData) {
+              clearInterval(pollInterval);
+
+              const { data } = job.outputData as { data: string };
+              const link = document.createElement('a');
+              link.download = `${targetFrame.title || targetFrame.id}.${format}`;
+              link.href = data;
+              link.click();
+
+              toast.success(`✨ ${format.toUpperCase()} Exported!`, { id: t });
+              setIsExportMenuOpen(false);
+              resolve();
+            } else if (job.status === 'failed') {
+              clearInterval(pollInterval);
+              reject(new Error(job.error || 'Export job failed'));
+            }
+          } catch (error: any) {
+            console.error('Polling error:', error);
+            // Don't reject for transient network errors during polling, unless critical
+            // But if it's a code error, we should stop
+            // keeping it simple: continue polling unless explicitly failed
+          }
+        }, 2000);
+
+        // Timeout after 60 seconds
+        setTimeout(() => {
+          clearInterval(pollInterval);
+          reject(new Error('Export timed out'));
+        }, 60000);
+      });
+
     } catch (error: any) {
       console.error('Export failed:', error);
       toast.error(`Export failed: ${error.message}`, { id: t });
-      setIsHidingForScreenshot(false);
-    } finally {
       setIsExportMenuOpen(false);
+      throw error; // Re-throw so caller knows it failed
     }
   };
+
+  const handleEditFrame = useCallback((frameId: string) => {
+    setEditingFrameId(frameId);
+    setIsChatOpen(true);
+    setPrompt(''); // Start with empty prompt so user can type their own customization
+  }, []);
 
   const handlePromptSubmit = async () => {
     if (!prompt.trim()) {
@@ -176,6 +197,75 @@ export const Canvas: React.FC<CanvasProps> = ({
     }
 
     setIsChatGenerating(true);
+
+    // Check if we're editing a frame
+    if (editingFrameId) {
+      const targetFrame = frames.find(f => f.id === editingFrameId);
+
+      if (!targetFrame) {
+        toast.error('Frame not found');
+        return;
+      }
+
+      const loadingToast = toast.loading('🎨 AI is modifying this screen...');
+
+      try {
+        console.log('[Canvas Chat] Editing frame:', editingFrameId, 'with prompt:', prompt);
+
+        const response = await fetch('/api/studio/custom-prompt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: `EDIT REQUEST: ${prompt}`, // Prefix to ensure LLM knows it's an edit
+            branding,
+            userId: userId || 'anonymous',
+            referenceHtml: targetFrame.html // Pass the existing HTML as context
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to edit screen');
+        }
+
+        const result = await response.json();
+
+        // Update the frame in place
+        // We need a way to update the parent state. 
+        // onNewFrame appends, but we need to update.
+        // If onNewFrame handles ID collision by replacing, that works.
+        // Assuming onNewFrame might append, let's look at the props.
+        // We might need a new callback `onUpdateFrame`. 
+        // For now, let's reuse onNewFrame and hope the parent handles it or duplicates.
+        // Actually, looking at Step5Interactive (which likely owns this), it might just add it.
+        // If we keep the same ID, it might replace?
+        // Let's preserve the ID.
+
+        const updatedFrame: FrameData = {
+          id: targetFrame.id, // Keep same ID to replace
+          html: result.screen.html,
+          title: result.screen.title || targetFrame.title,
+          x: targetFrame.x,
+          y: targetFrame.y
+        };
+
+        if (onNewFrame) {
+          onNewFrame(updatedFrame);
+        }
+
+        toast.success('✨ Screen updated!', { id: loadingToast });
+        setPrompt('');
+        setIsChatOpen(false);
+        setEditingFrameId(null);
+
+      } catch (error: any) {
+        console.error('[Canvas Chat] Frame edit error:', error);
+        toast.error(error.message || 'Failed to customize frame', { id: loadingToast });
+      } finally {
+        setIsChatGenerating(false);
+      }
+      return;
+    }
 
     const loadingToast = toast.loading('🎨 AI is designing your screen...');
 
@@ -230,7 +320,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   };
 
   const buildFrameExportHtml = useCallback((frame: FrameData, theme: ThemeType) => {
-    const tailwindUrl = `/api/image-proxy?url=${encodeURIComponent('https://cdn.tailwindcss.com')}`;
+    const tailwindUrl = 'https://cdn.tailwindcss.com';
     const content = frame.html || '<div class="w-full h-full bg-slate-900"></div>';
 
     return `
@@ -240,6 +330,40 @@ export const Canvas: React.FC<CanvasProps> = ({
                 <meta charset="UTF-8" />
                 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
                 <script src="${tailwindUrl}"></script>
+                <script>
+                    tailwind.config = {
+                        theme: {
+                            extend: {
+                                colors: {
+                                    primary: 'var(--primary)',
+                                    'primary-foreground': 'var(--primary-foreground)',
+                                    secondary: 'var(--secondary)',
+                                    'secondary-foreground': 'var(--secondary-foreground)',
+                                    background: 'var(--background)',
+                                    foreground: 'var(--foreground)',
+                                    accent: 'var(--accent)',
+                                    'accent-foreground': 'var(--accent-foreground)',
+                                    muted: 'var(--muted)',
+                                    'muted-foreground': 'var(--muted-foreground)',
+                                    destructive: 'var(--destructive)',
+                                    'destructive-foreground': 'var(--destructive-foreground)',
+                                    border: 'var(--border)',
+                                    input: 'var(--input)',
+                                    ring: 'var(--ring)',
+                                    card: 'var(--card)',
+                                    'card-foreground': 'var(--card-foreground)',
+                                    popover: 'var(--popover)',
+                                    'popover-foreground': 'var(--popover-foreground)'
+                                },
+                                borderRadius: {
+                                    lg: 'var(--radius)',
+                                    md: 'calc(var(--radius) - 2px)',
+                                    sm: 'calc(var(--radius) - 4px)'
+                                }
+                            }
+                        }
+                    }
+                </script>
                 <style>
                     :root {
                         ${BASE_VARIABLES}
@@ -316,37 +440,9 @@ export const Canvas: React.FC<CanvasProps> = ({
 
   const handleDownloadFrame = useCallback(
     async (frameId: string) => {
-      const targetFrame = frames.find((f) => f.id === frameId);
-
-      if (!targetFrame) {
-        throw new Error('Frame not found');
-      }
-
-      const doc = buildFrameExportHtml(targetFrame, selectedTheme);
-      const response = await fetch('/api/screenshot', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          html: doc,
-          clip: { x: 0, y: 0, width: FRAME_SCREENSHOT_WIDTH, height: FRAME_SCREENSHOT_HEIGHT },
-          format: 'png',
-          width: FRAME_SCREENSHOT_WIDTH,
-          height: FRAME_SCREENSHOT_HEIGHT,
-        }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data?.error || 'Failed to render PNG');
-      }
-
-      const { data } = (await response.json()) as { data: string };
-      const link = document.createElement('a');
-      link.download = `${targetFrame.title || targetFrame.id}.png`;
-      link.href = data;
-      link.click();
+      await takeScreenshot('png', frameId);
     },
-    [buildFrameExportHtml, frames, selectedTheme],
+    [takeScreenshot],
   );
 
   return (
@@ -409,6 +505,8 @@ export const Canvas: React.FC<CanvasProps> = ({
                       scale={zoom / 100}
                       onDownload={handleDownloadFrame}
                       onDuplicate={onDuplicateFrame}
+                      onEditFrame={handleEditFrame}
+                      isEditing={editingFrameId === frame.id && isChatGenerating}
                     />
                   );
                 })}
@@ -419,11 +517,10 @@ export const Canvas: React.FC<CanvasProps> = ({
               <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-0.5 p-1.5 bg-[#1E1E21]/95 backdrop-blur-2xl border border-white/[0.08] rounded-[22px] shadow-[0_8px_32px_rgba(0,0,0,0.6)] screenshot-exclude">
                 <button
                   onClick={() => setIsChatOpen(!isChatOpen)}
-                  className={`group relative size-9 flex items-center justify-center rounded-full transition-all duration-300 ${
-                    isChatOpen
-                      ? 'bg-[#9333EA] text-white shadow-[0_0_20px_rgba(147,51,234,0.4)]'
-                      : 'bg-white/[0.06] text-white/50 hover:bg-[#9333EA]/20 hover:text-[#9333EA]'
-                  }`}
+                  className={`group relative size-9 flex items-center justify-center rounded-full transition-all duration-300 ${isChatOpen
+                    ? 'bg-[#9333EA] text-white shadow-[0_0_20px_rgba(147,51,234,0.4)]'
+                    : 'bg-white/[0.06] text-white/50 hover:bg-[#9333EA]/20 hover:text-[#9333EA]'
+                    }`}
                 >
                   <div className="i-ph:magic-wand-fill text-lg transition-transform group-hover:rotate-12" />
                 </button>
@@ -437,7 +534,10 @@ export const Canvas: React.FC<CanvasProps> = ({
                       return (
                         <button
                           key={theme.id}
-                          onClick={() => setSelectedThemeId(theme.id)}
+                          onClick={() => {
+                            setSelectedThemeId(theme.id);
+                            if (onThemeSelect) onThemeSelect(theme);
+                          }}
                           className={`size-5 rounded-full ring-offset-2 ring-offset-[#1E1E21] transition-all hover:scale-110 ${isSelected ? 'ring-2 ring-indigo-500' : 'ring-1 ring-white/10'}`}
                           style={{ backgroundColor: colors.primary }}
                           title={theme.name}
@@ -447,11 +547,10 @@ export const Canvas: React.FC<CanvasProps> = ({
                   </div>
                   <button
                     onClick={() => setIsThemeOpen(!isThemeOpen)}
-                    className={`flex items-center gap-2 pl-2 pr-4 py-2 rounded-full transition-all duration-300 ${
-                      isThemeOpen
-                        ? 'bg-[#9333EA] text-white shadow-[0_0_20px_rgba(147,51,234,0.3)]'
-                        : 'bg-white/[0.06] text-white/50 hover:bg-white/[0.12] hover:text-white/80'
-                    }`}
+                    className={`flex items-center gap-2 pl-2 pr-4 py-2 rounded-full transition-all duration-300 ${isThemeOpen
+                      ? 'bg-[#9333EA] text-white shadow-[0_0_20px_rgba(147,51,234,0.3)]'
+                      : 'bg-white/[0.06] text-white/50 hover:bg-white/[0.12] hover:text-white/80'
+                      }`}
                   >
                     <span className="text-[10px] font-black uppercase tracking-[0.1em]">
                       +{EFFECTIVE_THEME_LIST.length - 4} more
@@ -497,12 +596,12 @@ export const Canvas: React.FC<CanvasProps> = ({
                                 onClick={() => {
                                   setSelectedThemeId(theme.id);
                                   setIsThemeOpen(false);
+                                  if (onThemeSelect) onThemeSelect(theme);
                                 }}
-                                className={`w-full flex items-center gap-4 px-4 py-3 rounded-[18px] transition-all duration-200 group ${
-                                  isSelected
-                                    ? 'bg-[#9333EA]/10 border border-[#9333EA]/30 text-white'
-                                    : 'bg-transparent border border-transparent hover:bg-white/[0.03] text-white/50 hover:text-white'
-                                }`}
+                                className={`w-full flex items-center gap-4 px-4 py-3 rounded-[18px] transition-all duration-200 group ${isSelected
+                                  ? 'bg-[#9333EA]/10 border border-[#9333EA]/30 text-white'
+                                  : 'bg-transparent border border-transparent hover:bg-white/[0.03] text-white/50 hover:text-white'
+                                  }`}
                               >
                                 <div className="flex -space-x-1.5 translate-y-[1px]">
                                   <div
@@ -527,47 +626,6 @@ export const Canvas: React.FC<CanvasProps> = ({
                 </div>
                 <div className="w-px h-5 bg-white/[0.08] mx-1.5" />
                 <div className="flex items-center gap-1 pr-1">
-                  <div className="relative">
-                    <button
-                      onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
-                      className={`size-9 flex items-center justify-center rounded-full transition-all duration-300 ${isExportMenuOpen ? 'bg-[#9333EA] text-white shadow-[0_0_20px_rgba(147,51,234,0.3)]' : 'text-white/50 bg-white/[0.06] hover:bg-[#9333EA]/20 hover:text-[#9333EA]'}`}
-                    >
-                      <div className="i-ph:export-bold text-lg" />
-                    </button>
-                    <AnimatePresence>
-                      {isExportMenuOpen && (
-                        <motion.div
-                          initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                          className="absolute top-full right-0 mt-3 w-[180px] bg-[#17171A]/98 backdrop-blur-[40px] border border-white/[0.08] rounded-[20px] p-2 shadow-[0_20px_60px_rgba(0,0,0,0.8)] z-[100]"
-                        >
-                          <div className="flex flex-col gap-1">
-                            <button
-                              onClick={() => takeScreenshot('png')}
-                              className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.06] text-white/70 hover:text-white rounded-[14px] transition-all group"
-                            >
-                              <div className="i-ph:image-bold text-base text-indigo-400" />
-                              <div className="flex flex-col items-start text-left">
-                                <span className="text-[11px] font-bold">Export PNG</span>
-                                <span className="text-[9px] opacity-40">High-Res Image</span>
-                              </div>
-                            </button>
-                            <button
-                              onClick={() => takeScreenshot('pdf')}
-                              className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.06] text-white/70 hover:text-white rounded-[14px] transition-all group"
-                            >
-                              <div className="i-ph:file-pdf-bold text-base text-red-400" />
-                              <div className="flex flex-col items-start text-left">
-                                <span className="text-[11px] font-bold">Export PDF</span>
-                                <span className="text-[9px] opacity-40">Print Quality</span>
-                              </div>
-                            </button>
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
                   {onGenerateNext && (
                     <button
                       onClick={onGenerateNext}
@@ -595,15 +653,21 @@ export const Canvas: React.FC<CanvasProps> = ({
                     <div className="flex items-center justify-between">
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <div className="i-ph:sparkle-fill text-indigo-400 text-sm" />
-                          <h4 className="text-xs font-black text-white/95 uppercase tracking-[0.12em]">Studio Agent</h4>
+                          <div className={`${editingFrameId ? 'i-ph:paint-brush-fill' : 'i-ph:sparkle-fill'} text-indigo-400 text-sm`} />
+                          <h4 className="text-xs font-black text-white/95 uppercase tracking-[0.12em]">
+                            {editingFrameId ? 'Frame Editor' : 'Studio Agent'}
+                          </h4>
                         </div>
                         <p className="text-[11px] text-white/40 font-bold uppercase tracking-widest">
-                          AI DESIGN ENGINE
+                          {editingFrameId ? 'CUSTOMIZE DEVICE FRAME' : 'AI DESIGN ENGINE'}
                         </p>
                       </div>
                       <button
-                        onClick={() => setIsChatOpen(false)}
+                        onClick={() => {
+                          setIsChatOpen(false);
+                          setEditingFrameId(null);
+                          setPrompt('');
+                        }}
                         className="size-8 flex items-center justify-center rounded-full bg-white/[0.04] hover:bg-white/[0.08] text-white/40 hover:text-white transition-all"
                       >
                         <div className="i-ph:x-bold text-sm" />
@@ -613,7 +677,7 @@ export const Canvas: React.FC<CanvasProps> = ({
                       <textarea
                         value={prompt}
                         onChange={(e) => setPrompt(e.target.value)}
-                        placeholder="Ask me to design a new screen or style..."
+                        placeholder={editingFrameId ? "Describe how you want to customize the device frame..." : "Ask me to design a new screen or style..."}
                         className="w-full bg-black/40 border border-white/[0.08] rounded-[22px] px-5 py-4 text-[13px] text-white/90 placeholder-white/20 focus:outline-none focus:border-indigo-500/40 focus:bg-black/60 min-h-[160px] resize-none transition-all leading-relaxed font-medium"
                         autoFocus
                       />
@@ -635,12 +699,12 @@ export const Canvas: React.FC<CanvasProps> = ({
                         {isChatGenerating ? (
                           <>
                             <div className="i-ph:circle-notch-bold text-sm animate-spin" />
-                            <span>Generating...</span>
+                            <span>{editingFrameId ? 'Customizing...' : 'Generating...'}</span>
                           </>
                         ) : (
                           <>
-                            <div className="i-ph:magic-wand-fill text-sm" />
-                            <span>Initialize Generation</span>
+                            <div className={`${editingFrameId ? 'i-ph:paint-brush-fill' : 'i-ph:magic-wand-fill'} text-sm`} />
+                            <span>{editingFrameId ? 'Apply Customization' : 'Initialize Generation'}</span>
                           </>
                         )}
                       </div>
@@ -653,21 +717,19 @@ export const Canvas: React.FC<CanvasProps> = ({
             {!isScreenshotMode && (
               <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 p-1.5 bg-[#1E1E21]/95 backdrop-blur-2xl border border-white/[0.08] rounded-full shadow-[0_8px_32px_rgba(0,0,0,0.6)] screenshot-exclude">
                 <button
-                  className={`group size-9 flex items-center justify-center rounded-full transition-all duration-200 ${
-                    !isPanningMode
-                      ? 'bg-[#9333EA]/10 text-[#9333EA] border border-[#9333EA]/20 shadow-[0_0_15px_rgba(147,51,234,0.15)]'
-                      : 'text-white/40 bg-transparent hover:bg-white/[0.05]'
-                  }`}
+                  className={`group size-9 flex items-center justify-center rounded-full transition-all duration-200 ${!isPanningMode
+                    ? 'bg-[#9333EA]/10 text-[#9333EA] border border-[#9333EA]/20 shadow-[0_0_15px_rgba(147,51,234,0.15)]'
+                    : 'text-white/40 bg-transparent hover:bg-white/[0.05]'
+                    }`}
                   onClick={() => setIsPanningMode(false)}
                 >
                   <div className="i-ph:cursor-fill text-lg" />
                 </button>
                 <button
-                  className={`group flex items-center gap-2.5 px-6 py-2.5 rounded-full transition-all duration-200 ${
-                    isPanningMode
-                      ? 'bg-[#9333EA]/10 text-[#9333EA] border border-[#9333EA]/20 shadow-[0_0_15px_rgba(147,51,234,0.15)]'
-                      : 'text-white/40 bg-transparent hover:bg-white/[0.05]'
-                  }`}
+                  className={`group flex items-center gap-2.5 px-6 py-2.5 rounded-full transition-all duration-200 ${isPanningMode
+                    ? 'bg-[#9333EA]/10 text-[#9333EA] border border-[#9333EA]/20 shadow-[0_0_15px_rgba(147,51,234,0.15)]'
+                    : 'text-white/40 bg-transparent hover:bg-white/[0.05]'
+                    }`}
                   onClick={() => setIsPanningMode(true)}
                 >
                   <div className="i-ph:hand-fill text-lg" />
