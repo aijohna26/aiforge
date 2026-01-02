@@ -115,9 +115,9 @@ export const screenshotExport = inngest.createFunction(
 
         // Set viewport
         await page.setViewport({
-          width,
-          height,
-          deviceScaleFactor: 2,
+          width: Math.round(width || 800),
+          height: Math.round(height || 600),
+          deviceScaleFactor: 3,
         });
 
         await updateJobProgress({ jobId, progress: 50 });
@@ -129,17 +129,24 @@ export const screenshotExport = inngest.createFunction(
           ? html.replace('<head>', `<head><base href="${baseUrl}/">`)
           : `<!DOCTYPE html><html><head><base href="${baseUrl}/"></head><body>${html}</body></html>`;
 
-        // Strip existing tailwind scripts to prevent duplicates
-        enrichedHtml = enrichedHtml.replace(/<script src=".*tailwindcss.*"><\/script>/g, '');
+        // Only inject Tailwind if it's not already present in the source HTML
+        const hasTailwind = enrichedHtml.includes('tailwindcss');
+        const tailwindScript = hasTailwind ? '' : `<script src="https://cdn.tailwindcss.com"></script>`;
 
-        // Inject Tailwind and cleanup styles
+        // Inject Tailwind (if needed) and cleanup styles
         enrichedHtml = enrichedHtml.replace(
           '</head>',
           `
-            <script src="https://cdn.tailwindcss.com"></script>
+            ${tailwindScript}
             <style>
-              html, body { background: transparent !important; margin: 0; padding: 0; }
-              * { transition: none !important; animation-duration: 0s !important; }
+              body { background: transparent !important; }
+              *, *::before, *::after {
+                transition: none !important;
+                animation: none !important;
+                scroll-behavior: auto !important;
+              }
+              [data-radix-popper-content-wrapper] { display: none !important; }
+              .screenshot-exclude { display: none !important; }
               #screenshot-area {
                 position: absolute !important;
                 top: 0 !important;
@@ -149,21 +156,19 @@ export const screenshotExport = inngest.createFunction(
                 background: transparent !important;
                 background-image: none !important;
               }
-              .screenshot-exclude { display: none !important; }
-              [data-screen-frame="true"] {
-                box-shadow: 0 40px 100px rgba(0,0,0,0.5) !important;
-                border-radius: 32px !important;
-                overflow: hidden !important;
-                background: white !important;
-              }
             </style>
           </head>`,
         );
 
-        await page.setContent(enrichedHtml, { waitUntil: 'load', timeout: 60000 });
+        await page.setContent(enrichedHtml, { waitUntil: 'networkidle0', timeout: 60000 });
 
-        // Wait for Tailwind to process
-        await new Promise((resolve) => setTimeout(resolve, 5000));
+        // Ensure fonts are loaded and layout is stable
+        await page.evaluate(async () => {
+          await document.fonts.ready;
+        });
+
+        // Small buffer for animations/layout shifts
+        await new Promise((resolve) => setTimeout(resolve, 1000));
 
         let finalClip = clip;
 

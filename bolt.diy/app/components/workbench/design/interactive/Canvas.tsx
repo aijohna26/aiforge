@@ -323,73 +323,105 @@ export const Canvas: React.FC<CanvasProps> = ({
     const tailwindUrl = 'https://cdn.tailwindcss.com';
     const content = frame.html || '<div class="w-full h-full bg-slate-900"></div>';
 
+    // Construct the inner HTML for the iframe (User Content environment)
+    const innerHtml = `
+      <!DOCTYPE html>
+      <html lang="en">
+        <head>
+          <meta charset="UTF-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+          <script src="${tailwindUrl}"></script>
+          <script>
+            window.tailwind = window.tailwind || {};
+            window.tailwind.config = {
+              theme: {
+                extend: {
+                  colors: {
+                    primary: 'var(--primary)',
+                    'primary-foreground': 'var(--primary-foreground)',
+                    secondary: 'var(--secondary)',
+                    'secondary-foreground': 'var(--secondary-foreground)',
+                    background: 'var(--background)',
+                    foreground: 'var(--foreground)',
+                    accent: 'var(--accent)',
+                    'accent-foreground': 'var(--accent-foreground)',
+                    muted: 'var(--muted)',
+                    'muted-foreground': 'var(--muted-foreground)',
+                    destructive: 'var(--destructive)',
+                    'destructive-foreground': 'var(--destructive-foreground)',
+                    border: 'var(--border)',
+                    input: 'var(--input)',
+                    ring: 'var(--ring)',
+                    card: 'var(--card)',
+                    'card-foreground': 'var(--card-foreground)',
+                    popover: 'var(--popover)',
+                    'popover-foreground': 'var(--popover-foreground)'
+                  },
+                  borderRadius: {
+                    lg: 'var(--radius)',
+                    md: 'calc(var(--radius) - 2px)',
+                    sm: 'calc(var(--radius) - 4px)'
+                  }
+                }
+              }
+            }
+          </script>
+          <style>
+            :root {
+              ${BASE_VARIABLES}
+              ${theme?.style || ''}
+            }
+            body { 
+              margin: 0; 
+              padding: 0; 
+              background-color: var(--background, white); 
+              color: var(--foreground, #111827);
+              font-family: var(--font-sans), sans-serif;
+              -webkit-font-smoothing: antialiased;
+              -webkit-text-size-adjust: 100%;
+            }
+            /* Scrollbar styling to match PreviewFrame */
+            ::-webkit-scrollbar { width: 6px; height: 6px; }
+            ::-webkit-scrollbar-track { background: transparent; }
+            ::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.2); border-radius: 3px; }
+          </style>
+        </head>
+        <body class="bg-background min-h-screen">
+          <div id="root" class="h-full w-full">${content}</div>
+        </body>
+      </html>
+    `;
+
+    // Return the Outer HTML (Device Frame Shell) containing the iframe
     return `
             <!DOCTYPE html>
             <html lang="en">
             <head>
                 <meta charset="UTF-8" />
                 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-                <script src="${tailwindUrl}"></script>
-                <script>
-                    tailwind.config = {
-                        theme: {
-                            extend: {
-                                colors: {
-                                    primary: 'var(--primary)',
-                                    'primary-foreground': 'var(--primary-foreground)',
-                                    secondary: 'var(--secondary)',
-                                    'secondary-foreground': 'var(--secondary-foreground)',
-                                    background: 'var(--background)',
-                                    foreground: 'var(--foreground)',
-                                    accent: 'var(--accent)',
-                                    'accent-foreground': 'var(--accent-foreground)',
-                                    muted: 'var(--muted)',
-                                    'muted-foreground': 'var(--muted-foreground)',
-                                    destructive: 'var(--destructive)',
-                                    'destructive-foreground': 'var(--destructive-foreground)',
-                                    border: 'var(--border)',
-                                    input: 'var(--input)',
-                                    ring: 'var(--ring)',
-                                    card: 'var(--card)',
-                                    'card-foreground': 'var(--card-foreground)',
-                                    popover: 'var(--popover)',
-                                    'popover-foreground': 'var(--popover-foreground)'
-                                },
-                                borderRadius: {
-                                    lg: 'var(--radius)',
-                                    md: 'calc(var(--radius) - 2px)',
-                                    sm: 'calc(var(--radius) - 4px)'
-                                }
-                            }
-                        }
-                    }
-                </script>
                 <style>
-                    :root {
-                        ${BASE_VARIABLES}
-                        ${theme?.style || ''}
-                    }
                     body {
                         margin: 0;
                         padding: 0;
                         background: transparent;
-                        font-family: var(--font-sans), sans-serif;
+                        -webkit-font-smoothing: antialiased;
                     }
                     #screenshot-area {
                         position: absolute;
                         top: 0;
                         left: 0;
-                        width: ${FRAME_SCREENSHOT_WIDTH}px;
-                        height: ${FRAME_SCREENSHOT_HEIGHT}px;
+                        width: 393px;
+                        height: 852px;
                         display: flex;
                         align-items: center;
                         justify-content: center;
                         background: transparent;
                     }
                     .frame-shell {
-                        width: 375px;
-                        height: 812px;
-                        border-radius: 42px;
+                        width: 393px;
+                        height: 852px;
+                        border-radius: 55px;
                         background: linear-gradient(180deg, #2a2a2a, #1f1f1f);
                         box-shadow: 0 50px 120px rgba(0,0,0,0.5), inset 0 1px 2px rgba(255,255,255,0.1);
                         position: relative;
@@ -399,28 +431,35 @@ export const Canvas: React.FC<CanvasProps> = ({
                         content: '';
                         position: absolute;
                         inset: 3px;
-                        border-radius: 39px;
+                        border-radius: 52px;
                         border: 1px solid rgba(0,0,0,0.8);
                         pointer-events: none;
+                        z-index: 10;
                     }
                     .dynamic-island {
                         position: absolute;
-                        top: 6px;
+                        top: 11px;
                         left: 50%;
                         transform: translateX(-50%);
-                        width: 120px;
-                        height: 30px;
+                        width: 126px;
+                        height: 37px;
                         background: black;
-                        border-radius: 999px;
+                        border-radius: 20px;
                         box-shadow: 0 2px 8px rgba(0,0,0,0.8);
-                        z-index: 3;
+                        z-index: 20;
                     }
                     .screen-content {
                         position: absolute;
                         inset: 3px;
-                        border-radius: 39px;
+                        border-radius: 52px;
                         overflow: hidden;
                         background: var(--background, #000);
+                        z-index: 1;
+                    }
+                    iframe {
+                        width: 100%;
+                        height: 100%;
+                        border: none;
                     }
                 </style>
             </head>
@@ -429,10 +468,19 @@ export const Canvas: React.FC<CanvasProps> = ({
                     <div class="frame-shell" data-screen-frame="true">
                         <div class="dynamic-island"></div>
                         <div class="screen-content">
-                            ${content}
+                            <iframe 
+                                id="content-frame"
+                                sandbox="allow-scripts allow-popups allow-forms allow-same-origin"
+                            ></iframe>
                         </div>
                     </div>
                 </div>
+                <script>
+                    // Encode and inject content securely
+                    const iframe = document.getElementById('content-frame');
+                    const content = ${JSON.stringify(innerHtml).replace(/</g, '\\u003c')};
+                    iframe.srcdoc = content;
+                </script>
             </body>
             </html>
         `;
