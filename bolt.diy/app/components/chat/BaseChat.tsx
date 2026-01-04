@@ -2,7 +2,7 @@
  * @ts-nocheck
  * Preventing TS checks with files presented in the video for a better presentation.
  */
-import type { JSONValue, Message } from 'ai';
+import type { JSONValue, UIMessage as Message } from 'ai';
 import React, { type RefCallback, useEffect, useState, useRef } from 'react';
 import { ClientOnly } from 'remix-utils/client-only';
 import { Menu } from '~/components/sidebar/Menu.client';
@@ -34,6 +34,12 @@ import { ChatBox } from './ChatBox';
 import type { DesignScheme } from '~/types/design-scheme';
 import type { ElementInfo } from '~/components/workbench/Inspector';
 import { chatStore } from '~/lib/stores/chat';
+import { ActivityBar, type SidebarViewType } from '~/components/workbench/ActivityBar';
+import { SettingsPanel } from '~/components/workbench/SettingsPanel';
+import { HelpPanel } from '~/components/workbench/HelpPanel';
+import { UserPanel } from '~/components/workbench/UserPanel';
+import { SettingsDetailPanel } from '~/components/settings/SettingsDetailPanel';
+import { HelpDetailPanel } from '~/components/settings/HelpDetailPanel';
 import LlmErrorAlert from './LLMApiAlert';
 
 const TEXTAREA_MIN_HEIGHT = 76;
@@ -146,6 +152,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     const [progressAnnotations, setProgressAnnotations] = useState<ProgressAnnotation[]>([]);
     const expoUrl = useStore(expoUrlAtom);
     const [qrModalOpen, setQrModalOpen] = useState(false);
+    const [activeSidebarView, setActiveSidebarView] = useState<SidebarViewType>('chat');
 
     const baseInputRef = useRef(input);
     const handleInputChangeRef = useRef(handleInputChange);
@@ -355,165 +362,181 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
         )}
         data-chat-visible={showChat}
       >
-        {/* Left Sidebar: Chat */}
+        <ActivityBar activeView={activeSidebarView} onViewChange={setActiveSidebarView} />
+
+        {/* Left Sidebar: Chat or Panels */}
         <div className="w-[450px] flex flex-col border-r border-bolt-elements-borderColor bg-bolt-elements-background-depth-1 z-sidebar relative shrink-0">
-          {/* Sidebar Header */}
-          <div className="p-4 border-b border-bolt-elements-borderColor flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-bolt-elements-textPrimary">Start a conversation</h2>
-              <p className="text-xs text-bolt-elements-textSecondary">Tell AppForge what to build</p>
-            </div>
-            <IconButton
-              icon="i-ph:plus"
-              size="md"
-              onClick={() => {
-                window.location.href = '/';
-              }}
-              title="New Chat"
-            />
-          </div>
 
-          {/* Messages Area */}
-          <div className="flex-1 overflow-hidden relative flex flex-col">
-            {messages.length === 0 && (
-              <div className="flex-1 flex flex-col items-center justify-center p-4 text-center text-bolt-elements-textTertiary">
-                <div className="i-ph:chat-circle-text text-4xl mb-2 opacity-50" />
-                <p className="text-sm">No messages yet.</p>
-                <p className="text-xs">Start typing below to generate an app.</p>
+          {activeSidebarView === 'chat' && (
+            <>
+              {/* Sidebar Header */}
+              <div className="p-4 border-b border-bolt-elements-borderColor flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-bolt-elements-textPrimary">Start a conversation</h2>
+                  <p className="text-xs text-bolt-elements-textSecondary">Tell AppForge what to build</p>
+                </div>
+                <IconButton
+                  icon="i-ph:plus"
+                  size="md"
+                  onClick={() => {
+                    window.location.href = '/';
+                  }}
+                  title="New Chat"
+                />
               </div>
-            )}
 
-            {messages.length > 0 && (
-              <StickToBottom className="h-full flex flex-col modern-scrollbar" resize="smooth" initial="smooth">
-                <StickToBottom.Content className="flex flex-col gap-4 px-4 py-4">
-                  <Messages
-                    className="flex flex-col w-full flex-1 max-w-chat pb-4 mx-auto z-1"
-                    messages={messages}
+              {/* Messages Area */}
+              <div className="flex-1 overflow-hidden relative flex flex-col">
+                {messages.length === 0 && (
+                  <div className="flex-1 flex flex-col items-center justify-center p-4 text-center text-bolt-elements-textTertiary">
+                    <div className="i-ph:chat-circle-text text-4xl mb-2 opacity-50" />
+                    <p className="text-sm">No messages yet.</p>
+                    <p className="text-xs">Start typing below to generate an app.</p>
+                  </div>
+                )}
+
+                {messages.length > 0 && (
+                  <StickToBottom className="h-full flex flex-col modern-scrollbar" resize="smooth" initial="smooth">
+                    <StickToBottom.Content className="flex flex-col gap-4 px-4 py-4">
+                      <Messages
+                        className="flex flex-col w-full flex-1 max-w-chat pb-4 mx-auto z-1"
+                        messages={messages}
+                        isStreaming={isStreaming}
+                        append={append}
+                        chatMode={chatMode}
+                        setChatMode={setChatMode}
+                        provider={provider}
+                        model={model}
+                        addToolResult={addToolResult}
+                      />
+                      <ScrollToBottom />
+                    </StickToBottom.Content>
+                  </StickToBottom>
+                )}
+              </div>
+
+              {/* Input Area */}
+              <div className="px-4 pt-4 pb-6 border-t border-bolt-elements-borderColor bg-bolt-elements-background-depth-1">
+                <div className="relative">
+                  {deployAlert && (
+                    <div className="mb-2">
+                      <DeployChatAlert
+                        alert={deployAlert}
+                        clearAlert={() => clearDeployAlert?.()}
+                        postMessage={(message: string | undefined) => {
+                          sendMessage?.({} as any, message);
+                          clearSupabaseAlert?.();
+                        }}
+                      />
+                    </div>
+                  )}
+                  {supabaseAlert && (
+                    <div className="mb-2">
+                      <SupabaseChatAlert
+                        alert={supabaseAlert}
+                        clearAlert={() => clearSupabaseAlert?.()}
+                        postMessage={(message) => {
+                          sendMessage?.({} as any, message);
+                          clearSupabaseAlert?.();
+                        }}
+                      />
+                    </div>
+                  )}
+                  {actionAlert && (
+                    <div className="mb-2">
+                      <ChatAlert
+                        alert={actionAlert}
+                        clearAlert={() => clearAlert?.()}
+                        postMessage={(message) => {
+                          sendMessage?.({} as any, message);
+                          clearAlert?.();
+                        }}
+                      />
+                    </div>
+                  )}
+                  {llmErrorAlert && (
+                    <div className="mb-2">
+                      <LlmErrorAlert alert={llmErrorAlert} clearAlert={() => clearLlmErrorAlert?.()} />
+                    </div>
+                  )}
+
+                  {progressAnnotations && (
+                    <div className="mb-2">
+                      <ProgressCompilation data={progressAnnotations} />
+                    </div>
+                  )}
+
+                  <ChatBox
+                    isModelSettingsCollapsed={isModelSettingsCollapsed}
+                    setIsModelSettingsCollapsed={setIsModelSettingsCollapsed}
+                    provider={provider}
+                    setProvider={setProvider}
+                    providerList={
+                      providerList && providerList.length > 0 ? providerList : (PROVIDER_LIST as ProviderInfo[])
+                    }
+                    model={model}
+                    setModel={setModel}
+                    modelList={modelList}
+                    apiKeys={apiKeys}
+                    isModelLoading={isModelLoading}
+                    onApiKeysChange={onApiKeysChange}
+                    uploadedFiles={uploadedFiles}
+                    setUploadedFiles={setUploadedFiles}
+                    imageDataList={imageDataList}
+                    setImageDataList={setImageDataList}
+                    textareaRef={textareaRef}
+                    input={input}
+                    handleInputChange={handleInputChange}
+                    handlePaste={handlePaste}
+                    TEXTAREA_MIN_HEIGHT={TEXTAREA_MIN_HEIGHT}
+                    TEXTAREA_MAX_HEIGHT={TEXTAREA_MAX_HEIGHT}
                     isStreaming={isStreaming}
-                    append={append}
+                    handleStop={handleStop}
+                    handleSendMessage={handleSendMessage}
+                    enhancingPrompt={enhancingPrompt}
+                    enhancePrompt={enhancePrompt}
+                    isListening={isListening}
+                    startListening={startListening}
+                    stopListening={stopListening}
+                    chatStarted={true} // Force true for styling
+                    exportChat={exportChat}
+                    qrModalOpen={qrModalOpen}
+                    setQrModalOpen={setQrModalOpen}
+                    handleFileUpload={handleFileUpload}
                     chatMode={chatMode}
                     setChatMode={setChatMode}
-                    provider={provider}
-                    model={model}
-                    addToolResult={addToolResult}
+                    designScheme={designScheme}
+                    setDesignScheme={setDesignScheme}
+                    selectedElement={selectedElement}
+                    setSelectedElement={setSelectedElement}
                   />
-                  <ScrollToBottom />
-                </StickToBottom.Content>
-              </StickToBottom>
-            )}
-          </div>
+                </div>
+              </div>
+            </>
+          )}
 
-          {/* Input Area */}
-          <div className="px-4 pt-4 pb-6 border-t border-bolt-elements-borderColor bg-bolt-elements-background-depth-1">
-            <div className="relative">
-              {deployAlert && (
-                <div className="mb-2">
-                  <DeployChatAlert
-                    alert={deployAlert}
-                    clearAlert={() => clearDeployAlert?.()}
-                    postMessage={(message: string | undefined) => {
-                      sendMessage?.({} as any, message);
-                      clearSupabaseAlert?.();
-                    }}
-                  />
-                </div>
-              )}
-              {supabaseAlert && (
-                <div className="mb-2">
-                  <SupabaseChatAlert
-                    alert={supabaseAlert}
-                    clearAlert={() => clearSupabaseAlert?.()}
-                    postMessage={(message) => {
-                      sendMessage?.({} as any, message);
-                      clearSupabaseAlert?.();
-                    }}
-                  />
-                </div>
-              )}
-              {actionAlert && (
-                <div className="mb-2">
-                  <ChatAlert
-                    alert={actionAlert}
-                    clearAlert={() => clearAlert?.()}
-                    postMessage={(message) => {
-                      sendMessage?.({} as any, message);
-                      clearAlert?.();
-                    }}
-                  />
-                </div>
-              )}
-              {llmErrorAlert && (
-                <div className="mb-2">
-                  <LlmErrorAlert alert={llmErrorAlert} clearAlert={() => clearLlmErrorAlert?.()} />
-                </div>
-              )}
+          {activeSidebarView === 'settings' && <SettingsPanel />}
+          {activeSidebarView === 'help' && <HelpPanel />}
+          {activeSidebarView === 'user' && <UserPanel />}
 
-              {progressAnnotations && (
-                <div className="mb-2">
-                  <ProgressCompilation data={progressAnnotations} />
-                </div>
-              )}
-
-              <ChatBox
-                isModelSettingsCollapsed={isModelSettingsCollapsed}
-                setIsModelSettingsCollapsed={setIsModelSettingsCollapsed}
-                provider={provider}
-                setProvider={setProvider}
-                providerList={
-                  providerList && providerList.length > 0 ? providerList : (PROVIDER_LIST as ProviderInfo[])
-                }
-                model={model}
-                setModel={setModel}
-                modelList={modelList}
-                apiKeys={apiKeys}
-                isModelLoading={isModelLoading}
-                onApiKeysChange={onApiKeysChange}
-                uploadedFiles={uploadedFiles}
-                setUploadedFiles={setUploadedFiles}
-                imageDataList={imageDataList}
-                setImageDataList={setImageDataList}
-                textareaRef={textareaRef}
-                input={input}
-                handleInputChange={handleInputChange}
-                handlePaste={handlePaste}
-                TEXTAREA_MIN_HEIGHT={TEXTAREA_MIN_HEIGHT}
-                TEXTAREA_MAX_HEIGHT={TEXTAREA_MAX_HEIGHT}
-                isStreaming={isStreaming}
-                handleStop={handleStop}
-                handleSendMessage={handleSendMessage}
-                enhancingPrompt={enhancingPrompt}
-                enhancePrompt={enhancePrompt}
-                isListening={isListening}
-                startListening={startListening}
-                stopListening={stopListening}
-                chatStarted={true} // Force true for styling
-                exportChat={exportChat}
-                qrModalOpen={qrModalOpen}
-                setQrModalOpen={setQrModalOpen}
-                handleFileUpload={handleFileUpload}
-                chatMode={chatMode}
-                setChatMode={setChatMode}
-                designScheme={designScheme}
-                setDesignScheme={setDesignScheme}
-                selectedElement={selectedElement}
-                setSelectedElement={setSelectedElement}
-              />
-            </div>
-          </div>
         </div>
 
         {/* Main Content Area: Workbench */}
         <div className="flex-1 flex flex-col overflow-hidden relative">
-          <ClientOnly>
-            {() => (
-              <Workbench
-                chatStarted={true}
-                isStreaming={isStreaming}
-                setSelectedElement={setSelectedElement}
-                isFullPage={true}
-              />
-            )}
-          </ClientOnly>
+          {activeSidebarView === 'settings' && <SettingsDetailPanel />}
+          {activeSidebarView === 'help' && <HelpDetailPanel />}
+          <div className={classNames('h-full w-full', activeSidebarView === 'settings' || activeSidebarView === 'help' ? 'hidden' : 'block')}>
+            <ClientOnly>
+              {() => (
+                <Workbench
+                  chatStarted={true}
+                  isStreaming={isStreaming}
+                  setSelectedElement={setSelectedElement}
+                  isFullPage={true}
+                />
+              )}
+            </ClientOnly>
+          </div>
         </div>
       </div>
     );

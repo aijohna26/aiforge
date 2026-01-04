@@ -33,7 +33,7 @@ export const Markdown = memo(
         div: ({ className, children, node, ...props }) => {
           const dataProps = node?.properties as Record<string, unknown>;
 
-          if (className?.includes('__boltArtifact__')) {
+          if (className?.includes('__afArtifact__')) {
             const messageId = node?.properties.dataMessageId as string;
             const artifactId = node?.properties.dataArtifactId as string;
 
@@ -48,7 +48,7 @@ export const Markdown = memo(
             return <Artifact messageId={messageId} artifactId={artifactId} />;
           }
 
-          if (className?.includes('__boltSelectedElement__')) {
+          if (className?.includes('__afSelectedElement__')) {
             const messageId = node?.properties.dataMessageId as string;
             const elementDataAttr = node?.properties.dataElement as string;
 
@@ -84,11 +84,11 @@ export const Markdown = memo(
             );
           }
 
-          if (className?.includes('__boltThought__')) {
+          if (className?.includes('__afThought__')) {
             return <ThoughtBox title="Thought process">{children}</ThoughtBox>;
           }
 
-          if (className?.includes('__boltQuickAction__') || dataProps?.dataBoltQuickAction) {
+          if (className?.includes('__afQuickAction__') || dataProps?.dataBoltQuickAction) {
             return <div className="flex items-center gap-2 flex-wrap mt-3.5">{children}</div>;
           }
 
@@ -121,7 +121,7 @@ export const Markdown = memo(
           const dataProps = node?.properties as Record<string, unknown>;
 
           if (
-            dataProps?.class?.toString().includes('__boltQuickAction__') ||
+            dataProps?.class?.toString().includes('__afQuickAction__') ||
             dataProps?.dataBoltQuickAction === 'true'
           ) {
             const type = dataProps['data-type'] || dataProps.dataType;
@@ -267,23 +267,23 @@ export const Markdown = memo(
  *
  * @example
  * // Removes code fences around artifact
- * const input = "```xml\n<div class='__boltArtifact__'></div>\n```";
+ * const input = "```xml\n<div class='__afArtifact__'></div>\n```";
  * stripCodeFenceFromArtifact(input);
- * // Returns: "\n<div class='__boltArtifact__'></div>\n"
+ * // Returns: "\n<div class='__afArtifact__'></div>\n"
  *
  * @remarks
- * - Only removes code fences that directly wrap an artifact (marked with __boltArtifact__ class)
+ * - Only removes code fences that directly wrap an artifact (marked with __afArtifact__ class)
  * - Handles code fences with optional language specifications (e.g. ```xml, ```typescript)
  * - Preserves original content if no artifact is found
  * - Safely handles edge cases like empty input or artifacts at start/end of content
  */
 export const stripCodeFenceFromArtifact = (content: string) => {
-  if (!content || !content.includes('__boltArtifact__')) {
+  if (!content || !content.includes('__afArtifact__')) {
     return content;
   }
 
   const lines = content.split('\n');
-  const artifactLineIndex = lines.findIndex((line) => line.includes('__boltArtifact__'));
+  const artifactLineIndex = lines.findIndex((line) => line.includes('__afArtifact__'));
 
   // Return original content if artifact line not found
   if (artifactLineIndex === -1) {

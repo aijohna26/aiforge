@@ -69,9 +69,9 @@ function sanitizeText(text: string | any[]): any {
     return text;
   }
 
-  let sanitized = text.replace(/<div class=\\"__boltThought__\\">.*?<\/div>/gs, '');
+  let sanitized = text.replace(/<div class=\\"__afThought__\\">.*?<\/div>/gs, '');
   sanitized = sanitized.replace(/<think>.*?<\/think>/gs, '');
-  sanitized = sanitized.replace(/<boltAction type="file" filePath="package-lock\.json">[\s\S]*?<\/boltAction>/g, '');
+  sanitized = sanitized.replace(/<afAction type="file" filePath="package-lock\.json">[\s\S]*?<\/afAction>/g, '');
 
   return sanitized.trim();
 }
@@ -327,8 +327,7 @@ export async function streamText(props: {
     ...filteredOptions,
     prompt: undefined,
 
-    // Set temperature to 1 for reasoning models (required by OpenAI API)
-    ...(isReasoning ? { temperature: 1 } : {}),
+
   };
 
   // DEBUG: Log final streaming parameters

@@ -38,15 +38,15 @@ export const createChatFromFolder = async (
     role: 'assistant',
     content: `I've imported the contents of the "${folderName}" folder.${binaryFilesMessage}
 
-<boltArtifact id="imported-files" title="Imported Files" type="bundled" >
+<afArtifact id="imported-files" title="Imported Files" type="bundled" >
 ${fileArtifacts
   .map(
-    (file) => `<boltAction type="file" filePath="${file.path}">
+    (file) => `<afAction type="file" filePath="${file.path}">
 ${escapeBoltTags(file.content)}
-</boltAction>`,
+</afAction>`,
   )
   .join('\n\n')}
-</boltArtifact>`,
+</afArtifact>`,
     id: generateId(),
     createdAt: new Date(),
   };

@@ -59,8 +59,8 @@ export const allowedHTMLElements = [
   'header',
   'bolt-quick-actions',
   'bolt-quick-action',
-  'boltArtifact',
-  'boltAction',
+  'afArtifact',
+  'afAction',
 ];
 
 // Add custom rehype plugin
@@ -69,7 +69,7 @@ function remarkThinkRawContent() {
     visit(tree, (node: any) => {
       if (node.type === 'html' && node.value && node.value.startsWith('<think>')) {
         const cleanedContent = node.value.slice(7);
-        node.value = `<div class="__boltThought__">${cleanedContent}`;
+        node.value = `<div class="__afThought__">${cleanedContent}`;
 
         return;
       }
@@ -90,9 +90,9 @@ const rehypeSanitizeOptions: RehypeSanitizeOptions = {
     div: [
       ...(defaultSchema.attributes?.div ?? []),
       'data*',
-      ['className', '__boltArtifact__', '__boltThought__', '__boltQuickAction', '__boltSelectedElement__'],
+      ['className', '__afArtifact__', '__afThought__', '__afQuickAction', '__afSelectedElement__'],
 
-      // ['className', '__boltThought__']
+      // ['className', '__afThought__']
     ],
     button: [
       ...(defaultSchema.attributes?.button ?? []),
@@ -102,11 +102,11 @@ const rehypeSanitizeOptions: RehypeSanitizeOptions = {
       'name',
       'value',
       'value',
-      ['className', '__boltArtifact__', '__boltThought__', '__boltQuickAction'],
+      ['className', '__afArtifact__', '__afThought__', '__afQuickAction'],
     ],
     'bolt-quick-action': ['type', 'message', 'path', 'href'],
-    boltArtifact: ['id', 'title'],
-    boltAction: ['type'],
+    afArtifact: ['id', 'title'],
+    afAction: ['type'],
   },
   strip: [],
 };

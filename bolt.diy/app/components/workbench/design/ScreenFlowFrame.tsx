@@ -870,14 +870,12 @@ export function ScreenFlowFrame() {
           </div>
           <button
             onClick={handleToggleAuth}
-            className={`relative w-12 h-6 rounded-full transition-colors ${
-              authRequired ? 'bg-blue-600' : 'bg-[#2a2a2a]'
-            }`}
+            className={`relative w-12 h-6 rounded-full transition-colors ${authRequired ? 'bg-blue-600' : 'bg-[#2a2a2a]'
+              }`}
           >
             <div
-              className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
-                authRequired ? 'translate-x-7' : 'translate-x-1'
-              }`}
+              className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${authRequired ? 'translate-x-7' : 'translate-x-1'
+                }`}
             />
           </button>
         </div>
@@ -894,11 +892,10 @@ export function ScreenFlowFrame() {
                   key={type.id}
                   onClick={() => handleQuickAddScreen(type.id)}
                   disabled={isAlreadyAdded}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
-                    isAlreadyAdded
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${isAlreadyAdded
                       ? 'bg-[#0a0a0a] border border-[#2a2a2a] text-slate-600 cursor-not-allowed'
                       : 'bg-blue-600/20 border border-blue-500/30 text-blue-300 hover:bg-blue-600/30 hover:border-blue-500/50'
-                  }`}
+                    }`}
                   title={isAlreadyAdded ? 'Already added' : `Add ${type.name} screen`}
                 >
                   <div className={`${type.icon} text-sm`} />
@@ -1016,32 +1013,29 @@ export function ScreenFlowFrame() {
                           }
                         }}
                         disabled={isAlreadyAdded && !isCustom}
-                        className={`p-3 rounded-lg border text-left transition-all ${
-                          isAlreadyAdded && !isCustom
+                        className={`p-3 rounded-lg border text-left transition-all ${isAlreadyAdded && !isCustom
                             ? 'border-[#2a2a2a] bg-[#0a0a0a] text-slate-600 cursor-not-allowed opacity-50'
                             : isCustom
                               ? 'border-purple-500 bg-purple-500/10 text-white hover:bg-purple-500/20'
                               : 'border-[#444] bg-[#1A1F32] hover:border-blue-500 hover:bg-blue-500/10 text-slate-300'
-                        }`}
+                          }`}
                       >
                         <div
-                          className={`${type.icon} text-xl mb-1 ${
-                            isAlreadyAdded && !isCustom
+                          className={`${type.icon} text-xl mb-1 ${isAlreadyAdded && !isCustom
                               ? 'text-slate-700'
                               : isCustom
                                 ? 'text-purple-400'
                                 : 'text-blue-400'
-                          }`}
+                            }`}
                         />
                         <p className="text-xs font-medium">{type.name}</p>
                         <p
-                          className={`text-[10px] mt-0.5 ${
-                            isAlreadyAdded && !isCustom
+                          className={`text-[10px] mt-0.5 ${isAlreadyAdded && !isCustom
                               ? 'text-slate-700'
                               : isCustom
                                 ? 'text-purple-300'
                                 : 'text-slate-500'
-                          }`}
+                            }`}
                         >
                           {isAlreadyAdded && !isCustom ? 'Already added' : type.description}
                         </p>
@@ -1067,9 +1061,8 @@ export function ScreenFlowFrame() {
               return (
                 <div
                   key={screen.id}
-                  className={`p-4 rounded-xl border-2 transition-all ${
-                    initialScreen === screen.id ? 'border-blue-500 bg-blue-500/10' : 'border-[#1F243B] bg-[#1A1F32]'
-                  }`}
+                  className={`p-4 rounded-xl border-2 transition-all ${initialScreen === screen.id ? 'border-blue-500 bg-blue-500/10' : 'border-[#1F243B] bg-[#1A1F32]'
+                    }`}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-start gap-3 flex-1">
@@ -1101,11 +1094,10 @@ export function ScreenFlowFrame() {
                       <div className="flex items-center gap-1 px-1.5 py-1 bg-[#1a1a1a] rounded-lg border border-[#2a2a2a]">
                         <button
                           onClick={() => handleToggleScreenOption(screen.id, 'showLogo')}
-                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded transition-all text-[10px] font-semibold ${
-                            screen.showLogo !== false
+                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded transition-all text-[10px] font-semibold ${screen.showLogo !== false
                               ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
                               : 'bg-[#2a2a2a] text-slate-400 hover:bg-[#333] hover:text-slate-300'
-                          }`}
+                            }`}
                           title={screen.showLogo !== false ? 'Logo will be shown' : 'Logo will be hidden'}
                         >
                           <div className="i-ph:frame-corners text-xs" />
@@ -1114,11 +1106,10 @@ export function ScreenFlowFrame() {
                         <div className="w-[1px] h-4 bg-[#333]" />
                         <button
                           onClick={() => handleToggleScreenOption(screen.id, 'showBottomNav')}
-                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded transition-all text-[10px] font-semibold ${
-                            screen.showBottomNav !== false
+                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded transition-all text-[10px] font-semibold ${screen.showBottomNav !== false
                               ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
                               : 'bg-[#2a2a2a] text-slate-400 hover:bg-[#333] hover:text-slate-300'
-                          }`}
+                            }`}
                           title={
                             screen.showBottomNav !== false ? 'Bottom nav will be shown' : 'Bottom nav will be hidden'
                           }
@@ -1182,11 +1173,10 @@ export function ScreenFlowFrame() {
         <div className="mb-4 flex gap-3">
           <button
             onClick={() => handleToggleNavType('bottom')}
-            className={`flex-1 p-3 rounded-lg border-2 transition-all ${
-              navType === 'bottom'
+            className={`flex-1 p-3 rounded-lg border-2 transition-all ${navType === 'bottom'
                 ? 'border-blue-500 bg-blue-500/10'
                 : 'border-[#2F344B] bg-[#171C2D] hover:border-blue-500/50'
-            }`}
+              }`}
           >
             <div className="flex items-center gap-2 mb-1">
               <div className="i-ph:layout text-lg text-blue-400" />
@@ -1196,11 +1186,10 @@ export function ScreenFlowFrame() {
           </button>
           <button
             onClick={() => handleToggleNavType('none')}
-            className={`flex-1 p-3 rounded-lg border-2 transition-all ${
-              navType === 'none'
+            className={`flex-1 p-3 rounded-lg border-2 transition-all ${navType === 'none'
                 ? 'border-blue-500 bg-blue-500/10'
                 : 'border-[#2F344B] bg-[#171C2D] hover:border-blue-500/50'
-            }`}
+              }`}
           >
             <div className="flex items-center gap-2 mb-1">
               <div className="i-ph:x-circle text-lg text-slate-400" />
@@ -1229,11 +1218,10 @@ export function ScreenFlowFrame() {
                         key={screen.id}
                         onClick={() => handleToggleNavigationScreen(screen.id)}
                         disabled={!isSelected && atLimit}
-                        className={`px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${
-                          isSelected
+                        className={`px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${isSelected
                             ? 'border-blue-500 bg-blue-500/20 text-blue-200'
                             : 'border-[#2F344B] bg-[#171C2D] text-slate-300 hover:border-blue-500'
-                        } ${!isSelected && atLimit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          } ${!isSelected && atLimit ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
                         {screen.name}
                       </button>
@@ -1392,9 +1380,8 @@ export function ScreenFlowFrame() {
                           return (
                             <div
                               key={variation.id}
-                              className={`relative rounded border ${getAspectRatioClass(navAspectRatio)} overflow-hidden cursor-pointer group ${
-                                isActive ? 'border-purple-500 ring-2 ring-purple-500/50' : 'border-[#2F344B]'
-                              }`}
+                              className={`relative rounded border ${getAspectRatioClass(navAspectRatio)} overflow-hidden cursor-pointer group ${isActive ? 'border-purple-500 ring-2 ring-purple-500/50' : 'border-[#2F344B]'
+                                }`}
                               onClick={() => handleSelectNavVariation(variation.id)}
                             >
                               <img
@@ -1468,20 +1455,20 @@ export function ScreenFlowFrame() {
 
         {/* Status Messages */}
         {navType === 'none' ? (
-          <p className="text-xs text-blue-400 mt-4 flex items-center gap-2">
+          <div className="text-xs text-blue-400 mt-4 flex items-center gap-2">
             <div className="i-ph:info" />
             No navigation bar selected. All screens can be generated freely.
-          </p>
+          </div>
         ) : generatedNavBar ? (
-          <p className="text-xs text-green-400 mt-4 flex items-center gap-2">
+          <div className="text-xs text-green-400 mt-4 flex items-center gap-2">
             <div className="i-ph:check-circle" />
             Navigation configured. Click on variations to switch designs.
-          </p>
+          </div>
         ) : navItems.length >= 2 ? (
-          <p className="text-xs text-blue-400 mt-4 flex items-center gap-2">
+          <div className="text-xs text-blue-400 mt-4 flex items-center gap-2">
             <div className="i-ph:info" />
             Generate navigation bar variations below to proceed.
-          </p>
+          </div>
         ) : null}
       </div>
 

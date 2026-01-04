@@ -6,6 +6,7 @@ import { PortDropdown } from './PortDropdown';
 import { ScreenshotSelector } from './ScreenshotSelector';
 import { expoUrlAtom, webPreviewReadyAtom } from '~/lib/stores/qrCodeStore';
 import { ExpoQrModal } from '~/components/workbench/ExpoQrModal';
+import { ServerLogsModal } from '~/components/workbench/ServerLogsModal';
 import { QRCode } from 'react-qrcode-logo';
 import type { ElementInfo } from './Inspector';
 
@@ -683,8 +684,12 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
     }
   };
 
+  const [isLogsModalOpen, setIsLogsModalOpen] = useState(false);
+
   return (
     <div ref={containerRef} className={`w-full h-full flex flex-col relative`}>
+      {isLogsModalOpen && <ServerLogsModal onClose={() => setIsLogsModalOpen(false)} />}
+
       {isPortDropdownOpen && (
         <div className="z-iframe-overlay w-full h-full absolute" onClick={() => setIsPortDropdownOpen(false)} />
       )}
@@ -738,6 +743,11 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
         </div>
 
         <div className="flex items-center gap-2">
+          <IconButton
+            icon="i-ph:terminal-window"
+            onClick={() => setIsLogsModalOpen(true)}
+            title="View Server Logs"
+          />
           <IconButton
             icon="i-ph:cursor-click"
             onClick={toggleInspectorMode}
@@ -812,36 +822,32 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-bolt-elements-textTertiary">Show Device Frame</span>
                         <button
-                          className={`w-10 h-5 rounded-full transition-colors duration-200 ${
-                            showDeviceFrame ? 'bg-[#6D28D9]' : 'bg-gray-300 dark:bg-gray-700'
-                          } relative`}
+                          className={`w-10 h-5 rounded-full transition-colors duration-200 ${showDeviceFrame ? 'bg-[#6D28D9]' : 'bg-gray-300 dark:bg-gray-700'
+                            } relative`}
                           onClick={(e) => {
                             e.stopPropagation();
                             setShowDeviceFrame(!showDeviceFrame);
                           }}
                         >
                           <span
-                            className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-200 ${
-                              showDeviceFrame ? 'transform translate-x-5' : ''
-                            }`}
+                            className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-200 ${showDeviceFrame ? 'transform translate-x-5' : ''
+                              }`}
                           />
                         </button>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-bolt-elements-textTertiary">Landscape Mode</span>
                         <button
-                          className={`w-10 h-5 rounded-full transition-colors duration-200 ${
-                            isLandscape ? 'bg-[#6D28D9]' : 'bg-gray-300 dark:bg-gray-700'
-                          } relative`}
+                          className={`w-10 h-5 rounded-full transition-colors duration-200 ${isLandscape ? 'bg-[#6D28D9]' : 'bg-gray-300 dark:bg-gray-700'
+                            } relative`}
                           onClick={(e) => {
                             e.stopPropagation();
                             setIsLandscape(!isLandscape);
                           }}
                         >
                           <span
-                            className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-200 ${
-                              isLandscape ? 'transform translate-x-5' : ''
-                            }`}
+                            className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-200 ${isLandscape ? 'transform translate-x-5' : ''
+                              }`}
                           />
                         </button>
                       </div>

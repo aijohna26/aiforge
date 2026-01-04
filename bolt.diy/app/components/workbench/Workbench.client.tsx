@@ -324,6 +324,8 @@ export const Workbench = memo(
     const streaming = useStore(streamingState);
     const { exportChat } = useChatHistory();
     const [isSyncing, setIsSyncing] = useState(false);
+    const [isPulling, setIsPulling] = useState(false);
+    const isSyncBusy = isSyncing || isPulling;
 
     const setSelectedView = (view: WorkbenchViewType) => {
       workbenchStore.currentView.set(view);
@@ -401,6 +403,59 @@ export const Workbench = memo(
       }
     }, []);
 
+    const handlePullFromSandbox = useCallback(async () => {
+      if (import.meta.env.E2B_ON !== 'true') {
+        toast.error('Server sync is disabled for this workspace.');
+        return;
+      }
+
+      if (typeof window === 'undefined') {
+        toast.error('Sandbox sync requires a browser environment.');
+        return;
+      }
+
+      const sandboxId = localStorage.getItem('e2b_sandbox_id');
+
+      if (!sandboxId) {
+        toast.error('No active sandbox session found. Launch the preview first.');
+        return;
+      }
+
+      setIsPulling(true);
+
+      try {
+        const response = await fetch('/api/e2b/pull', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sandboxId }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Failed to pull project from sandbox');
+        }
+
+        const data = await response.json();
+
+        if (!data.archive) {
+          throw new Error('Sandbox did not return any files to import');
+        }
+
+        const importedCount = await workbenchStore.pullFromSandboxArchive(data.archive);
+
+        if (importedCount === 0) {
+          toast.info('Sandbox responded but no files were imported.');
+        } else {
+          toast.success(`Pulled ${importedCount} file${importedCount === 1 ? '' : 's'} from sandbox`);
+        }
+      } catch (error) {
+        console.error('Error pulling from sandbox:', error);
+        toast.error(error instanceof Error ? error.message : 'Failed to pull from sandbox');
+      } finally {
+        setIsPulling(false);
+      }
+    }, []);
+
     if (isFullPage) {
       return (
         <div className="relative w-full h-full bg-bolt-elements-background-depth-2 border-l border-bolt-elements-borderColor shadow-sm overflow-hidden flex">
@@ -441,10 +496,10 @@ export const Workbench = memo(
                   <div className="flex border border-bolt-elements-borderColor rounded-md overflow-hidden ml-1">
                     <DropdownMenu.Root>
                       <DropdownMenu.Trigger
-                        disabled={isSyncing || streaming}
+                        disabled={isSyncBusy || streaming}
                         className="rounded-md items-center justify-center [&:is(:disabled,.disabled)]:cursor-not-allowed [&:is(:disabled,.disabled)]:opacity-60 px-3 py-1.5 text-xs bg-bolt-elements-button-primary-background text-bolt-elements-button-primary-text hover:text-bolt-elements-item-contentAccent [&:not(:disabled,.disabled)]:hover:bg-bolt-elements-button-primary-backgroundHover flex gap-1.7"
                       >
-                        {isSyncing ? 'Syncing...' : 'Sync'}
+                        {isSyncing ? 'Syncing...' : isPulling ? 'Pulling...' : 'Sync'}
                         <span className={classNames('i-ph:caret-down transition-transform')} />
                       </DropdownMenu.Trigger>
                       <DropdownMenu.Content
@@ -464,11 +519,24 @@ export const Workbench = memo(
                             'cursor-pointer flex items-center w-full px-4 py-2 text-sm text-bolt-elements-textPrimary hover:bg-bolt-elements-item-backgroundActive gap-2 rounded-md group relative',
                           )}
                           onClick={handleSyncFiles}
-                          disabled={isSyncing}
+                          disabled={isSyncBusy}
                         >
                           <div className="flex items-center gap-2">
                             {isSyncing ? <div className="i-ph:spinner" /> : <div className="i-ph:cloud-arrow-down" />}
                             <span>{isSyncing ? 'Syncing...' : 'Sync Files'}</span>
+                          </div>
+                        </DropdownMenu.Item>
+                        <DropdownMenu.Separator className="my-1 h-px bg-bolt-elements-borderColor/40" />
+                        <DropdownMenu.Item
+                          className={classNames(
+                            'cursor-pointer flex items-center w-full px-4 py-2 text-sm text-bolt-elements-textPrimary hover:bg-bolt-elements-item-backgroundActive gap-2 rounded-md group relative',
+                          )}
+                          onClick={handlePullFromSandbox}
+                          disabled={isSyncBusy}
+                        >
+                          <div className="flex items-center gap-2">
+                            {isPulling ? <div className="i-ph:spinner" /> : <div className="i-ph:refresh" />}
+                            <span>{isPulling ? 'Pulling...' : 'Pull from Sandbox'}</span>
                           </div>
                         </DropdownMenu.Item>
                       </DropdownMenu.Content>
@@ -624,10 +692,10 @@ export const Workbench = memo(
                       <div className="flex border border-bolt-elements-borderColor rounded-md overflow-hidden ml-1">
                         <DropdownMenu.Root>
                           <DropdownMenu.Trigger
-                            disabled={isSyncing || streaming}
+                            disabled={isSyncBusy || streaming}
                             className="rounded-md items-center justify-center [&:is(:disabled,.disabled)]:cursor-not-allowed [&:is(:disabled,.disabled)]:opacity-60 px-3 py-1.5 text-xs bg-bolt-elements-button-primary-background text-bolt-elements-button-primary-text hover:text-bolt-elements-item-contentAccent [&:not(:disabled,.disabled)]:hover:bg-bolt-elements-button-primary-backgroundHover flex gap-1.7"
                           >
-                            {isSyncing ? 'Syncing...' : 'Sync'}
+                            {isSyncing ? 'Syncing...' : isPulling ? 'Pulling...' : 'Sync'}
                             <span className={classNames('i-ph:caret-down transition-transform')} />
                           </DropdownMenu.Trigger>
                           <DropdownMenu.Content
@@ -647,7 +715,7 @@ export const Workbench = memo(
                                 'cursor-pointer flex items-center w-full px-4 py-2 text-sm text-bolt-elements-textPrimary hover:bg-bolt-elements-item-backgroundActive gap-2 rounded-md group relative',
                               )}
                               onClick={handleSyncFiles}
-                              disabled={isSyncing}
+                              disabled={isSyncBusy}
                             >
                               <div className="flex items-center gap-2">
                                 {isSyncing ? (
@@ -656,6 +724,23 @@ export const Workbench = memo(
                                   <div className="i-ph:cloud-arrow-down" />
                                 )}
                                 <span>{isSyncing ? 'Syncing...' : 'Sync Files'}</span>
+                              </div>
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Separator className="my-1 h-px bg-bolt-elements-borderColor/40" />
+                            <DropdownMenu.Item
+                              className={classNames(
+                                'cursor-pointer flex items-center w-full px-4 py-2 text-sm text-bolt-elements-textPrimary hover:bg-bolt-elements-item-backgroundActive gap-2 rounded-md group relative',
+                              )}
+                              onClick={handlePullFromSandbox}
+                              disabled={isSyncBusy}
+                            >
+                              <div className="flex items-center gap-2">
+                                {isPulling ? (
+                                  <div className="i-ph:spinner" />
+                                ) : (
+                                  <div className="i-ph:refresh" />
+                                )}
+                                <span>{isPulling ? 'Pulling...' : 'Pull from Sandbox'}</span>
                               </div>
                             </DropdownMenu.Item>
                           </DropdownMenu.Content>

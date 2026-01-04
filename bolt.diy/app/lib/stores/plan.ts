@@ -701,7 +701,7 @@ ${ticket.acceptanceCriteria.map((c, i) => `${i + 1}. 📄 ${c}`).join('\n')}
 1. Review the code changes made in the previous turns.
 2. Verify that each acceptance criterion is met.
 3. If everything is correct, clearly state "QA Pass" and output the following action:
-   <boltAction type="qa-pass" ticketId="${ticket.id}" />
+   <afAction type="qa-pass" ticketId="${ticket.id}" />
 4. If there are issues, list them and do not output the action.
 `.trim();
 }

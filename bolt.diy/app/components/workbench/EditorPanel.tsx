@@ -1,6 +1,7 @@
 import { useStore } from '@nanostores/react';
-import { memo, useMemo } from 'react';
-import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import { memo, useMemo, useState } from 'react';
+import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from 'react-resizable-panels';
+import { shortcutEventEmitter } from '~/lib/hooks'; // Check if this hook exists or import correctly
 import * as Tabs from '@radix-ui/react-tabs';
 import {
   CodeMirrorEditor,
@@ -22,11 +23,13 @@ import { FileBreadcrumb } from './FileBreadcrumb';
 import { FileTree } from './FileTree';
 import { DEFAULT_TERMINAL_SIZE, TerminalTabs } from './terminal/TerminalTabs';
 import { workbenchStore } from '~/lib/stores/workbench';
-import { Search } from './Search'; // <-- Ensure Search is imported
-import { classNames } from '~/utils/classNames'; // <-- Import classNames if not already present
-import { LockManager } from './LockManager'; // <-- Import LockManager
+import { Search } from './Search';
+import { classNames } from '~/utils/classNames';
+import { LockManager } from './LockManager';
 import { ImageViewer } from './ImageViewer';
+import { useRef, useEffect } from 'react';
 
+// ... interface defaults ...
 interface EditorPanelProps {
   files?: FileMap;
   unsavedFiles?: Set<string>;
@@ -50,6 +53,7 @@ export const EditorPanel = memo(
     files,
     unsavedFiles,
     editorDocument,
+    // ... props
     selectedFile,
     isStreaming,
     fileHistory,
@@ -63,6 +67,39 @@ export const EditorPanel = memo(
 
     const theme = useStore(themeStore);
     const showTerminal = useStore(workbenchStore.showTerminal);
+
+    const terminalPanelRef = useRef<ImperativePanelHandle>(null);
+    const terminalToggledByShortcut = useRef(false);
+
+    useEffect(() => {
+      const { current: terminal } = terminalPanelRef;
+
+      if (!terminal) {
+        return;
+      }
+
+      const isCollapsed = terminal.isCollapsed();
+
+      if (!showTerminal && !isCollapsed) {
+        terminal.collapse();
+      } else if (showTerminal && isCollapsed) {
+        terminal.resize(DEFAULT_TERMINAL_SIZE);
+      }
+
+      terminalToggledByShortcut.current = false;
+    }, [showTerminal]);
+
+    useEffect(() => {
+      const unsubscribeFromEventEmitter = shortcutEventEmitter.on('toggleTerminal', () => {
+        terminalToggledByShortcut.current = true;
+      });
+
+      return () => {
+        unsubscribeFromEventEmitter();
+      };
+    }, []);
+
+
 
     const activeFileSegments = useMemo(() => {
       if (!editorDocument) {
@@ -86,15 +123,17 @@ export const EditorPanel = memo(
         <Panel defaultSize={showTerminal ? DEFAULT_EDITOR_SIZE : 100} minSize={20}>
           <PanelGroup direction="horizontal">
             <Panel defaultSize={25} minSize={20} collapsible className="border-r border-bolt-elements-borderColor">
-              <div className="h-full">
+              <div className="flex flex-col h-full bg-bolt-elements-background-depth-2">
                 <Tabs.Root defaultValue="files" className="flex flex-col h-full">
-                  <PanelHeader className="w-full text-sm font-medium text-bolt-elements-textSecondary px-1">
-                    <div className="h-full flex-shrink-0 flex items-center justify-between w-full">
-                      <Tabs.List className="h-full flex-shrink-0 flex items-center">
+                  <div className="px-2 py-1 border-b border-bolt-elements-borderColor shadow-sm">
+                    <Tabs.List className="flex gap-1 justify-between">
+                      <div className="flex gap-1">
                         <Tabs.Trigger
                           value="files"
                           className={classNames(
-                            'h-full bg-transparent hover:bg-bolt-elements-background-depth-3 py-0.5 px-2 rounded-lg text-sm font-medium text-bolt-elements-textTertiary hover:text-bolt-elements-textPrimary data-[state=active]:text-bolt-elements-textPrimary',
+                            'px-3 py-1.5 rounded-t-lg text-xs font-medium transition-colors focus:outline-none',
+                            'data-[state=active]:bg-bolt-elements-background-depth-1 data-[state=active]:text-bolt-elements-textPrimary data-[state=active]:border-b-2 data-[state=active]:border-accent-500',
+                            'text-bolt-elements-textTertiary hover:text-bolt-elements-textSecondary',
                           )}
                         >
                           Files
@@ -102,48 +141,49 @@ export const EditorPanel = memo(
                         <Tabs.Trigger
                           value="search"
                           className={classNames(
-                            'h-full bg-transparent hover:bg-bolt-elements-background-depth-3 py-0.5 px-2 rounded-lg text-sm font-medium text-bolt-elements-textTertiary hover:text-bolt-elements-textPrimary data-[state=active]:text-bolt-elements-textPrimary',
+                            'px-3 py-1.5 rounded-t-lg text-xs font-medium transition-colors focus:outline-none',
+                            'data-[state=active]:bg-bolt-elements-background-depth-1 data-[state=active]:text-bolt-elements-textPrimary data-[state=active]:border-b-2 data-[state=active]:border-accent-500',
+                            'text-bolt-elements-textTertiary hover:text-bolt-elements-textSecondary',
                           )}
                         >
                           Search
                         </Tabs.Trigger>
-                        <Tabs.Trigger
-                          value="locks"
-                          className={classNames(
-                            'h-full bg-transparent hover:bg-bolt-elements-background-depth-3 py-0.5 px-2 rounded-lg text-sm font-medium text-bolt-elements-textTertiary hover:text-bolt-elements-textPrimary data-[state=active]:text-bolt-elements-textPrimary',
-                          )}
-                        >
-                          Locks
-                        </Tabs.Trigger>
-                      </Tabs.List>
+                      </div>
+                    </Tabs.List>
+                  </div>
+
+                  <Tabs.Content
+                    value="files"
+                    className="flex-1 overflow-hidden flex flex-col focus:outline-none bg-bolt-elements-background-depth-1 data-[state=inactive]:hidden"
+                  >
+                    <div className="flex-1 overflow-y-auto">
+                      <FileTree
+                        className="h-full"
+                        files={files}
+                        hideRoot
+                        unsavedFiles={unsavedFiles}
+                        fileHistory={fileHistory}
+                        rootFolder={WORK_DIR}
+                        selectedFile={selectedFile}
+                        onFileSelect={onFileSelect}
+                      />
                     </div>
-                  </PanelHeader>
-
-                  <Tabs.Content value="files" className="flex-grow overflow-auto focus-visible:outline-none">
-                    <FileTree
-                      className="h-full"
-                      files={files}
-                      hideRoot
-                      unsavedFiles={unsavedFiles}
-                      fileHistory={fileHistory}
-                      rootFolder={WORK_DIR}
-                      selectedFile={selectedFile}
-                      onFileSelect={onFileSelect}
-                    />
                   </Tabs.Content>
 
-                  <Tabs.Content value="search" className="flex-grow overflow-auto focus-visible:outline-none">
-                    <Search />
-                  </Tabs.Content>
-
-                  <Tabs.Content value="locks" className="flex-grow overflow-auto focus-visible:outline-none">
-                    <LockManager />
+                  <Tabs.Content
+                    value="search"
+                    className="flex-1 overflow-hidden flex flex-col focus:outline-none bg-bolt-elements-background-depth-1 data-[state=inactive]:hidden"
+                  >
+                    <div className="flex-1 overflow-y-auto px-4 py-2">
+                      <Search />
+                    </div>
                   </Tabs.Content>
                 </Tabs.Root>
               </div>
             </Panel>
 
             <PanelResizeHandle />
+
             <Panel className="flex flex-col" defaultSize={75} minSize={20}>
               <PanelHeader className="overflow-x-auto">
                 {activeFileSegments?.length && (
@@ -186,8 +226,26 @@ export const EditorPanel = memo(
             </Panel>
           </PanelGroup>
         </Panel>
+
         <PanelResizeHandle />
-        <TerminalTabs />
+        <Panel
+          ref={terminalPanelRef}
+          defaultSize={showTerminal ? DEFAULT_TERMINAL_SIZE : 0}
+          minSize={10}
+          collapsible
+          onExpand={() => {
+            if (!terminalToggledByShortcut.current) {
+              workbenchStore.toggleTerminal(true);
+            }
+          }}
+          onCollapse={() => {
+            if (!terminalToggledByShortcut.current) {
+              workbenchStore.toggleTerminal(false);
+            }
+          }}
+        >
+          <TerminalTabs />
+        </Panel>
       </PanelGroup>
     );
   },

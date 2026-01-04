@@ -26,7 +26,7 @@ Hope that helps!
     expect(result).not.toContain('"name": "my-app"');
     expect(result).not.toContain('"dependencies": {');
     // And implies it was processed.
-    expect(result).toContain('boltArtifact');
+    expect(result).toContain('afArtifact');
   });
 
   it('should correctly capture nested objects in package.json', () => {
@@ -48,29 +48,29 @@ Hope that helps!
     // If the regex is greedy/wrong, it leaves trailing braces
     expect(result).not.toContain('}');
     expect(result).not.toContain('{');
-    expect(result).toContain('<div class="__boltArtifact__"');
+    expect(result).toContain('<div class="__afArtifact__"');
   });
 
-  it('should preserve standard boltArtifacts without corruption', () => {
+  it('should preserve standard afArtifacts without corruption', () => {
     const parser = new EnhancedStreamingMessageParser();
     const input = `
 Some intro text.
-<boltArtifact id="art-1" title="Project" type="bundled">
-<boltAction type="file" filePath="/src/index.js">
+<afArtifact id="art-1" title="Project" type="bundled">
+<afAction type="file" filePath="/src/index.js">
 console.log('Hello');
-</boltAction>
-</boltArtifact>
+</afAction>
+</afArtifact>
 More text.
     `;
     const result = parser.parse('msg-standard', input);
 
-    expect(result).toContain('<div class="__boltArtifact__"');
+    expect(result).toContain('<div class="__afArtifact__"');
     // Note: The content inside the artifact is stripped from the main output 
     // and handled via callbacks/store updates in the browser, 
     // so we just check effectively that the artifact shell exists
     expect(result).toContain('data-message-id="msg-standard"');
     // Ensure no double wrapping or extra artifacts
-    const matches = result.match(/class="__boltArtifact__"/g);
+    const matches = result.match(/class="__afArtifact__"/g);
     expect(matches?.length).toBe(1);
   });
 
@@ -78,11 +78,11 @@ More text.
     const parser = new EnhancedStreamingMessageParser();
     const input = `
 I have created the first file:
-<boltArtifact id="art-1" title="index.js" type="bundled">
-<boltAction type="file" filePath="/index.js">
+<afArtifact id="art-1" title="index.js" type="bundled">
+<afAction type="file" filePath="/index.js">
 console.log("hello");
-</boltAction>
-</boltArtifact>
+</afAction>
+</afArtifact>
 
 And here is the package.json:
 { "name": "examscan", "version": "1.0.0", "scripts": { "start": "expo start" }, "dependencies": { "expo": "^54.0.0", "react": "18.3.1" } }

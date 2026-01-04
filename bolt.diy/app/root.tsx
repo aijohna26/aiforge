@@ -56,10 +56,10 @@ import fontsStyles from './styles/fonts.css?url';
 
 import 'virtual:uno.css';
 
-const toastAnimation = cssTransition({
-  enter: 'animated fadeInRight',
-  exit: 'animated fadeOutRight',
-});
+// const toastAnimation = cssTransition({
+//   enter: 'animated fadeInRight',
+//   exit: 'animated fadeOutRight',
+// });
 
 export const links: LinksFunction = () => [
   {
@@ -146,7 +146,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
         }}
         position="bottom-right"
         pauseOnFocusLoss
-        transition={toastAnimation}
         autoClose={3000}
       />
       <ScrollRestoration />

@@ -411,3 +411,27 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
     set({ selectedTab: tab });
   },
 }));
+
+export type SettingSection =
+  | 'Identity Providers'
+  | 'Security Rules'
+  | 'Schema Design'
+  | 'Data Browser'
+  | 'Edge Functions'
+  | 'API Routes'
+  | 'Environment Secrets'
+  | 'Push Notifications'
+  | 'Deep Linking'
+  | 'Payment Gateways'
+  | 'Subscription Plans'
+  | 'Analytics'
+  | 'Crash Reporting'
+  | 'Real-time Logs'
+  | 'App Info & Branding'
+  | 'Assets & Media'
+  | 'App Store Connect'
+  | 'Google Play Console'
+  | 'OTA Updates'
+  | string;
+
+export const selectedSettingSection = atom<SettingSection>('Identity Providers');

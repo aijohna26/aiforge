@@ -141,34 +141,34 @@ export class E2BRunner {
         const operationPromise = (async () => {
             try {
                 const response = await withRetry(async () => {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
 
-                try {
-                    const res = await fetch('/api/e2b/execute', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            file: path,
-                            content: validatedContent,
-                            encoding,
-                            sandboxId: this.sandboxId,
-                            template: this.templateId
-                        }),
-                        signal: controller.signal
-                    });
-                    clearTimeout(timeoutId);
+                    try {
+                        const res = await fetch('/api/e2b/execute', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                file: path,
+                                content: validatedContent,
+                                encoding,
+                                sandboxId: this.sandboxId,
+                                template: this.templateId
+                            }),
+                            signal: controller.signal
+                        });
+                        clearTimeout(timeoutId);
 
-                    if (!res.ok) {
-                        const errData = await res.json().catch(() => ({}));
-                        throw new Error(errData.error || `Server returned ${res.status}`);
+                        if (!res.ok) {
+                            const errData = await res.json().catch(() => ({}));
+                            throw new Error(errData.error || `Server returned ${res.status}`);
+                        }
+                        return res;
+                    } catch (err) {
+                        clearTimeout(timeoutId);
+                        throw err;
                     }
-                    return res;
-                } catch (err) {
-                    clearTimeout(timeoutId);
-                    throw err;
-                }
-            });
+                });
 
                 const result = await response.json();
                 if (result.sandboxId) {
@@ -196,6 +196,20 @@ export class E2BRunner {
             await operationPromise;
         } finally {
             this.activeOperations.delete(operationPromise);
+        }
+    }
+
+    static async getLogs(): Promise<string> {
+        if (!this.sandboxId) return 'No active sandbox.';
+
+        try {
+            const res = await fetch(`/api/e2b/logs?sandboxId=${this.sandboxId}`);
+            if (!res.ok) return 'Failed to fetch logs.';
+            const data = await res.json();
+            return data.logs || 'No logs found.';
+        } catch (err) {
+            console.error('Error fetching logs:', err);
+            return 'Network error fetching logs.';
         }
     }
 }

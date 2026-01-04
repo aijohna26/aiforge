@@ -550,6 +550,19 @@ export class FilesStore {
   async saveFile(filePath: string, content: string) {
     const webcontainer = await this.#webcontainer;
 
+    // E2B INTERCEPT: Sync manual file saves to sandbox
+    if (import.meta.env.E2B_ON === 'true') {
+      try {
+        const { E2BRunner } = await import('~/lib/runtime/e2b-runner');
+        // Fire and forget to avoid blocking UI, but log errors
+        E2BRunner.writeFile(filePath, content).catch(err => {
+          logger.error(`[E2B] Failed to sync saved file: ${filePath}`, err);
+        });
+      } catch (e) {
+        console.error('Failed to import E2BRunner for saveFile', e);
+      }
+    }
+
     try {
       const relativePath = path.relative(webcontainer.workdir, filePath);
 
@@ -770,8 +783,32 @@ export class FilesStore {
     }
   }
 
-  async createFile(filePath: string, content: string | Uint8Array = '') {
+  async createFile(filePath: string, content: string | Uint8Array = '', options?: { skipE2BSync?: boolean }) {
     const webcontainer = await this.#webcontainer;
+
+    // E2B INTERCEPT: Sync manual file creation to sandbox
+    if (import.meta.env.E2B_ON === 'true' && !options?.skipE2BSync) {
+      try {
+        const { E2BRunner } = await import('~/lib/runtime/e2b-runner');
+
+        let fileContent = '';
+        let encoding: 'base64' | undefined = undefined;
+
+        if (content instanceof Uint8Array) {
+          fileContent = Buffer.from(content).toString('base64');
+          encoding = 'base64';
+        } else {
+          fileContent = content;
+        }
+
+        // Fire and forget, but log
+        E2BRunner.writeFile(filePath, fileContent, encoding).catch(err => {
+          logger.error(`[E2B] Failed to sync created file: ${filePath}`, err);
+        });
+      } catch (e) {
+        console.error('Failed to import E2BRunner for createFile', e);
+      }
+    }
 
     try {
       const relativePath = path.relative(webcontainer.workdir, filePath);

@@ -1,9 +1,11 @@
-
 import { json } from '@remix-run/cloudflare';
 import type { ActionFunctionArgs } from '@remix-run/cloudflare';
 import { Sandbox } from '@e2b/code-interpreter';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 import { inngest } from '~/lib/inngest/client';
+import { validatePackageJson } from '~/lib/runtime/package-json-validator';
 
 export async function action({ request }: ActionFunctionArgs) {
     if (request.method !== 'POST') {
@@ -25,20 +27,105 @@ export async function action({ request }: ActionFunctionArgs) {
     try {
         if (sandboxId) {
             try {
-                sandbox = await Sandbox.connect(sandboxId, { apiKey });
-                console.log(`[E2B API] Reconnected to sandbox: ${sandboxId}`);
-                // Ensure git is configured on reconnect as well
-                await sandbox.commands.run('git config --global user.email "bolt@appforge.ai" && git config --global user.name "AF AI"');
+                // Connect with extended timeout (15 mins) to prevent premature timeouts
+                sandbox = await Sandbox.connect(sandboxId, { apiKey, timeoutMs: 15 * 60 * 1000 });
+                console.log(`[E2B API] Reconnected to sandbox: ${sandboxId} `);
+
+                // DATA RECOVERY: Check if we are connected to a 'base' template (Legacy/Wrong)
+                // If so, we must KILL it and create a new one to get the Expo Environment.
+                // @ts-ignore - Check internal properties or metadata if available
+                const currentTemplate = sandbox.template || (sandbox as any).templateId;
+                console.log(`[E2B API] Connected Sandbox Template: ${currentTemplate}`);
+
+                if (currentTemplate && (currentTemplate === 'base' || currentTemplate === 'node')) {
+                    console.warn(`[E2B API] ⚠️ DETECTED WRONG TEMPLATE (${currentTemplate}). KILLING SANDBOX TO UPGRADE.`);
+                    try {
+                        await sandbox.kill();
+                    } catch (e) { }
+                    sandbox = undefined;
+                    sandboxId = null; // Force creation path
+                } else {
+                    // Ensure git is configured on reconnect as well
+                    await sandbox.commands.run('git config --global user.email "hello@appforge.ai" && git config --global user.name "AF AI"');
+                }
             } catch (e) {
                 console.warn(`[E2B API] Failed to connect to sandbox ${sandboxId}, creating new one.`);
                 sandboxId = null; // Reset to create new
             }
         }
 
+        // CONCURRENCY CHECK: Enforce Free Tier limit of 20 active sandboxes
         if (!sandbox) {
-            sandbox = (template
-                ? await Sandbox.create(template, { apiKey })
-                : await Sandbox.create({ apiKey })) as any;
+            try {
+                // @ts-ignore - Sandbox.list returns a paginator
+                const paginator = await Sandbox.list({ apiKey, query: { state: ['running'] } });
+                const runningSandboxes = [];
+
+                // Fetch all pages
+                let items = await paginator.nextItems();
+                runningSandboxes.push(...items);
+                while (paginator.hasNext) {
+                    items = await paginator.nextItems();
+                    runningSandboxes.push(...items);
+                }
+
+                const activeCount = runningSandboxes.length;
+                const maxLimit = parseInt(process.env.E2B_MAX_SANDBOXES || '20', 10);
+                console.log(`[E2B API] Active Sandboxes: ${activeCount}/${maxLimit}`);
+
+                if (activeCount >= maxLimit) {
+                    // Double check if we are reconnecting to an inactive one?
+                    // If sandboxId result was null/failed connect, we are creating NEW.
+                    // If we block here, we save the user.
+                    console.error(`[E2B API] 🛑 MAX LIMIT REACHED (${activeCount}). Blocking creation.`);
+                    return json({
+                        error: `Sandbox limit reached (${activeCount}/${maxLimit}). Please wait for a session to expire or close one.`,
+                        details: `Plan Limit: ${maxLimit} concurrent sandboxes.`
+                    }, { status: 429 });
+                }
+            } catch (e) {
+                console.warn('[E2B API] Failed to check sandbox limits, proceeding with caution:', e);
+            }
+        }
+
+        if (!sandbox) {
+            // EXPO-OPTIMIZATION: Use custom high-spec template for Expo projects
+            // ID comes from env var or defaults to known high-spec template (4 vCPU, 4GB RAM)
+            // This prevents OOM errors and speeds up install significantly
+            const EXPO_TEMPLATE_ID = process.env.E2B_EXPO_TEMPLATE_ID || '0xcsz5virqvvmgjmqqam';
+
+            let templateToUse = template;
+            if (template !== EXPO_TEMPLATE_ID && !process.env.ALLOW_ARBITRARY_TEMPLATES) {
+                console.log(`[E2B API] AGGRESSIVE OVERRIDE: Ignoring requested template '${template}'. Using Custom Expo Template.`);
+                templateToUse = EXPO_TEMPLATE_ID;
+            }
+
+            // Create sandbox with extended timeout for long-running operations
+            const sandboxOptions = {
+                apiKey,
+                timeoutMs: 15 * 60 * 1000, // 15 minutes total sandbox timeout
+            };
+
+            console.log(`[E2B API] Creating sandbox with template: ${templateToUse === EXPO_TEMPLATE_ID ? 'Custom High-Spec (4GB RAM)' : templateToUse || 'Default (Base)'}...`);
+
+            // PERSISTENCE UPGRADE: Use betaCreate with autoPause if available
+            // This enables pausing/resuming sandboxes to save state and cost
+            try {
+                if ('betaCreate' in Sandbox) {
+                    console.log('[E2B API] Using Sandbox.betaCreate with autoPause: true');
+                    // @ts-ignore - Beta method might not be in types yet
+                    sandbox = await (Sandbox as any).betaCreate(templateToUse, {
+                        ...sandboxOptions,
+                        autoPause: true
+                    }) as any;
+                } else {
+                    sandbox = await Sandbox.create(templateToUse, sandboxOptions) as any;
+                }
+            } catch (createError) {
+                console.warn('[E2B API] betaCreate failed, falling back to standard create', createError);
+                sandbox = await Sandbox.create(templateToUse, sandboxOptions) as any;
+            }
+
             sandboxId = sandbox.sandboxId;
             console.log(`[E2B API] Created new sandbox: ${sandboxId}`);
 
@@ -46,8 +133,21 @@ export async function action({ request }: ActionFunctionArgs) {
             // pnpm uses hard links and is much more memory efficient than npm
             try {
                 console.log(`[E2B ${sandboxId}] Installing pnpm and @expo/ngrok globally...`);
-                await sandbox.commands.run('npm install -g pnpm @expo/ngrok --silent', { timeout: 120000 });
+                // Use the memory-optimized valid template, so pnpm might already be there? 
+                // We run it anyway just in case, it's fast if cached.
+                await sandbox.commands.run('npm install -g pnpm @expo/ngrok --silent', { timeoutMs: 120000 });
                 console.log(`[E2B ${sandboxId}] Global tools installed successfully`);
+
+                // CLEANUP: Remove "Root Pollution" where template files were dumped at /
+                // This confuses the user and makes the file explorer look messy.
+                // We strictly want files in /home/user.
+                try {
+                    console.log(`[E2B ${sandboxId}] Cleaning root-level pollution...`);
+                    // Added /user to cleanup (it's a duplicate of /home/user that confuses things)
+                    await sandbox.commands.run('rm -rf /hooks /utils /images /splash.png /app.json /tsconfig.json /index.ts /babel.config.js /metro.config.js /webpack.config.js /user');
+                } catch (e) {
+                    console.warn(`[E2B ${sandboxId}] Root cleanup warning:`, e);
+                }
 
                 // Configure default git user to prevent "Please tell me who you are" errors
                 await sandbox.commands.run('git config --global user.email "bolt@appforge.ai" && git config --global user.name "AF AI"');
@@ -80,6 +180,12 @@ export async function action({ request }: ActionFunctionArgs) {
         */
 
         if (command) {
+            // Ensure we run commands in /home/user to match the file location
+            // We prepend 'cd /home/user &&' to all commands
+            if (!command.startsWith('cd ')) {
+                command = `cd /home/user && ${command}`;
+            }
+
             // Optimize npm install to use pnpm for better memory efficiency
             // This prevents "signal: killed" errors due to memory constraints
             let optimizedCommand = command;
@@ -92,6 +198,29 @@ export async function action({ request }: ActionFunctionArgs) {
             if (optimizedCommand.includes('npx ') && !optimizedCommand.includes('--yes')) {
                 optimizedCommand = optimizedCommand.replace(/npx /g, 'npx --yes ');
                 console.log(`[E2B API] Added --yes flag: ${optimizedCommand}`);
+            }
+
+            // CRITICAL: Prevent Expo commands from running before dependencies are installed
+            // This prevents "module expo is not installed" errors
+            const isExpoCommand = optimizedCommand.includes('expo start') || optimizedCommand.includes('expo run');
+            if (isExpoCommand) {
+                try {
+                    console.log(`[E2B ${sandboxId}] Verifying expo module exists before running...`);
+                    const checkExpo = await sandbox.commands.run('test -d node_modules/expo && echo "OK" || echo "MISSING"');
+                    if (checkExpo.stdout.includes('MISSING')) {
+                        console.error(`[E2B ${sandboxId}] ❌ BLOCKING: Expo module not installed! Run 'pnpm install' first.`);
+                        return json({
+                            stdout: '',
+                            stderr: 'ERROR: Cannot run Expo - module not installed. Please run "pnpm install" first.',
+                            exitCode: 1,
+                            sandboxId,
+                            url: `/api/proxy?url=${encodeURIComponent(`https://${sandbox.getHost(8081)}`)}`
+                        });
+                    }
+                    console.log(`[E2B ${sandboxId}] ✅ Expo module verified, proceeding...`);
+                } catch (e) {
+                    console.warn(`[E2B ${sandboxId}] Could not verify expo module, proceeding anyway:`, e);
+                }
             }
 
             console.log(`[E2B API] Executing command in ${sandboxId}: ${optimizedCommand}`);
@@ -110,16 +239,50 @@ export async function action({ request }: ActionFunctionArgs) {
             // Run in background for start commands to allow streaming/return
             const isStartCommand = command.includes('npm run dev') || command.includes('npx expo start') || command.includes('npm start') || command.includes('npm run init');
 
+            if (isStartCommand) {
+                // PERSISTENCE: Pipe output to file so we can retrieve logs later
+                // We use tee to keep the stdout stream alive for our immediate listeners
+                const baseCommand = command.replace(/^cd \/home\/user && /, '');
+                command = `cd /home/user && (${baseCommand}) 2>&1 | tee /home/user/app.log`;
+                console.log(`[E2B API] Start command modified for logging: ${command}`);
+            }
+
+            // AUTO-RECOVERY: If starting dev server but node_modules is missing, install first
+            if (isStartCommand) {
+                try {
+                    const checkModules = await sandbox.commands.run('test -d node_modules && echo "EXISTS" || echo "MISSING"');
+                    if (checkModules.stdout.includes('MISSING')) {
+                        console.log(`[E2B ${sandboxId}] ⚠️ node_modules missing before start! Auto-installing...`);
+
+                        // HOTFIX: Patch bad versions in package.json if present from previous failed runs
+                        await sandbox.commands.run(`sed -i 's/"@types\\/react-native": "\\^0.81.0"/"@types\\/react-native": "^0.73.0"/g' package.json`);
+
+                        await sandbox.commands.run('pnpm install', { timeoutMs: 240000 }); // 4 min timeout
+                        console.log(`[E2B ${sandboxId}] ✅ Auto-install completed.`);
+                    }
+                } catch (e) {
+                    console.warn(`[E2B ${sandboxId}] Failed to check/install modules, proceeding anyway`, e);
+                }
+            }
+
             // For start commands, we kick it off and return immediately with the URL
             if (isStartCommand) {
                 let collectedStdout = '';
                 let collectedStderr = '';
+                let tunnelUrl = '';
 
                 // Force kill any existing process on port 8081 to prevent "Port already in use" errors
                 // This is crucial for sandbox reuse
                 try {
                     console.log(`[E2B ${sandboxId}] Killing port 8081...`);
-                    await sandbox.commands.run('fuser -k 8081/tcp || true');
+                    // Try multiple methods to kill the process on port 8081
+                    // 1. fuser (standard)
+                    // 2. lsof (if fuser missing)
+                    // 3. netstat + awk (fallback)
+                    const killCmd = 'fuser -k 8081/tcp || kill -9 $(lsof -t -i:8081) || kill -9 $(netstat -tlpn | grep :8081 | awk \'{print $7}\' | cut -d\'/\' -f1) || true';
+                    await sandbox.commands.run(killCmd);
+                    // Wait a moment for OS to release the port
+                    await new Promise(resolve => setTimeout(resolve, 1000));
                 } catch (e) {
                     console.warn(`[E2B ${sandboxId}] Warning: failed to kill port 8081`, e);
                 }
@@ -131,28 +294,59 @@ export async function action({ request }: ActionFunctionArgs) {
                         const str = out.toString();
                         console.log(`[E2B ${sandboxId}] ${str}`);
                         collectedStdout += str;
+
+                        // Extract ngrok tunnel URL from Expo output
+                        // Look for patterns like "Tunnel ready." followed by URL or direct URL
+                        const urlMatch = str.match(/https:\/\/[a-z0-9-]+\.ngrok\.io/i) ||
+                            str.match(/https:\/\/[a-z0-9-]+\.ngrok-free\.app/i) ||
+                            str.match(/Metro.*https?:\/\/[^\s]+/i);
+                        if (urlMatch && !tunnelUrl) {
+                            tunnelUrl = urlMatch[0].replace(/Metro.*?(https?:\/\/)/, '$1');
+                            console.log(`[E2B ${sandboxId}] 🌐 Detected tunnel URL: ${tunnelUrl}`);
+                        }
                     },
                     onStderr: (err: { toString: () => string }) => {
                         const str = err.toString();
-                        console.error(`[E2B ${sandboxId}] ${err}`);
+                        console.error(`[E2B ${sandboxId}] ${str}`);
                         collectedStderr += str;
                     }
                 });
 
-                // Wait for 2.5 seconds to capture immediate errors or startup msgs
-                await new Promise(resolve => setTimeout(resolve, 2500));
+                // Wait for 45 seconds to capture tunnel URL from startup logs and let Metro bundle
+                // Expo tunnel can take a while to establish
+                await new Promise(resolve => setTimeout(resolve, 45000));
+
+                // DIAGNOSTIC: Check if port 8081 is actually listening
+                try {
+                    const portCheck = await sandbox.commands.run('lsof -i :8081 || netstat -tlnp | grep 8081 || echo "Port 8081 not listening"');
+                    console.log(`[E2B ${sandboxId}] 🔍 Port 8081 status:`, portCheck.stdout);
+                    collectedStdout += '\n[System] Port check: ' + portCheck.stdout;
+                } catch (e) {
+                    console.warn(`[E2B ${sandboxId}] Could not check port 8081`, e);
+                }
 
                 // Add a notice that the process continues
                 if (collectedStdout.length > 0 && !collectedStdout.includes('QR Code')) {
                     collectedStdout += '\n[System] Server starting in background. Preview will appear when ready...';
                 }
 
+                // CRITICAL: Prefer E2B direct URL since ngrok detection is unreliable
+                // The E2B host URL works directly without tunneling
+                const e2bDirectUrl = `https://${sandbox.getHost(8081)}`;
+                const previewUrl = e2bDirectUrl; // Always use E2B direct URL for reliability
+
+                console.log(`[E2B ${sandboxId}] ========== PREVIEW URL DECISION ==========`);
+                console.log(`[E2B ${sandboxId}] Detected tunnel URL: ${tunnelUrl || 'NONE'}`);
+                console.log(`[E2B ${sandboxId}] E2B direct URL: ${e2bDirectUrl}`);
+                console.log(`[E2B ${sandboxId}] Using: ${previewUrl}`);
+                console.log(`[E2B ${sandboxId}] ==========================================`);
+
                 return json({
                     stdout: collectedStdout,
                     stderr: collectedStderr,
                     exitCode: 0,
                     sandboxId,
-                    url: `/api/proxy?url=${encodeURIComponent(`https://${sandbox.getHost(8081)}`)}`
+                    url: `/api/proxy?url=${encodeURIComponent(previewUrl)}`
                 });
             }
 
@@ -161,13 +355,74 @@ export async function action({ request }: ActionFunctionArgs) {
             const isInstallCommand = command.includes('npm install') || command.includes('pnpm install');
 
             if (isInstallCommand) {
+                // AUTO-INJECTION: If package.json is missing (because we told LLM not to make one),
+                // inject the Golden Template package.json immediately.
+                try {
+                    const checkPkg = await sandbox.commands.run('test -f package.json && echo "YES" || echo "NO"');
+                    const hasPackageJson = checkPkg.stdout.trim() === 'YES';
+
+                    if (!hasPackageJson) {
+                        console.log(`[E2B ${sandboxId}] package.json missing, injecting Golden Template...`);
+                        try {
+                            const templatePath = path.resolve(process.cwd(), 'templates/af-expo-template/package.json');
+                            const templateContent = fs.readFileSync(templatePath, 'utf-8');
+                            // Write file using E2B filesystem API
+                            await sandbox.files.write('package.json', templateContent);
+                            console.log(`[E2B ${sandboxId}] Injected package.json from template.`);
+                        } catch (err) {
+                            console.error(`[E2B ${sandboxId}] Failed to inject template package.json:`, err);
+                        }
+                    }
+                } catch (e) {
+                    console.warn(`[E2B ${sandboxId}] Error checking for package.json:`, e);
+                }
+
+                // HOTFIX: Remove deprecated @types/react-native if present (prevents conflicts)
+                try {
+                    await sandbox.commands.run(`node -e "try { const pkg=require('./package.json'); if(pkg.devDependencies) delete pkg.devDependencies['@types/react-native']; if(pkg.dependencies) delete pkg.dependencies['@types/react-native']; require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2)); } catch(e) {}"`);
+                } catch (e) { /* ignore */ }
+
                 console.log(`[E2B ${sandboxId}] Running install command with extended timeout...`);
                 let collectedStdout = '';
                 let collectedStderr = '';
 
                 try {
-                    const output = await sandbox.commands.run(command, {
-                        timeout: 600000, // 10 minutes for install
+                    // MEMORY SAFETY CHECK: Log available RAM to verify we are on the High-Spec VM
+                    const memCheck = await sandbox.commands.run('free -m');
+                    console.log(`[E2B ${sandboxId}] Memory Status:\n${memCheck.stdout}`);
+
+                    // FORCE PNPM: The template is built with pnpm. 
+                    // npm install destroys the pnpm structure and re-downloads everything (slow + OOM risk).
+                    // We silently upgrade 'npm install' to 'pnpm install' to use the pre-cached modules.
+                    let finalCommand = command;
+                    if (command.trim() === 'npm install') {
+                        console.log(`[E2B ${sandboxId}] Optimization: Switching 'npm install' to 'pnpm install' to use cached dependencies.`);
+                        finalCommand = 'pnpm install';
+                    }
+
+                    // MEMORY OPTIMIZATION: Confirmed 4GB VM available via Dashboard.
+                    // Previous OOM at 3072MB (3GB) suggests pnpm workers + overhead exceeded physical RAM.
+                    // Setting to 2560MB (2.5GB) gives V8 plenty of room while leaving ~1.5GB 
+                    // for OS, filesystem cache, and child processes to avoid "signal: killed".
+                    const memSize = '2560';
+                    const memOptimizedCommand = `export NODE_OPTIONS="--max-old-space-size=${memSize}" && ${finalCommand}`;
+
+                    // DEBUG: Check if 'app' folder exists to ensure Expo code is present
+                    try {
+                        const appCheck = await sandbox.commands.run('ls -R app || echo "APP_MISSING"');
+                        if (appCheck.stdout.includes("APP_MISSING")) {
+                            console.error(`[E2B ${sandboxId}] ❌ CRITICAL: 'app' folder missing! Template injection failed?`);
+                        } else {
+                            console.log(`[E2B ${sandboxId}] ✅ 'app' folder found. Expo code present.`);
+                        }
+                    } catch (e) {
+                        console.warn(`[E2B ${sandboxId}] Failed to check app folder:`, e);
+                    }
+
+                    console.log(`[E2B ${sandboxId}] Running with NODE_OPTIONS: --max-old-space-size=${memSize}`);
+
+                    const output = await sandbox.commands.run(memOptimizedCommand, {
+                        timeoutMs: 300000, // 5 minutes (pnpm should be remarkably fast)
                         onStdout: (out: { toString: () => string }) => {
                             const str = out.toString();
                             console.log(`[E2B ${sandboxId}] ${str}`);
@@ -179,6 +434,23 @@ export async function action({ request }: ActionFunctionArgs) {
                             collectedStderr += str;
                         }
                     });
+
+                    // CRITICAL: Verify node_modules was actually created
+                    try {
+                        const lsResult = await sandbox.commands.run('ls -la node_modules | head -20');
+                        console.log(`[E2B ${sandboxId}] ✅ node_modules contents after install:`, lsResult.stdout);
+
+                        // Specifically check for expo package if this is an Expo project
+                        const hasExpo = await sandbox.commands.run('test -d node_modules/expo && echo "FOUND" || echo "MISSING"');
+                        console.log(`[E2B ${sandboxId}] Expo module check:`, hasExpo.stdout.trim());
+
+                        if (hasExpo.stdout.includes('MISSING')) {
+                            console.error(`[E2B ${sandboxId}] ⚠️ WARNING: expo module not found after install!`);
+                            collectedStderr += '\n⚠️ WARNING: expo package not installed. Run may fail.';
+                        }
+                    } catch (e) {
+                        console.warn(`[E2B ${sandboxId}] Could not verify node_modules:`, e);
+                    }
 
                     return json({
                         stdout: collectedStdout || output.stdout,
@@ -224,71 +496,38 @@ export async function action({ request }: ActionFunctionArgs) {
         } else if (file && content) {
             console.log(`[E2B API] Writing file to ${sandboxId}: ${file}${encoding ? ' (binary)' : ''}`);
 
-            // CRITICAL: Validate and auto-fix package.json scripts
+            // ALIGNMENT: Ensure files are written to the correct project root (/home/user)
+            // We MUST strip leading slashes to prevent escaping the user directory
+            // We ALSO check for 'home/user' prefix to prevent recursive pathing (/home/user/home/user/...)
+            let relativePath = file;
+            if (relativePath.startsWith('/')) {
+                relativePath = relativePath.substring(1);
+            }
+
+            // Fix for recursive pathing bug:
+            if (relativePath.startsWith('home/user/')) {
+                relativePath = relativePath.substring('home/user/'.length);
+            }
+
+            // Ensure /home/user exists (just in case)
+            try {
+                await sandbox.commands.run('mkdir -p /home/user');
+            } catch (e) { }
+
+            let targetPath = path.join('/home/user', relativePath);
+            console.log(`[E2B API] Redirecting file write to: ${targetPath} (Original: ${file})`);
+
+            // CRITICAL: Use centralized validator for ALL package.json files
+            // This ensures consistent validation between browser and E2B
+            content = validatePackageJson(file, content);
+
+            // For Expo projects, also create .npmrc to optimize install
             if (file === 'package.json') {
                 try {
                     const pkg = JSON.parse(content);
-                    console.log(`[E2B API] 📦 Received package.json scripts:`, JSON.stringify(pkg.scripts, null, 2));
-
-                    // Check if this is an Expo project
-                    const isExpo = pkg.dependencies?.expo ||
-                        pkg.dependencies?.['expo-router'] ||
-                        (pkg.scripts?.dev && pkg.scripts.dev.includes('expo'));
+                    const isExpo = pkg.dependencies?.expo || pkg.dependencies?.['expo-router'];
 
                     if (isExpo) {
-                        let fixed = false;
-
-                        // Validate dev script
-                        if (!pkg.scripts?.dev || !pkg.scripts.dev.includes('--tunnel')) {
-                            pkg.scripts = pkg.scripts || {};
-                            pkg.scripts.dev = 'EXPO_NO_TELEMETRY=1 npx expo start --tunnel';
-                            console.warn(`[E2B API] ⚠️ Auto-fixed missing/incorrect dev script`);
-                            fixed = true;
-                        }
-
-                        // Validate start script
-                        if (!pkg.scripts?.start || !pkg.scripts.start.includes('--tunnel')) {
-                            pkg.scripts = pkg.scripts || {};
-                            pkg.scripts.start = 'EXPO_NO_TELEMETRY=1 npx expo start --tunnel';
-                            console.warn(`[E2B API] ⚠️ Auto-fixed missing/incorrect start script`);
-                            fixed = true;
-                        }
-
-                        // Ensure @expo/ngrok is installed for tunneling
-                        if (!pkg.devDependencies?.['@expo/ngrok'] && !pkg.dependencies?.['@expo/ngrok']) {
-                            pkg.devDependencies = pkg.devDependencies || {};
-                            pkg.devDependencies['@expo/ngrok'] = '^4.1.0';
-                            console.warn(`[E2B API] ⚠️ Added @expo/ngrok for tunneling support`);
-                            fixed = true;
-                        }
-
-                        // SANITIZATION: Fix known hallucinated versions
-                        // LLMs often guess "~1.0.0" for packages that don't have it.
-                        const FIXES: Record<string, string> = {
-                            'expo-splash-screen': 'latest',
-                            'expo-status-bar': 'latest',
-                            'expo-updates': 'latest',
-                            'expo-font': 'latest'
-                        };
-
-                        const sanitizeDeps = (deps: Record<string, string> = {}) => {
-                            let changed = false;
-                            for (const [pkg, version] of Object.entries(deps)) {
-                                // Match ~1.0.0, ^1.0.0, 1.0.0, ~1.1.0, etc. - any 1.x.x version is likely wrong for these packages
-                                if (FIXES[pkg] && (version.startsWith('~1.') || version.startsWith('^1.') || version.startsWith('1.'))) {
-                                    console.warn(`[E2B API] 🔧 Fixing bad version for ${pkg}: ${version} -> ${FIXES[pkg]}`);
-                                    deps[pkg] = FIXES[pkg];
-                                    changed = true;
-                                }
-                            }
-                            return changed;
-                        };
-
-                        if (sanitizeDeps(pkg.dependencies)) fixed = true;
-                        if (sanitizeDeps(pkg.devDependencies)) fixed = true;
-
-                        // Add .npmrc settings to reduce memory usage during install
-                        // We'll create a companion .npmrc file
                         const npmrcContent = [
                             '# Optimize for E2B sandbox memory constraints',
                             'prefer-offline=true',
@@ -300,17 +539,6 @@ export async function action({ request }: ActionFunctionArgs) {
                             'fetch-timeout=120000'
                         ].join('\n');
 
-                        // Queue .npmrc creation (we'll need to do this separately)
-                        console.log(`[E2B API] 📝 Will create optimized .npmrc for Expo project`);
-
-                        if (fixed) {
-                            content = JSON.stringify(pkg, null, 2);
-                            console.log(`[E2B API] ✅ Fixed package.json scripts:`, JSON.stringify(pkg.scripts, null, 2));
-                        } else {
-                            console.log(`[E2B API] ✅ package.json scripts validated OK`);
-                        }
-
-                        // Write .npmrc alongside package.json
                         try {
                             await sandbox.files.write('.npmrc', npmrcContent);
                             console.log(`[E2B API] ✅ Created optimized .npmrc`);
@@ -319,11 +547,11 @@ export async function action({ request }: ActionFunctionArgs) {
                         }
                     }
                 } catch (e) {
-                    console.error(`[E2B API] ❌ Failed to validate package.json`, e);
+                    console.warn(`[E2B API] Could not parse package.json for .npmrc creation`, e);
                 }
             }
 
-            const dirname = file.substring(0, file.lastIndexOf('/'));
+            const dirname = targetPath.substring(0, targetPath.lastIndexOf('/'));
             if (dirname && dirname !== '.') {
                 try {
                     await sandbox.commands.run(`mkdir -p "${dirname}"`);
@@ -336,10 +564,10 @@ export async function action({ request }: ActionFunctionArgs) {
             if (encoding === 'base64') {
                 // Decode base64 and write as binary
                 const binaryData = Buffer.from(content, 'base64');
-                await sandbox.files.writeBytes(file, binaryData);
+                await sandbox.files.writeBytes(targetPath, binaryData);
             } else {
                 // Write as text
-                await sandbox.files.write(file, content);
+                await sandbox.files.write(targetPath, content);
             }
             // await sandbox.close(); // KEEP OPEN FOR PERSISTENCE
 

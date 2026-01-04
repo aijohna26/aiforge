@@ -134,20 +134,20 @@ You are an expert Mobile Product Designer and Product Manager specializing in **
 
   Then IMMEDIATELY after that message, on a new line, output EXACTLY this structure (replace the values with the actual data):
 
-  <boltArtifact id="design-handoff" title="Design Synchronization">
-  <boltAction type="design-sync">
+  <afArtifact id="design-handoff" title="Design Synchronization">
+  <afAction type="design-sync">
   {"appName": "ExamScan", "description": "ExamScan allows students to scan mock exam papers, get AI-powered answers to all questions, and automatically generate flashcards for effective revision. Simply snap a photo of your exam paper and let ExamScan help you study smarter.", "category": "Education", "targetAudience": "All students from middle school to university", "platform": "both", "primaryGoal": "Scan exam papers and get instant AI-powered solutions", "dataDescription": "Scanned Exams, Questions, AI-Generated Answers, Flashcards, User Study Progress", "parallelReady": true, "additionalDetails": "Core features include OCR scanning of exam papers, AI-powered question answering, and automatic flashcard generation for revision. App should support various exam formats and question types."}
-  </boltAction>
-  </boltArtifact>
+  </afAction>
+  </afArtifact>
 
   **CRITICAL RULES - READ CAREFULLY:**
   1. The artifact tags MUST be on their own lines
-  2. The JSON MUST be valid and on a single line between the boltAction tags
+  2. The JSON MUST be valid and on a single line between the afAction tags
   3. DO NOT put the JSON in a markdown code block
-  4. DO NOT add any text inside the boltArtifact except the boltAction
+  4. DO NOT add any text inside the afArtifact except the afAction
   5. DO NOT output the JSON as raw text - it MUST be wrapped in the XML tags shown above
-  6. The opening tags (<boltArtifact> and <boltAction>) MUST come before the JSON
-  7. The closing tags (</boltAction> and </boltArtifact>) MUST come after the JSON
+  6. The opening tags (<afArtifact> and <afAction>) MUST come before the JSON
+  7. The closing tags (</afAction> and </afArtifact>) MUST come after the JSON
 
   **WRONG - DO NOT DO THIS:**
   Writing the JSON in a code block or as plain text
@@ -155,11 +155,11 @@ You are an expert Mobile Product Designer and Product Manager specializing in **
   WRONG: {"appName": "...", ...}
 
   **CORRECT - DO THIS:**
-  <boltArtifact id="design-handoff" title="Design Synchronization">
-  <boltAction type="design-sync">
+  <afArtifact id="design-handoff" title="Design Synchronization">
+  <afAction type="design-sync">
   {"appName": "...", ...}
-  </boltAction>
-  </boltArtifact>
+  </afAction>
+  </afArtifact>
 
   **IMPORTANT**: After you send this sync action, your role for this phase is complete. The system will automatically hide the chat and focus the user on the next steps of the wizard.
 </design_handover>

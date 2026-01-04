@@ -22,6 +22,9 @@ import { updateStep1Data } from './designWizard';
 import { chatStore } from './chat';
 import { planStore, updateTicketStatus, getTicketsByStatus } from './plan';
 import { yoloModeStore } from './settings';
+import { Buffer } from 'node:buffer';
+import { WORK_DIR } from '~/utils/constants';
+import { getEncoding } from 'istextorbinary';
 
 const { saveAs } = fileSaver;
 
@@ -745,6 +748,49 @@ export class WorkbenchStore {
     }
 
     return syncedFiles;
+  }
+
+  async pullFromSandboxArchive(base64Archive: string) {
+    const archiveBuffer = Buffer.from(base64Archive, 'base64');
+    const zip = await JSZip.loadAsync(archiveBuffer);
+    const entries = Object.values(zip.files);
+    let updatedFiles = 0;
+
+    for (const entry of entries) {
+      if (entry.dir) continue;
+
+      let relativePath = entry.name.replace(/^\.\/?/, '');
+
+      if (!relativePath) continue;
+
+      relativePath = relativePath.replace(/\\/g, '/');
+
+      if (
+        relativePath.length === 0 ||
+        relativePath.startsWith('node_modules') ||
+        relativePath.startsWith('.git') ||
+        relativePath.startsWith('.expo') ||
+        relativePath.startsWith('.cache') ||
+        relativePath.startsWith('.e2b')
+      ) {
+        continue;
+      }
+
+      const absolutePath = path.join(WORK_DIR, relativePath);
+      const fileData = await entry.async('uint8array');
+      const nodeBuffer = Buffer.from(fileData);
+      const isBinary = getEncoding(nodeBuffer, { chunkLength: 100 }) === 'binary';
+
+      if (isBinary) {
+        await this.#filesStore.createFile(absolutePath, fileData, { skipE2BSync: true });
+      } else {
+        await this.#filesStore.createFile(absolutePath, nodeBuffer.toString('utf8'), { skipE2BSync: true });
+      }
+
+      updatedFiles++;
+    }
+
+    return updatedFiles;
   }
 
   async pushToRepository(

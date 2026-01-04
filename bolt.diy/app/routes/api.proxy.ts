@@ -68,7 +68,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
             const newHeaders = new Headers(response.headers);
             newHeaders.delete('x-frame-options');
             newHeaders.delete('content-security-policy');
+            newHeaders.delete('x-content-type-options');
             newHeaders.set('Access-Control-Allow-Origin', '*');
+            newHeaders.set('Access-Control-Allow-Methods', '*');
+            newHeaders.set('Access-Control-Allow-Headers', '*');
 
             return new Response(response.body, {
                 status: response.status,

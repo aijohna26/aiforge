@@ -3,7 +3,7 @@ import ignore from 'ignore';
 import type { IProviderSetting } from '~/types/model';
 import { IGNORE_PATTERNS, type FileMap } from './constants';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER, PROVIDER_LIST } from '~/utils/constants';
-import { createFilesContext, extractCurrentContext, extractPropertiesFromMessage, simplifyBoltActions } from './utils';
+import { createFilesContext, extractCurrentContext, extractPropertiesFromMessage, simplifyAfActions } from './utils';
 import { createScopedLogger } from '~/utils/logger';
 import { LLMManager } from '~/lib/modules/llm/manager';
 
@@ -38,8 +38,8 @@ export async function selectContext(props: {
       let content = (message as any).content;
 
       if (typeof content === 'string') {
-        content = simplifyBoltActions(content);
-        content = content.replace(/<div class=\\"__boltThought__\\">.*?<\/div>/s, '');
+        content = simplifyAfActions(content);
+        content = content.replace(/<div class=\\"__afThought__\\">.*?<\/div>/s, '');
         content = content.replace(/<think>.*?<\/think>/s, '');
 
         return { ...message, content };

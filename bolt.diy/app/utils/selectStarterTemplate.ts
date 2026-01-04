@@ -6,10 +6,10 @@ import { STARTER_TEMPLATES } from './constants';
 const starterTemplateSelectionPrompt = (templates: Template[]) => `
 You are an experienced developer who helps people choose the best starter template for their projects.
 
-IMPORTANT: For mobile apps, ALWAYS choose 'Expo App'.
-IMPORTANT: If the user asks for an "app" without specifying "web", assume they want a mobile app and choose 'Expo App'.
-IMPORTANT: For web apps, prefer Vite templates.
-IMPORTANT: Only choose shadcn templates if the user explicitly asks for shadcn.
+IMPORTANT: This platform is EXCLUSIVELY for building Mobile Applications using Expo.
+IMPORTANT: Regardless of whether the user asks for a website, dashboard, or app, you MUST generate a Mobile App (which runs on web via Expo).
+IMPORTANT: ALWAYS choose 'Expo App' unless it is a trivial script request.
+IMPORTANT: NEVER choose Vite, Next.js, or Astro.
 
 Available templates:
 <template>
@@ -18,16 +18,16 @@ Available templates:
   <tags>basic, script</tags>
 </template>
 ${templates
-  .map(
-    (template) => `
+    .map(
+      (template) => `
 <template>
   <name>${template.name}</name>
   <description>${template.description}</description>
   ${template.tags ? `<tags>${template.tags.join(', ')}</tags>` : ''}
 </template>
 `,
-  )
-  .join('\n')}
+    )
+    .join('\n')}
 
 Response Format:
 <selection>
@@ -61,6 +61,15 @@ Response:
 <selection>
   <templateName>blank</templateName>
   <title>script to generate numbers from 1 to 100</title>
+</selection>
+</example>
+
+<example>
+User: Webbrowser code
+Response:
+<selection>
+  <templateName>Expo App</templateName>
+  <title>Expo Web Browser</title>
 </selection>
 </example>
 
@@ -233,16 +242,16 @@ export async function getTemplates(templateName: string, title?: string) {
   }
 
   const assistantMessage = `Initializing your project with the required files using the ${template.name} template.
-<boltArtifact id="imported-files" title="${title || 'Create initial files'}" type="bundled">
+<afArtifact id="imported-files" title="${title || 'Create initial files'}" type="bundled">
 ${filesToImport.files
-  .map(
-    (file: any) =>
-      `<boltAction type="file" filePath="${file.path}"${file.encoding ? ` encoding="${file.encoding}"` : ''}>
+      .map(
+        (file: any) =>
+          `<afAction type="file" filePath="${file.path}"${file.encoding ? ` encoding="${file.encoding}"` : ''}>
 ${file.content}
-</boltAction>`,
-  )
-  .join('\n')}
-</boltArtifact>
+</afAction>`,
+      )
+      .join('\n')}
+</afArtifact>
 `;
   let userMessage = ``;
   const templatePromptFile = files.filter((x) => x.path.startsWith('.bolt')).find((x) => x.name == 'prompt');

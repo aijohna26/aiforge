@@ -1,7 +1,7 @@
 import type { WebContainer } from '@webcontainer/api';
 import { path as nodePath } from '~/utils/path';
 import { atom, map, type MapStore } from 'nanostores';
-import type { ActionAlert, BoltAction, DeployAlert, FileHistory, SupabaseAction, SupabaseAlert, FileAction } from '~/types/actions';
+import type { ActionAlert, AfAction, DeployAlert, FileHistory, SupabaseAction, SupabaseAlert, FileAction } from '~/types/actions';
 import { webPreviewReadyAtom, expoUrlAtom } from '~/lib/stores/qrCodeStore';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { createScopedLogger } from '~/utils/logger';
@@ -17,14 +17,14 @@ const logger = createScopedLogger('ActionRunner');
 
 export type ActionStatus = 'pending' | 'running' | 'complete' | 'aborted' | 'failed';
 
-export type BaseActionState = BoltAction & {
+export type BaseActionState = AfAction & {
   status: Exclude<ActionStatus, 'failed'>;
   abort: () => void;
   executed: boolean;
   abortSignal: AbortSignal;
 };
 
-export type FailedActionState = BoltAction &
+export type FailedActionState = AfAction &
   Omit<BaseActionState, 'status'> & {
     status: Extract<ActionStatus, 'failed'>;
     error: string;
@@ -425,6 +425,7 @@ export class ActionRunner {
 
     // CRITICAL: Validate and fix package.json BEFORE writing to ANY destination
     // This ensures browser and E2B see the SAME validated content
+    console.log(`xxx [E2B DEBUG] Validating file: ${action.filePath}, content length: ${action.content.length}`);
     const validatedContent = validatePackageJson(action.filePath, action.content);
 
     // E2B INTERCEPT

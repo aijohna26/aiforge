@@ -715,7 +715,7 @@ export const ChatImpl = memo(
       if (selectedElement) {
         console.log('Selected Element:', selectedElement);
 
-        const elementInfo = `<div class=\"__boltSelectedElement__\" data-element='${JSON.stringify(selectedElement)}'>${JSON.stringify(`${selectedElement.displayText}`)}</div>`;
+        const elementInfo = `<div class=\"__afSelectedElement__\" data-element='${JSON.stringify(selectedElement)}'>${JSON.stringify(`${selectedElement.displayText}`)}</div>`;
         finalMessageContent = messageContent + elementInfo;
       }
 
@@ -724,12 +724,21 @@ export const ChatImpl = memo(
       if (!chatStarted) {
         setFakeLoading(true);
 
-        if (autoSelectTemplate) {
-          const { template, title } = await selectStarterTemplate({
-            message: finalMessageContent,
-            model,
-            provider,
-          });
+        // CRITICAL: Detect Design Wizard handoff - force load Expo template
+        // Check if we have design scheme data (from wizard) but no files loaded yet
+        const isDesignWizardHandoff = designScheme?.step1?.appName && Object.keys(files).length === 0;
+        const shouldForceExpoTemplate = isDesignWizardHandoff;
+
+        if (autoSelectTemplate || shouldForceExpoTemplate) {
+          // If coming from Design Wizard, force Expo template
+          // Otherwise, let AI select the template
+          const { template, title } = shouldForceExpoTemplate
+            ? { template: 'Expo App', title: designScheme.step1.appName || 'Mobile App' }
+            : await selectStarterTemplate({
+                message: finalMessageContent,
+                model,
+                provider,
+              });
 
           if (template !== 'blank') {
             const temResp = await getTemplates(template, title).catch((e) => {

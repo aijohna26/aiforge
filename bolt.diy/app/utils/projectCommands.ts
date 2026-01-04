@@ -1,4 +1,4 @@
-import type { Message } from 'ai';
+import type { UIMessage } from 'ai';
 import { generateId } from './fileUtils';
 
 export interface ProjectCommands {
@@ -107,7 +107,7 @@ export async function detectProjectCommands(files: FileContent[]): Promise<Proje
   return { type: '', setupCommand: '', followupMessage: '' };
 }
 
-export function createCommandsMessage(commands: ProjectCommands): Message | null {
+export function createCommandsMessage(commands: ProjectCommands): UIMessage | null {
   if (!commands.setupCommand && !commands.startCommand) {
     return null;
   }
@@ -116,30 +116,35 @@ export function createCommandsMessage(commands: ProjectCommands): Message | null
 
   if (commands.setupCommand) {
     commandString += `
-<boltAction type="shell">${commands.setupCommand}</boltAction>`;
+<afAction type="shell">${commands.setupCommand}</afAction>`;
   }
 
   if (commands.startCommand) {
     commandString += `
-<boltAction type="start">${commands.startCommand}</boltAction>
+<afAction type="start">${commands.startCommand}</afAction>
 `;
   }
 
   return {
-    role: 'assistant',
-    content: `
-${commands.followupMessage ? `\n\n${commands.followupMessage}` : ''}
-<boltArtifact id="project-setup" title="Project Setup">
-${commandString}
-</boltArtifact>`,
     id: generateId(),
+    role: 'assistant',
+    parts: [
+      {
+        type: 'text',
+        text: `
+${commands.followupMessage ? `\n\n${commands.followupMessage}` : ''}
+<afArtifact id="project-setup" title="Project Setup">
+${commandString}
+</afArtifact>`,
+      },
+    ],
     createdAt: new Date(),
-  };
+  } as UIMessage;
 }
 
-export function escapeBoltArtifactTags(input: string) {
-  // Regular expression to match boltArtifact tags and their content
-  const regex = /(<boltArtifact[^>]*>)([\s\S]*?)(<\/boltArtifact>)/g;
+export function escapeAfArtifactTags(input: string) {
+  // Regular expression to match afArtifact tags and their content
+  const regex = /(<afArtifact[^>]*>)([\s\S]*?)(<\/afArtifact>)/g;
 
   return input.replace(regex, (match, openTag, content, closeTag) => {
     // Escape the opening tag
@@ -153,9 +158,9 @@ export function escapeBoltArtifactTags(input: string) {
   });
 }
 
-export function escapeBoltAActionTags(input: string) {
-  // Regular expression to match boltArtifact tags and their content
-  const regex = /(<boltAction[^>]*>)([\s\S]*?)(<\/boltAction>)/g;
+export function escapeAfAActionTags(input: string) {
+  // Regular expression to match afArtifact tags and their content
+  const regex = /(<afAction[^>]*>)([\s\S]*?)(<\/afAction>)/g;
 
   return input.replace(regex, (match, openTag, content, closeTag) => {
     // Escape the opening tag
@@ -170,7 +175,7 @@ export function escapeBoltAActionTags(input: string) {
 }
 
 export function escapeBoltTags(input: string) {
-  return escapeBoltArtifactTags(escapeBoltAActionTags(input));
+  return escapeAfArtifactTags(escapeAfAActionTags(input));
 }
 
 // We have this seperate function to simplify the restore snapshot process in to one single artifact.
@@ -184,12 +189,12 @@ export function createCommandActionsString(commands: ProjectCommands): string {
 
   if (commands.setupCommand) {
     commandString += `
-<boltAction type="shell">${commands.setupCommand}</boltAction>`;
+<afAction type="shell">${commands.setupCommand}</afAction>`;
   }
 
   if (commands.startCommand) {
     commandString += `
-<boltAction type="start">${commands.startCommand}</boltAction>
+<afAction type="start">${commands.startCommand}</afAction>
 `;
   }
 

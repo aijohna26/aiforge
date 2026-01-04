@@ -68,13 +68,13 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
   }
 
   private _hasDetectedArtifacts(input: string): boolean {
-    return input.includes('<boltArtifact') || input.includes('</boltArtifact>');
+    return input.includes('<afArtifact') || input.includes('</afArtifact>');
   }
 
   private _findArtifactRanges(input: string): [number, number][] {
     const ranges: [number, number][] = [];
-    const openTagRegex = /<boltArtifact/gi;
-    const closeTagRegex = /<\/boltArtifact>/gi;
+    const openTagRegex = /<afArtifact/gi;
+    const closeTagRegex = /<\/afArtifact>/gi;
 
     let match;
     while ((match = openTagRegex.exec(input)) !== null) {
@@ -97,8 +97,8 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
 
   private _findActionRanges(input: string): [number, number][] {
     const ranges: [number, number][] = [];
-    const openTagRegex = /<boltAction/gi;
-    const closeTagRegex = /<\/boltAction>/gi;
+    const openTagRegex = /<afAction/gi;
+    const closeTagRegex = /<\/afAction>/gi;
 
     let match;
     while ((match = openTagRegex.exec(input)) !== null) {
@@ -304,21 +304,21 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
   private _wrapInArtifact(artifactId: string, filePath: string, content: string): string {
     const title = filePath.split('/').pop() || 'File';
 
-    return `<boltArtifact id="${artifactId}" title="${title}" type="bundled">
-<boltAction type="file" filePath="${filePath}">
+    return `<afArtifact id="${artifactId}" title="${title}" type="bundled">
+<afAction type="file" filePath="${filePath}">
 ${content}
-</boltAction>
-</boltArtifact>`;
+</afAction>
+</afArtifact>`;
   }
 
   private _wrapInShellAction(content: string, messageId: string): string {
     const artifactId = `artifact-${messageId}-${this._artifactCounter++}`;
 
-    return `<boltArtifact id="${artifactId}" title="Shell Command" type="shell">
-<boltAction type="shell">
+    return `<afArtifact id="${artifactId}" title="Shell Command" type="shell">
+<afAction type="shell">
 ${content.trim()}
-</boltAction>
-</boltArtifact>`;
+</afAction>
+</afArtifact>`;
   }
 
   private _normalizeFilePath(filePath: string): string {
@@ -754,11 +754,11 @@ ${content.trim()}
       if (uniqueKeys.size >= 2) {
         // It's a package.json! Wrap it.
         const artifactId = `artifact-${messageId}-${this._artifactCounter++}`;
-        const wrapped = `<boltArtifact id="${artifactId}" title="package.json" type="bundled">
-<boltAction type="file" filePath="/package.json">
+        const wrapped = `<afArtifact id="${artifactId}" title="package.json" type="bundled">
+<afAction type="file" filePath="/package.json">
 ${jsonCandidate}
-</boltAction>
-</boltArtifact>`;
+</afAction>
+</afArtifact>`;
 
         modified += wrapped;
       } else {
@@ -779,7 +779,7 @@ ${jsonCandidate}
     // We need to find the complete JSON object, so we'll search for opening { and matching closing }
 
     // CRITICAL: Don't wrap if the input already contains artifact tags
-    if (input.includes('<boltArtifact') || input.includes('<boltAction')) {
+    if (input.includes('<afArtifact') || input.includes('<afAction')) {
       return input;
     }
 
@@ -830,11 +830,11 @@ ${jsonCandidate}
     }
 
     // Replace the raw JSON with wrapped version
-    const wrapped = `<boltArtifact id="design-handoff" title="Design Synchronization">
-<boltAction type="design-sync">
+    const wrapped = `<afArtifact id="design-handoff" title="Design Synchronization">
+<afAction type="design-sync">
 ${jsonString}
-</boltAction>
-</boltArtifact>`;
+</afAction>
+</afArtifact>`;
 
     return input.replace(jsonString, wrapped);
   }

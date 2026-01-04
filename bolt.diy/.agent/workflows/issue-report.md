@@ -10,13 +10,13 @@ Despite implementing an `EnhancedStreamingMessageParser` to detect and retrospec
 ### 1. `EnhancedStreamingMessageParser` (`app/lib/runtime/enhanced-message-parser.ts`)
 This class extends the base parser. Its job is to:
 *   Intercept the raw LLM stream `input`.
-*   Scan for raw code patterns (like `package.json` objects or `This is a file:\n ````...` blocks) that are *not* already wrapped in `<boltArtifact>` tags.
-*   If found, it modifies the input string to wrap these blocks in valid `<boltArtifact><boltAction...>` tags.
+*   Scan for raw code patterns (like `package.json` objects or `This is a file:\n ````...` blocks) that are *not* already wrapped in `<afArtifact>` tags.
+*   If found, it modifies the input string to wrap these blocks in valid `<afArtifact><boltAction...>` tags.
 *   **Crucial Mechanism:** If it modifies the input, it calls `this.reset()` to clear the base parser's state, theoretically forcing it to re-parse the entire string from the beginning with the new tags, thereby "rewriting history" and hiding the previously leaked text.
 
 ### 2. `StreamingMessageParser` (`app/lib/runtime/message-parser.ts`)
 The base parser that implements a state machine:
-*   Scans for `<boltArtifact>` and `<boltAction>` tags.
+*   Scans for `<afArtifact>` and `<boltAction>` tags.
 *   Maintains state: `insideArtifact`, `insideAction`, `accumulatedContent`.
 *   **Behavior:** When `insideArtifact` is true, it *suppresses* content from the returned `accumulatedContent` string (which goes to the Chat UI) and instead emits events (`onActionOpen`, `onActionStream`) to the `workbenchStore`.
 
