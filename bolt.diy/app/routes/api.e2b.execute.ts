@@ -572,7 +572,8 @@ export async function action({ request }: ActionFunctionArgs) {
             if (encoding === 'base64') {
                 // Decode base64 and write as binary
                 const binaryData = Buffer.from(content, 'base64');
-                await sandbox.files.writeBytes(targetPath, binaryData);
+                // E2B SDK v2.3.3 uses write() for both text and binary
+                await sandbox.files.write(targetPath, binaryData);
             } else {
                 // Write as text
                 await sandbox.files.write(targetPath, content);
