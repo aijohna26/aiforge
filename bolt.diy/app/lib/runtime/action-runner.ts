@@ -423,17 +423,58 @@ export class ActionRunner {
 
     const fileAction = action as FileAction;
 
+    // Handle remote source files (images, binary assets)
+    if (fileAction.source) {
+      try {
+        const response = await fetch(fileAction.source);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch source: ${fileAction.source}`);
+        }
+        const buffer = await response.arrayBuffer();
+        const uint8Array = new Uint8Array(buffer);
+
+        // 1. Write to E2B if enabled
+        if (isE2BEnabled()) {
+          // Convert to base64 for E2B transfer
+          let binary = '';
+          const len = uint8Array.byteLength;
+          for (let i = 0; i < len; i++) {
+            binary += String.fromCharCode(uint8Array[i]);
+          }
+          const base64Content = btoa(binary);
+
+          logger.info(`[E2B] Writing binary file from source: ${action.filePath}`);
+          await E2BRunner.writeFile(action.filePath, base64Content, 'base64');
+        }
+
+        // 2. Write to WebContainer
+        const webcontainer = await this.#webcontainer;
+        const relativePath = nodePath.relative(webcontainer.workdir, action.filePath);
+        let folder = nodePath.dirname(relativePath).replace(/\/+$/g, '');
+
+        if (folder !== '.') {
+          await webcontainer.fs.mkdir(folder, { recursive: true }).catch((err) => logger.debug('Mkdir failed (might exist)', err));
+        }
+
+        await webcontainer.fs.writeFile(relativePath, uint8Array);
+        logger.debug(`File written from source ${relativePath}`);
+
+        return; // Complete for source files
+      } catch (error) {
+        logger.error(`Failed to handle file source ${fileAction.source}`, error);
+        throw error;
+      }
+    }
+
+    // Normal text file handling (Code generation)
     // CRITICAL: Validate and fix package.json BEFORE writing to ANY destination
     // This ensures browser and E2B see the SAME validated content
-    console.log(`xxx [E2B DEBUG] Validating file: ${action.filePath}, content length: ${action.content.length}`);
     const validatedContent = validatePackageJson(action.filePath, action.content);
 
     // E2B INTERCEPT
     // CRITICAL: Only write to E2B when NOT streaming (i.e., when action is complete)
     // During streaming, content is partial - writing it would create incomplete files
     const e2bEnabled = isE2BEnabled();
-    console.log(`[E2B DEBUG] File: ${action.filePath}, isStreaming: ${isStreaming}, E2B enabled: ${e2bEnabled}, E2B_ON env: ${import.meta.env.E2B_ON}, content length: ${validatedContent.length}`);
-    logger.debug(`[E2B] File action: ${action.filePath}, isStreaming: ${isStreaming}, E2B enabled: ${e2bEnabled}, content length: ${validatedContent.length}`);
 
     if (e2bEnabled && !isStreaming) {
       logger.info(`[E2B] Writing file (Complete): ${action.filePath}${fileAction.encoding ? ' (binary)' : ''}, size: ${validatedContent.length} bytes`);
@@ -469,20 +510,10 @@ export class ActionRunner {
     }
 
     try {
-      if (fileAction.source) {
-        const response = await fetch(fileAction.source!);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch source: ${fileAction.source}`);
-        }
-        const buffer = await response.arrayBuffer();
-        await webcontainer.fs.writeFile(relativePath, new Uint8Array(buffer));
-        logger.debug(`File written from source ${relativePath}`);
-      } else {
-        // CRITICAL: Use validatedContent for WebContainer too!
-        // This ensures browser editor shows the SAME content as E2B sandbox
-        await webcontainer.fs.writeFile(relativePath, validatedContent);
-        logger.debug(`File written ${relativePath}`);
-      }
+      // CRITICAL: Use validatedContent for WebContainer too!
+      // This ensures browser editor shows the SAME content as E2B sandbox
+      await webcontainer.fs.writeFile(relativePath, validatedContent);
+      logger.debug(`File written ${relativePath}`);
     } catch (error) {
       logger.error('Failed to write file\n\n', error);
       throw error;

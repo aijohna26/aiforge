@@ -339,6 +339,14 @@ export async function action({ request }: ActionFunctionArgs) {
                 console.log(`[E2B ${sandboxId}] Detected tunnel URL: ${tunnelUrl || 'NONE'}`);
                 console.log(`[E2B ${sandboxId}] E2B direct URL: ${e2bDirectUrl}`);
                 console.log(`[E2B ${sandboxId}] Using: ${previewUrl}`);
+                
+        
+
+                // Fetch data from the server inside the sandbox.
+                const response = await fetch(e2bDirectUrl);
+                const data = await response.text();
+                console.log('xxx Response from server inside sandbox:', data);
+
                 console.log(`[E2B ${sandboxId}] ==========================================`);
 
                 return json({

@@ -511,7 +511,8 @@ function getInitialState(): DesignWizardData {
 
     if (saved) {
       const parsed = JSON.parse(saved);
-      console.log('[DesignWizard] Restored state from localStorage');
+      const frameCount = parsed?.step5?.studioFrames?.length || 0;
+      console.log(`[DesignWizard] 📂 Restored state from localStorage (${frameCount} frames)`);
 
       const migrated = migrateStoredWizardData(parsed);
 
@@ -525,21 +526,73 @@ function getInitialState(): DesignWizardData {
     console.error('[DesignWizard] Failed to load state from localStorage:', error);
   }
 
+  console.log('[DesignWizard] 📂 No saved state, using initial data');
   return initialDesignData;
 }
 
 export const designWizardStore = atom<DesignWizardData>(getInitialState());
 
+// CRITICAL FIX: Prevent localStorage auto-save during initialization/hydration
+// This fixes the race condition where stale state overwrites DB-loaded frames
+let canAutoSave = false;
+
 // Subscribe to store changes and save to localStorage
 if (typeof window !== 'undefined') {
+  // CRITICAL CHANGE: NEVER auto-enable via timeout
+  // Auto-save is ONLY enabled via explicit enableAutoSaveAfterHydration() call
+  // This ensures we never save stale state before hydration completes
+  console.log('[DesignWizard] 🔒 Auto-save is DISABLED until hydration completes');
+
+  // Debounce localStorage saves to avoid excessive writes
+  // Sensible default: 2 seconds after last change
+  let saveTimeout: NodeJS.Timeout | null = null;
+  const DEBOUNCE_MS = 2000; // 2 seconds
+
   designWizardStore.subscribe((state) => {
+    const frameCount = state.step5?.studioFrames?.length || 0;
+
+    if (!canAutoSave) {
+      // EXCEPTION: Allow saving non-Studio state changes (steps 1-4)
+      // Only block Step 5 (Studio) changes until hydration completes
+      const isStep5Change = state.step5 && (
+        state.step5.studioFrames?.length > 0 ||
+        state.step5.customTheme ||
+        state.step5.generatedScreens?.length > 0
+      );
+
+      if (isStep5Change) {
+        console.log(`[DesignWizard] ⏸️  Auto-save skipped for Step 5 (waiting for hydration, would save ${frameCount} frames)`);
+        return;
+      }
+
+      // Allow saving steps 1-4 changes (immediate, no debounce)
+      console.log('[DesignWizard] 💾 Auto-saving non-Studio changes (Steps 1-4)');
+      saveToLocalStorage(state, frameCount);
+      return;
+    }
+
+    // Debounce Studio saves (Steps 5) to avoid excessive writes during interactions
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+    }
+
+    saveTimeout = setTimeout(() => {
+      saveToLocalStorage(state, frameCount);
+    }, DEBOUNCE_MS);
+  });
+
+  // Helper function to save to localStorage
+  function saveToLocalStorage(state: DesignWizardData, frameCount: number) {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      console.log('[DesignWizard] Auto-saved to localStorage');
+      console.log(`[DesignWizard] 💾 Auto-saved to localStorage (${frameCount} frames)`, {
+        studioFrames: frameCount,
+        generatedScreens: state.step5?.generatedScreens?.length || 0,
+      });
     } catch (error) {
       console.error('[DesignWizard] Failed to save to localStorage:', error);
     }
-  });
+  }
 }
 
 /*
@@ -588,6 +641,17 @@ export function updateStep5Data(data: Partial<Step5Data>) {
     ...current,
     step5: { ...current.step5, ...data },
   });
+}
+
+// CRITICAL: Enable auto-save after successful hydration
+// Called by Step5Interactive after DB frames are loaded
+export function enableAutoSaveAfterHydration() {
+  if (typeof window !== 'undefined') {
+    const currentState = designWizardStore.get();
+    const currentFrameCount = currentState.step5?.studioFrames?.length || 0;
+    canAutoSave = true;
+    console.log(`[DesignWizard] ✅ Auto-save force-enabled after hydration (current frames: ${currentFrameCount})`);
+  }
 }
 
 export function updateStep6Data(data: Partial<Step6Data>) {
@@ -693,10 +757,59 @@ export function resetDesignWizard() {
   }
 }
 
+/**
+ * Load wizard data from external source (project data, import, etc.)
+ *
+ * ⚠️ CRITICAL SAFEGUARD - DO NOT REMOVE ⚠️
+ * This function protects against data loss from stale data sources.
+ *
+ * Data Source Priority:
+ * 1. Database (studio_workspaces) - Highest priority, most recent
+ * 2. localStorage - Medium priority, fast cache
+ * 3. Project data - Lowest priority, often stale
+ *
+ * Strategy: Only allow project data to overwrite if Studio hasn't been hydrated yet.
+ * Once Studio hydration completes, project data should never overwrite.
+ *
+ * See tests: app/lib/stores/__tests__/designWizard.persistence.test.ts
+ * See docs: .agent/context/studio_persistence_FINAL_FIX.md
+ */
 export function loadWizardData(data: DesignWizardData) {
   // Ensure we migrate the data if it's from an older version
   const migrated = migrateStoredWizardData(data);
-  designWizardStore.set(migrated);
+
+  const currentState = designWizardStore.get();
+  const currentFrames = currentState.step5?.studioFrames?.length || 0;
+  const incomingFrames = migrated.step5?.studioFrames?.length || 0;
+
+  // CRITICAL FIX: Protect Studio data that has been hydrated from DB
+  // Project data (from Chat) should NEVER overwrite Studio data that came from DB/localStorage
+  // This is identified by checking if canAutoSave is enabled (meaning hydration completed)
+
+  if (currentFrames > 0 && canAutoSave) {
+    // Studio has been hydrated from DB - protect it from project data
+    console.log(`[loadWizardData] Studio already hydrated (${currentFrames} frames). Blocking project data (${incomingFrames} frames) to prevent overwrite.`);
+    console.log(`[loadWizardData] Loading only non-Studio wizard data (steps 1-4)`);
+
+    // Load everything EXCEPT Step 5
+    designWizardStore.set({
+      ...migrated,
+      step5: currentState.step5, // Preserve Studio data
+    });
+    return;
+  }
+
+  // If Studio hasn't been hydrated yet, allow project data but prefer more frames
+  if (currentFrames > incomingFrames && currentFrames > 0) {
+    console.log(`[loadWizardData] Preserving current frames (${currentFrames}) over incoming (${incomingFrames}) - more data`);
+    designWizardStore.set({
+      ...migrated,
+      step5: currentState.step5,
+    });
+  } else {
+    console.log(`[loadWizardData] Loading wizard data (${incomingFrames} frames in Step 5)`);
+    designWizardStore.set(migrated);
+  }
 }
 
 /*

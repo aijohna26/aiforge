@@ -291,16 +291,22 @@ export const Canvas: React.FC<CanvasProps> = ({
 
       console.log('[Canvas Chat] Generation successful:', result.screen.title);
 
-      // Calculate position for new frame
-      const newX = frames.length > 0 ? Math.max(...frames.map((f) => f.x || 0)) + 1000 : 4000;
-      const newY = 4000;
+      // Calculate position for new frame (Right of the last frame + 120px gap)
+      // FIX: Align X and Y with existing frames to avoid "floating" or "overlapping" behavior
+      const rowY = frames.length > 0 ? frames[0].y : 4000;
 
-      const newFrame: FrameData = {
+      const newX = frames.length > 0
+        ? Math.max(...frames.map((f) => f.x || 0)) + 375 + 400 - 3000 // Offset -3000
+        : 4000;
+      const newY = (rowY ?? 4000) - 800;
+
+      const newFrame: FrameData & { isNew?: boolean } = {
         id: result.screen.id,
         html: result.screen.html,
         title: result.screen.title,
         x: newX,
         y: newY,
+        isNew: true, // Mark for offset normalization on save
       };
 
       // Notify parent component

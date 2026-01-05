@@ -427,11 +427,16 @@ IMPORTANT: Ensure the generated image does NOT contain any device frames, phones
     // NEW: Handle reference HTML for editing
     const referenceContext = screen.referenceHtml
       ? `\n📝 REFERENCE CODE (CURRENT STATE):
-The user wants to EDIT/MODIFY this existing screen. You must start with this code and apply the requested changes.
+The user wants to EDIT/MODIFY this existing screen.
 --- BEGIN EXISTING HTML ---
 ${screen.referenceHtml}
 --- END EXISTING HTML ---
-IMPORTANT: Preserve the structure and valid parts of the existing code unless the user explicitly asks to change them. Apply the user's modifications to this base.`
+IMPORTANT INSTRUCTIONS FOR EDITING:
+1. You must return the **COMPLETE, VALID HTML** for the new version of the screen.
+2. **DO NOT** just append new code to the end. You must integrate changes into the existing structure.
+3. **DO NOT** duplicate the entire screen content. If the user asks to "change the title", change it in place.
+4. If the user asks for a Modal/Overlay, ensure it has \`fixed inset-0 z-50\` to properly overlay the existing content.
+5. If the user wants to REPLACE the screen (e.g. "change this to a setting screen"), you may discard the old content entirely.`
       : '';
 
     const colorContext = branding.colorPalette

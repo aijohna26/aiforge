@@ -70,14 +70,14 @@ ${step1.additionalDetails || 'None provided.'}
 Total screens: ${step4.screens?.length || 0}
 
 ${(step4.screens || [])
-  .map(
-    (s) => `
+      .map(
+        (s) => `
 #### ${s.name || 'Untitled Screen'} (${s.type || 'standard'})
 - **Purpose:** ${s.purpose || 'N/A'}
 - **Key Elements:** ${(s.keyElements || []).join(', ')}
 `,
-  )
-  .join('\n')}
+      )
+      .join('\n')}
 
 ### 3.2 Navigation
 - **Navigation Type:** ${step4.navigation?.type === 'bottom' ? 'Bottom Tab Bar' : 'None'}
@@ -89,14 +89,14 @@ ${step4.navigation?.items?.length > 0 ? `- **Tabs:** ${step4.navigation.items.jo
 The following screen designs match the visual style guide:
 
 ${selectedScreens
-  .map(
-    (s) => `
+      .map(
+        (s) => `
 ### ${s.name}
 - **Design URL:** ${s.url}
 - **Prompt:** ${s.prompt}
 `,
-  )
-  .join('\n')}
+      )
+      .join('\n')}
 
 ---
 
@@ -146,13 +146,17 @@ ${step1.additionalDetails || 'Synthesize logic based on description.'}
 - **Integrations**: ${integrationsPrompt}
 
 **Asset Management (STRICT ZERO-PLACEHOLDER POLICY):**
-The following assets have been mirrored to **Supabase Storage** for permanence. You MUST download them and place them into the project's **assets/images/** folder using **curl** before using them in the code. 
+The following assets have been mirrored to **Supabase Storage** for permanence. You MUST use the **source** attribute in \`<afAction type="file">\` to download them.
 
-🔴 **FORBIDDEN DOMAINS**: Any use of \`unsplash.com\` or \`picsum.photos\` is a **TASK FAILURE**. Pexels is allowed ONLY for content and hero imagery.
+🔴 **FORBIDDEN**: Do NOT use \`curl\`, \`wget\`, or \`fetch\`.
 
-- **Logo**: ${step3.logo?.url ? `${step3.logo.url}` : 'N/A'} (Save as **assets/images/logo.png**)
-- **App Icons**: Reuse the Logo URL (${step3.logo?.url}) for **assets/images/icon.png**, **assets/images/favicon.png**, and **assets/images/adaptive-icon.png**.
-- **Splash Screen**: Reuse the Logo URL (${step3.logo?.url}) for **assets/images/splash.png**.
+- **Logo**: Use \`<afAction type="file" filePath="assets/images/logo.png" source="${step3.logo?.url || ''}">\`
+- **App Icons**: Reuse the Logo URL for:
+  - \`<afAction type="file" filePath="assets/images/icon.png" source="${step3.logo?.url || ''}">\`
+  - \`<afAction type="file" filePath="assets/images/favicon.png" source="${step3.logo?.url || ''}">\`
+  - \`<afAction type="file" filePath="assets/images/adaptive-icon.png" source="${step3.logo?.url || ''}">\`
+- **Splash Screen**: 
+  - \`<afAction type="file" filePath="assets/images/splash.png" source="${step3.logo?.url || ''}">\`
 - **Generated Screens (Reference Only)**:
 ${selectedScreens.map((s) => `  - ${s.name}: ${s.url}`).join('\n')}
 

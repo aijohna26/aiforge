@@ -481,14 +481,11 @@ The year is 2025.
   - Use Pexels for photos
 
   CRITICAL - Image Assets in Expo:
-  - You MUST create placeholder PNG files BEFORE using images in code
-  - NEVER download images from URLs - NEVER use curl, https, fetch, or any HTTP requests
-  - Create images using a simple inline Node.js command with base64 PNG data
-  - Example shell command to create all placeholder images at once:
-    node -e "const fs=require('fs');const p=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==','base64');fs.mkdirSync('assets/images',{recursive:true});['logo.png','icon.png','splash.png','adaptive-icon.png','favicon.png'].forEach(f=>fs.writeFileSync('assets/images/'+f,p))"
-  - This single command creates the assets/images directory and all required placeholder PNG files
-  - Run this command BEFORE creating any components that use require('@/assets/images/...')
-  - NEVER reference images that don't exist - causes "Unable to resolve module" errors
+  - You MUST ensure placeholder images exist before using them in code
+  - Use <afAction type="file" filePath="assets/images/logo.png" encoding="base64">...</afAction> to create them
+  - DO NOT use node -e or shell commands to create image files - they will not be visible in the browser editor
+  - If you need placeholders, use these standard assets or create new ones using afAction
+  - Valid images are required to prevent "Unable to resolve module" errors
 
   Structure:
   app/

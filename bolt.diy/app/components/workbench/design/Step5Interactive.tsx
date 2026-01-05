@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useParams } from '@remix-run/react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-toastify';
 import { useStore } from '@nanostores/react';
-import { designWizardStore, updateStep5Data, setStudioActive } from '../../../lib/stores/designWizard';
+import { designWizardStore, updateStep5Data, setStudioActive, enableAutoSaveAfterHydration } from '../../../lib/stores/designWizard';
 import { Canvas, type FrameData } from './interactive/Canvas';
 import { useScreenGenerationPolling } from '~/lib/hooks/useJobPolling';
 import { JobProgressBar } from '~/components/inngest/JobProgressBar';
@@ -14,12 +15,16 @@ type InteractionState = 'idle' | 'generating' | 'preview';
 
 export function Step5Interactive() {
   const DEVICE_WIDTH = 375; // Device frame width in pixels
-  const FRAME_SPACING = 500; // Gap between frames (reduced from 1000)
+  const FRAME_SPACING = 400; // Gap between frames (optimized for balanced layout)
   const CANVAS_CENTER_X = 4000;
   const CANVAS_CENTER_Y = 4000;
   const wizardData = useStore(designWizardStore);
   const [status, setStatus] = useState<InteractionState>('idle');
   const [frames, setFrames] = useState<FrameData[]>([]);
+
+  // Get Project ID from URL (Fix for saving to 'default')
+  const params = useParams();
+  const routeProjectId = params.id || params.chatId;
 
   const handleRegenerateTheme = useCallback(async () => {
     setStatus('generating');
@@ -87,6 +92,7 @@ export function Step5Interactive() {
   const snapshotRef = useRef<string>('');
   const latestSnapshotRef = useRef<string>('');
   const hasGeneratedRef = useRef(false);
+  const hasHydratedRef = useRef(false); // Track if DB hydration has run
   const framesRef = useRef<FrameData[]>([]);
   const storedStudioFrames = wizardData.step5?.studioFrames || [];
   const storedStudioSnapshot = wizardData.step5?.studioSnapshot || null;
@@ -139,16 +145,22 @@ export function Step5Interactive() {
 
             // Fix: Calculate position relative to the last frame in the list to ensure consistent spacing
             const lastFrame = updatedFrames[updatedFrames.length - 1];
+
+            // Align X: Right of last frame + standard spacing - offset
             const startX = lastFrame ? (lastFrame.x || CANVAS_CENTER_X) : CANVAS_CENTER_X;
-            // Use consistent 875px spacing (375 device + 500 gap)
-            const x = startX + (DEVICE_WIDTH + FRAME_SPACING);
+            const x = startX + (DEVICE_WIDTH + FRAME_SPACING) - 3000;
+
+            // Align Y: Strictly follow the row's Y coordinate (anchor to first frame)
+            const rowY = updatedFrames.length > 0 ? updatedFrames[0].y : CANVAS_CENTER_Y;
+            const y = (rowY ?? CANVAS_CENTER_Y) - 800;
 
             updatedFrames.push({
               id: screen.id,
               title: screen.title,
               html: screen.html,
               x,
-              y: CANVAS_CENTER_Y,
+              y,
+              isNew: true, // Mark for offset normalization on save
             });
           }
         });
@@ -228,28 +240,134 @@ export function Step5Interactive() {
     }
   }, [wizardData.step5?.customTheme]);
 
+  // Helper: Perfectly aligns all frames in a clean centered row (Removes all offsets/drift)
+  const optimizeLayout = (currentFrames: FrameData[]) => {
+    if (currentFrames.length === 0) return [];
+
+    // 1. Sort frames by their visual X position to maintain order
+    const sorted = [...currentFrames].sort((a, b) => (a.x || 0) - (b.x || 0));
+
+    // 2. Calculate total width to center them
+    const totalWidth = (sorted.length - 1) * (DEVICE_WIDTH + FRAME_SPACING) + DEVICE_WIDTH;
+    const startX = CANVAS_CENTER_X - totalWidth / 2;
+
+    // 3. Re-assign perfect coordinates
+    return sorted.map((frame, index) => ({
+      ...frame,
+      x: startX + index * (DEVICE_WIDTH + FRAME_SPACING),
+      y: CANVAS_CENTER_Y, // Strict Center Y
+    }));
+  };
+
   // Auto-restore Studio state from stored frames with SELF-HEALING layout
   useEffect(() => {
-    if (storedStudioFrames.length > 0 && frames.length === 0) {
-      // FIX: Force realignment of all frames to the center Y axis to repair any cached layout drift
-      const alignedFrames = storedStudioFrames.map(frame => ({
-        ...frame,
-        y: CANVAS_CENTER_Y
-      }));
+    console.log(`[Studio] useEffect check: storedStudioFrames.length=${storedStudioFrames.length}, hasHydrated=${hasHydratedRef.current}`);
 
-      setFrames(alignedFrames);
+    // Run once when we have stored frames and haven't hydrated yet
+    if (storedStudioFrames.length > 0 && !hasHydratedRef.current) {
+      hasHydratedRef.current = true; // Mark as hydrated immediately to prevent duplicate runs
 
-      if (wizardData.step5?.customTheme) {
-        setCustomTheme(wizardData.step5.customTheme);
-      }
+      // CRITICAL: Check DB for a better version FIRST, before setting any frames
+      // This prevents the race condition where we set stale frames, then DB frames, then stale frames again
+      (async () => {
+        try {
+          let targetProj = routeProjectId || wizardData.projectId || 'default';
+          console.log(`[Hydration] 🔍 Checking project: ${targetProj} (local has ${storedStudioFrames.length} frames)`);
 
-      setStatus('preview');
-      setIsFullscreen(true);
-      hasGeneratedRef.current = true;
-      snapshotRef.current = storedStudioSnapshot || wizardSnapshot;
-      console.log('[Studio] Restored & Re-aligned', storedStudioFrames.length, 'frames from stored session');
+          let dbRes = await fetch(`/api/studio/workspace?projectId=${targetProj}`);
+          let dbData = await dbRes.json();
+
+          let finalFrames = storedStudioFrames; // Default to stored frames
+          let useDbVersion = false;
+
+          if (dbRes.ok && dbData.workspace && Array.isArray(dbData.workspace.frames)) {
+            const dbCount = dbData.workspace.frames.length;
+            const localCount = storedStudioFrames.length;
+
+            console.log(`[Hydration] 📊 DB has ${dbCount} frames, local has ${localCount} frames`);
+
+            if (dbCount > localCount || (dbCount > 10 && localCount < 10)) {
+              console.log(`[Hydration] 🔄 Upgrading to DB version (${dbCount} screens)`);
+              finalFrames = dbData.workspace.frames;
+              useDbVersion = true;
+
+              if (dbData.workspace.theme) setCustomTheme(dbData.workspace.theme);
+            } else {
+              console.log('[Hydration] ✅ Local version is up-to-date, using local frames');
+            }
+          } else {
+            console.log('[Hydration] ⚠️  No workspace data found in DB, using local frames');
+          }
+
+          // NOW optimize and align the FINAL chosen frames (either DB or local)
+          const optimizedFrames = optimizeLayout(finalFrames);
+          const alignedFrames = optimizedFrames.map(frame => ({
+            ...frame,
+            x: (frame.x || 0) - 3000,
+            y: (frame.y ?? CANVAS_CENTER_Y) - 800,
+            isNew: false
+          }));
+
+          console.log(`[Studio] 🧹 Force-Optimized & Aligned ${alignedFrames.length} Frames on Load`);
+          setFrames(alignedFrames);
+
+          if (wizardData.step5?.customTheme && !useDbVersion) {
+            setCustomTheme(wizardData.step5.customTheme);
+          }
+
+          setStatus('preview');
+          setIsFullscreen(true);
+          hasGeneratedRef.current = true;
+          snapshotRef.current = storedStudioSnapshot || wizardSnapshot;
+
+          console.log(`[Hydration] 📝 Preparing to update store with ${alignedFrames.length} frames`);
+
+          // CRITICAL ORDER: Enable auto-save BEFORE updating store
+          console.log('[Hydration] 🔓 Enabling auto-save before store update');
+          enableAutoSaveAfterHydration();
+
+          updateStep5Data({
+            studioFrames: alignedFrames,
+            studioSnapshot: wizardSnapshot
+          });
+
+          console.log('[Hydration] ✅ Store updated with final frames');
+
+          if (useDbVersion) {
+            toast.success(`Synced latest ${alignedFrames.length} screens from cloud.`);
+            console.log('[Hydration] 💾 Scheduling DB save in 2 seconds');
+            setTimeout(() => handleSave(), 2000);
+          }
+        } catch (err) {
+          console.error('[Hydration] ❌ Hydration check failed:', err);
+
+          // Fallback: use local frames
+          const optimizedFrames = optimizeLayout(storedStudioFrames);
+          const alignedFrames = optimizedFrames.map(frame => ({
+            ...frame,
+            x: (frame.x || 0) - 3000,
+            y: (frame.y ?? CANVAS_CENTER_Y) - 800,
+            isNew: false
+          }));
+
+          setFrames(alignedFrames);
+          if (wizardData.step5?.customTheme) {
+            setCustomTheme(wizardData.step5.customTheme);
+          }
+          setStatus('preview');
+          setIsFullscreen(true);
+          hasGeneratedRef.current = true;
+          snapshotRef.current = storedStudioSnapshot || wizardSnapshot;
+
+          enableAutoSaveAfterHydration();
+          updateStep5Data({
+            studioFrames: alignedFrames,
+            studioSnapshot: wizardSnapshot
+          });
+        }
+      })();
     }
-  }, [storedStudioFrames, frames.length, storedStudioSnapshot, wizardSnapshot]);
+  }, [storedStudioFrames.length, storedStudioSnapshot, wizardSnapshot, routeProjectId, wizardData.projectId]); // Removed frames.length to prevent re-triggering when frames are set
 
   const [isSaving, setIsSaving] = useState(false);
   const isSavingRef = useRef(false); // Added for immediate lock
@@ -299,6 +417,15 @@ export function Step5Interactive() {
       setIsSaving(false);
     }, 15000);
 
+    // FIX: AUTO-OPTIMIZE ON SAVE
+    // Instead of manual offset math, we simply "Optimize Layout" before saving.
+    // This grabs all frames, lines them up perfectly centered (Clean coords), and saves THAT.
+    // This guarantees that the next load will be perfect.
+    console.log('[Save] 🧹 Running Silent Auto-Optimize on Save...');
+    const finalScreens = optimizeLayout(frames);
+
+    console.log('[Save] ✅ Optimization Complete. Saving clean layout:', finalScreens.map(f => ({ id: f.id, x: f.x, y: f.y })));
+
     try {
       const hash = await import('~/utils/hash').then((m) => m.hashString(wizardSnapshot));
 
@@ -307,9 +434,9 @@ export function Step5Interactive() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           snapshotHash: hash,
-          frames,
+          frames: finalScreens, // Use the offset-corrected frames
           theme: customTheme,
-          projectId: wizardData.projectId || 'default',
+          projectId: routeProjectId || wizardData.projectId || 'default',
         }),
       });
 
@@ -367,15 +494,18 @@ export function Step5Interactive() {
   const handleInitialize = useCallback(async () => {
     setIsFullscreen(true);
 
-    // 1. Check if we already have it in store (local memory)
-    if (storedStudioFrames.length > 0 && storedStudioSnapshot === wizardSnapshot) {
-      setFrames(storedStudioFrames);
+    // REMOVED DUPLICATE HYDRATION LOGIC
+    // Hydration is now handled by the useEffect at lines 262-370
+    // This prevents the race condition where we set frames twice with different data
+
+    // 1. Check if we already have frames in store (restored by useEffect)
+    if (storedStudioFrames.length > 0) {
+      console.log(`[handleInitialize] Found ${storedStudioFrames.length} stored frames, skipping re-initialization (handled by useEffect)`);
       setStatus('preview');
       setIsFullscreen(true);
       setStudioActive(true);
       hasGeneratedRef.current = true;
       snapshotRef.current = storedStudioSnapshot || wizardSnapshot;
-
       return;
     }
 
@@ -635,15 +765,19 @@ export function Step5Interactive() {
       // Calculate starting position based on rightmost frame
       const rightmost = getRightmostFrame();
       const baseX = rightmost.x ?? CANVAS_CENTER_X;
-      const baseY = CANVAS_CENTER_Y; // Always use the initial Y position
+
+      // FIX ALIGNMENT: Anchor to the very first frame to ensure the row stays perfectly flat
+      const firstFrame = frames.length > 0 ? frames[0] : null;
+      const rowY = firstFrame?.y ?? CANVAS_CENTER_Y;
 
       // Create placeholder frames immediately with empty HTML (triggers skeleton loaders)
       const placeholderFrames = remainingBatch.map((s, index) => ({
         id: s.id,
         title: s.name,
         html: '', // Empty HTML triggers skeleton loader
-        x: baseX + DEVICE_WIDTH + FRAME_SPACING + (DEVICE_WIDTH + FRAME_SPACING) * index,
-        y: baseY,
+        x: baseX + DEVICE_WIDTH + FRAME_SPACING + (DEVICE_WIDTH + FRAME_SPACING) * index - 3000,
+        y: rowY - 800,
+        isNew: true, // Mark for offset normalization on save
       }));
 
       // Add placeholder frames alongside existing frames
@@ -701,18 +835,80 @@ export function Step5Interactive() {
       return;
     }
 
-    if (wizardSnapshot !== snapshotRef.current && hasGeneratedRef.current) {
-      setPendingRegeneration(true);
-    }
+    // Auto-regeneration disabled by design decision:
+    // Changing Step 4 should not destroy/regenerate Step 5 work automatically.
   }, [wizardSnapshot]);
 
-  useEffect(() => {
-    if (pendingRegeneration && status !== 'generating' && wizardData.currentStep === 5) {
-      setPendingRegeneration(false);
-      toast.info('Detected updates in earlier steps. Regenerating Studio...');
-      handleInitialize();
+
+  // TMP: Manual Rescue Handler
+  const handleManualRescue = async () => {
+
+
+    try {
+      const RESCUE_ID = '22ca429a-3d55-4cbc-97db-33442da85dfb';
+      toast.loading('Recovering session...');
+      const res = await fetch(`/api/studio/workspace?id=${RESCUE_ID}`);
+      const data = await res.json();
+
+      if (res.ok && data.workspace) {
+        setFrames(data.workspace.frames);
+        if (data.workspace.theme) setCustomTheme(data.workspace.theme);
+
+        hasGeneratedRef.current = true;
+        toast.dismiss();
+        toast.success('Restored 32 Screens! Please click SAVE immediately.');
+      } else {
+        toast.error('Could not find the lost session ID in database.');
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error('Recovery failed.');
     }
-  }, [pendingRegeneration, status, handleInitialize, wizardData.currentStep]);
+  };
+
+  // Hard Restore Handler (Server-Side Migration)
+  const handleHardRestore = async () => {
+    // Confirmation removed to ensure execution
+    const t = toast.loading('Performing Hard Restore...');
+    try {
+      // 1. Trigger Server-Side Copy
+      const res = await fetch('/api/migrator', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetProjectId: routeProjectId || wizardData.projectId || 'default',
+          sourceId: '22ca429a-3d55-4cbc-97db-33442da85dfb'
+        })
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error);
+
+      // 2. WIPE Local Storage (The root of the evil)
+      try {
+        const raw = localStorage.getItem('appforge_design_wizard_state');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          // Reset Step 5 to force a clean load from DB
+          if (parsed.step5) {
+            parsed.step5.studioFrames = [];
+            parsed.step5.generatedScreens = [];
+            parsed.step5.isStudioActive = true;
+            localStorage.setItem('appforge_design_wizard_state', JSON.stringify(parsed));
+          }
+        }
+      } catch (e) { console.error(e); }
+
+      toast.update(t, { render: `Restored ${data.count} screens! Reloading...`, type: 'success', isLoading: false });
+
+      // 3. Reload to pull fresh from DB
+      setTimeout(() => window.location.reload(), 1000);
+
+    } catch (e: any) {
+      console.error(e);
+      toast.update(t, { render: e.message || 'Restore Failed', type: 'error', isLoading: false });
+    }
+  };
 
   const handleGenerateNextScreen = async () => {
     setStatus('generating');
@@ -778,22 +974,27 @@ export function Step5Interactive() {
         return;
       }
 
-      // Create placeholder frames immediately
-      const rightmost = getRightmostFrame();
-      const baseX = rightmost.x ?? CANVAS_CENTER_X;
-      const baseY = CANVAS_CENTER_Y; // Always use the initial Y position
 
-      console.log('[Step5Interactive] Rightmost frame:', rightmost);
-      console.log('[Step5Interactive] BaseX:', baseX, 'BaseY:', baseY);
-      console.log(
-        '[Step5Interactive] Current frames:',
-        framesRef.current.map((f) => ({ id: f.id, x: f.x, y: f.y })),
-      );
+
+      // Revert to Append Logic with Visual Offset
+      const rightmost = getRightmostFrame();
+
+      // SIMPLIFIED LOGIC:
+      // Since all frames are already in the "Visual Offset" space (due to load optimization),
+      // we simply place the new frame relative to the last one.
+      // No need to normalize (+3000) and then re-offset (-3000).
+      const baseX = rightmost.x ?? CANVAS_CENTER_X;
+
+      // STRICT Y-ALIGNMENT:
+      const firstFrame = framesRef.current[0];
+      const visualRowY = firstFrame ? (firstFrame.y ?? CANVAS_CENTER_Y) : (CANVAS_CENTER_Y - 800);
 
       placeholderFrames = batch.map((screen, index) => {
+        // Just append to the right
         const x = baseX + DEVICE_WIDTH + FRAME_SPACING + (DEVICE_WIDTH + FRAME_SPACING) * index;
-        const y = baseY;
-        console.log(`[Step5Interactive] Creating frame ${screen.id} at x:${x}, y:${y} (index:${index})`);
+        const y = visualRowY;
+
+        console.log(`[Step5Interactive] Creating frame ${screen.id} at x:${x}, y:${y} (index:${index}) relative to base:${baseX}`);
 
         return {
           id: screen.id,
@@ -801,6 +1002,7 @@ export function Step5Interactive() {
           html: '',
           x,
           y,
+          isNew: true, // Mark for offset normalization on save
         };
       });
 
@@ -1024,6 +1226,17 @@ export function Step5Interactive() {
                   <span className="text-[10px] text-white/70 font-extrabold uppercase tracking-[0.12em]">Editing</span>
                 </div>
               </div>
+            </div>
+
+            {/* Hard Restore Button */}
+            <div className="flex items-center gap-4 mr-4">
+              <button
+                onClick={handleHardRestore}
+                className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 text-[10px] font-bold uppercase tracking-wider rounded border border-red-500/20 transition-colors"
+                title="Wipes local storage and forces reload from server backup"
+              >
+                ☢️ HARD RESTORE
+              </button>
             </div>
 
             <div className="flex items-center gap-4">

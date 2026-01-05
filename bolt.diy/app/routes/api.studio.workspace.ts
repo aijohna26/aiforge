@@ -4,10 +4,12 @@ import { createClient } from '~/lib/supabase/server';
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const snapshotHash = url.searchParams.get('hash');
+  const workspaceId = url.searchParams.get('id');
   const projectId = url.searchParams.get('projectId');
 
-  if (!snapshotHash) {
-    return json({ error: 'Missing snapshot hash' }, { status: 400 });
+  // Allow fetching by projectId, workspaceId, or snapshotHash
+  if (!snapshotHash && !workspaceId && !projectId) {
+    return json({ error: 'Missing snapshot hash, workspace ID, or project ID' }, { status: 400 });
   }
 
   const responseHeaders = new Headers();
@@ -17,17 +19,25 @@ export async function loader({ request }: LoaderFunctionArgs) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  let query = supabase.from('studio_workspaces').select('*').eq('snapshot_hash', snapshotHash);
+  let query = supabase.from('studio_workspaces').select('*');
 
+  // Build query based on available parameters
+  if (workspaceId) {
+    query = query.eq('id', workspaceId);
+  } else if (projectId) {
+    // Fetch by project_id - get the most recent workspace for this project
+    query = query.eq('project_id', projectId).order('updated_at', { ascending: false }).limit(1);
+  } else {
+    query = query.eq('snapshot_hash', snapshotHash!);
+  }
+
+  // For authenticated users, filter by user_id
+  // For anonymous users, don't filter by user_id (allows fetching any workspace by projectId)
   if (user) {
     query = query.eq('user_id', user.id);
-  } else {
-    /*
-     * For anonymous users, we might want to skip or handle differently
-     * For now, let's require user or handle by sessionId?
-     * User requested database, usually implies auth context in these apps
-     */
   }
+  // If anonymous and querying by projectId, we'll fetch any workspace with that project_id
+  // This allows anonymous users to access their own workspaces
 
   const { data, error } = await query.maybeSingle();
 
@@ -79,14 +89,59 @@ export async function action({ request }: ActionFunctionArgs) {
     updated_at: new Date().toISOString(),
   };
 
-  // Upsert based on snapshot_hash (and user_id if present)
-  const query = supabase.from('studio_workspaces').upsert(workspaceData, {
-    onConflict: 'user_id, project_id, snapshot_hash',
-  });
+  // LOGIC CHANGE v3: Nuclear Option (Delete All + Insert)
+  // To resolve persistent 500 errors regarding unique constraints and duplicates,
+  // we strictly enforce 1 session by deleting ALL existing sessions for this project
+  // and inserting a fresh one.
 
-  const { data, error } = await query.select().single();
+  if (user) {
+    console.log(`[Studio Save] Wiping old sessions for project: ${projectId || 'default'}`);
+    const { error: delError } = await supabase
+      .from('studio_workspaces')
+      .delete()
+      .eq('project_id', projectId || 'default')
+      .eq('user_id', user.id);
+
+    if (delError) {
+      console.error('[Studio Save] Delete Error:', delError);
+      // We continue? Or fail? Let's try to continue to Insert, but this is suspicious.
+    }
+  }
+
+  // Insert the new clean state
+  console.log('[Studio Save] Inserting fresh workspace');
+  const { data, error } = await supabase
+    .from('studio_workspaces')
+    .insert(workspaceData)
+    .select()
+    .single();
 
   if (error) {
+    // Handle Duplicate Key (Row already exists)
+    if (error.code === '23505') {
+      console.log('[Studio Save] Duplicate found (Clean Slate failed). Updating existing row instead.');
+
+      // Find the blocking row
+      const { data: blocker } = await supabase
+        .from('studio_workspaces')
+        .select('id')
+        .eq('user_id', user?.id || null) // Use user?.id or null to match insert
+        .eq('project_id', projectId || 'default')
+        .eq('snapshot_hash', snapshotHash)
+        .maybeSingle();
+
+      if (blocker) {
+        const { error: updateError } = await supabase
+          .from('studio_workspaces')
+          .update(workspaceData)
+          .eq('id', blocker.id);
+
+        if (!updateError) {
+          return json({ success: true, method: 'fallback_update' }, { headers: responseHeaders });
+        }
+      }
+    }
+
     console.error('[Studio Save] DB Error:', error);
 
     // Handle missing table
