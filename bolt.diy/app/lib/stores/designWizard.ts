@@ -585,10 +585,10 @@ if (typeof window !== 'undefined') {
   function saveToLocalStorage(state: DesignWizardData, frameCount: number) {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      console.log(`[DesignWizard] 💾 Auto-saved to localStorage (${frameCount} frames)`, {
-        studioFrames: frameCount,
-        generatedScreens: state.step5?.generatedScreens?.length || 0,
-      });
+      // Minimal logging - only log if significant frame count
+      if (frameCount > 0) {
+        console.log(`[DesignWizard] Auto-saved ${frameCount} frames to localStorage`);
+      }
     } catch (error) {
       console.error('[DesignWizard] Failed to save to localStorage:', error);
     }
@@ -788,8 +788,7 @@ export function loadWizardData(data: DesignWizardData) {
 
   if (currentFrames > 0 && canAutoSave) {
     // Studio has been hydrated from DB - protect it from project data
-    console.log(`[loadWizardData] Studio already hydrated (${currentFrames} frames). Blocking project data (${incomingFrames} frames) to prevent overwrite.`);
-    console.log(`[loadWizardData] Loading only non-Studio wizard data (steps 1-4)`);
+    console.log(`[loadWizardData] Preserving ${currentFrames} Studio frames (blocking stale project data with ${incomingFrames} frames)`);
 
     // Load everything EXCEPT Step 5
     designWizardStore.set({
@@ -801,13 +800,15 @@ export function loadWizardData(data: DesignWizardData) {
 
   // If Studio hasn't been hydrated yet, allow project data but prefer more frames
   if (currentFrames > incomingFrames && currentFrames > 0) {
-    console.log(`[loadWizardData] Preserving current frames (${currentFrames}) over incoming (${incomingFrames}) - more data`);
+    console.log(`[loadWizardData] Keeping ${currentFrames} frames (incoming has ${incomingFrames})`);
     designWizardStore.set({
       ...migrated,
       step5: currentState.step5,
     });
   } else {
-    console.log(`[loadWizardData] Loading wizard data (${incomingFrames} frames in Step 5)`);
+    if (incomingFrames > 0) {
+      console.log(`[loadWizardData] Loading ${incomingFrames} frames from project data`);
+    }
     designWizardStore.set(migrated);
   }
 }

@@ -866,49 +866,7 @@ export function Step5Interactive() {
     }
   };
 
-  // Hard Restore Handler (Server-Side Migration)
-  const handleHardRestore = async () => {
-    // Confirmation removed to ensure execution
-    const t = toast.loading('Performing Hard Restore...');
-    try {
-      // 1. Trigger Server-Side Copy
-      const res = await fetch('/api/migrator', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          targetProjectId: routeProjectId || wizardData.projectId || 'default',
-          sourceId: '22ca429a-3d55-4cbc-97db-33442da85dfb'
-        })
-      });
-      const data = await res.json();
-
-      if (!res.ok) throw new Error(data.error);
-
-      // 2. WIPE Local Storage (The root of the evil)
-      try {
-        const raw = localStorage.getItem('appforge_design_wizard_state');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          // Reset Step 5 to force a clean load from DB
-          if (parsed.step5) {
-            parsed.step5.studioFrames = [];
-            parsed.step5.generatedScreens = [];
-            parsed.step5.isStudioActive = true;
-            localStorage.setItem('appforge_design_wizard_state', JSON.stringify(parsed));
-          }
-        }
-      } catch (e) { console.error(e); }
-
-      toast.update(t, { render: `Restored ${data.count} screens! Reloading...`, type: 'success', isLoading: false });
-
-      // 3. Reload to pull fresh from DB
-      setTimeout(() => window.location.reload(), 1000);
-
-    } catch (e: any) {
-      console.error(e);
-      toast.update(t, { render: e.message || 'Restore Failed', type: 'error', isLoading: false });
-    }
-  };
+  // Hard Restore removed - no longer needed with proper persistence fix
 
   const handleGenerateNextScreen = async () => {
     setStatus('generating');
@@ -1226,17 +1184,6 @@ export function Step5Interactive() {
                   <span className="text-[10px] text-white/70 font-extrabold uppercase tracking-[0.12em]">Editing</span>
                 </div>
               </div>
-            </div>
-
-            {/* Hard Restore Button */}
-            <div className="flex items-center gap-4 mr-4">
-              <button
-                onClick={handleHardRestore}
-                className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 text-[10px] font-bold uppercase tracking-wider rounded border border-red-500/20 transition-colors"
-                title="Wipes local storage and forces reload from server backup"
-              >
-                ☢️ HARD RESTORE
-              </button>
             </div>
 
             <div className="flex items-center gap-4">
