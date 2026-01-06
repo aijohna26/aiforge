@@ -49,7 +49,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
     },
   });
 
-  const { messages, files, promptId, contextOptimization, supabase, chatMode, designScheme, maxLLMSteps } =
+  let { messages, files, promptId, contextOptimization, supabase, chatMode, designScheme, maxLLMSteps } =
     await request.json<{
       messages: Messages;
       files: any;
@@ -76,6 +76,21 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
       headers: { 'Content-Type': 'application/json' },
     });
   }
+
+  // CRITICAL FIX: Clean up any messages with invalid parts property before processing
+  // The AI SDK 6.0 can create messages with parts: undefined which breaks convertToModelMessages
+  messages = messages.map((msg: any) => {
+    if (msg && typeof msg === 'object') {
+      // If parts exists but is not a valid non-empty array, delete it
+      if (msg.parts !== undefined && (!Array.isArray(msg.parts) || msg.parts.length === 0)) {
+        const cleaned = { ...msg };
+        delete cleaned.parts;
+        logger.debug('Cleaned invalid parts from message:', { role: msg.role, hadParts: msg.parts });
+        return cleaned;
+      }
+    }
+    return msg;
+  });
 
   const cookieHeader = request.headers.get('Cookie');
   const apiKeys = JSON.parse(parseCookies(cookieHeader || '').apiKeys || '{}');

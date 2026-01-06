@@ -497,16 +497,15 @@ export function WizardStep1Form({ zoom = 1, panX = 0, panY = 0 }: WizardStep1For
                       return (
                         <div
                           key={idx}
-                          className={`p-3 rounded-lg border text-left transition-all relative group ${
-                            alreadyAdded
-                              ? 'bg-green-500/10 border-green-500/30'
-                              : 'bg-[#2a2a2a] border-[#333] hover:border-cyan-500/50'
-                          }`}
+                          className={`p-3 rounded-lg border text-left transition-all relative group ${alreadyAdded
+                            ? 'bg-green-500/10 border-green-500/30'
+                            : 'bg-[#2a2a2a] border-[#333] hover:border-cyan-500/50'
+                            }`}
                         >
                           <div className="flex justify-between items-start">
                             <div>
                               <span className="text-xs font-bold text-white block">{model.name}</span>
-                              <span className="text-[10px] text-slate-400">{model.fields.length} fields</span>
+                              <span className="text-[10px] text-slate-400">{(model.fields || []).length} fields</span>
                             </div>
                             <button
                               onClick={() => acceptModel(model)}

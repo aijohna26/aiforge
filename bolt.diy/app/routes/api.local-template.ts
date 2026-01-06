@@ -84,21 +84,19 @@ export async function loader({ request }: LoaderFunctionArgs) {
         try {
           const pkg = JSON.parse(packageJsonFile.content);
 
-          // Add --tunnel flag to Expo scripts (required for E2B QR codes)
-          if (pkg.scripts) {
-            if (pkg.scripts.dev && pkg.scripts.dev.includes('expo start')) {
-              pkg.scripts.dev = pkg.scripts.dev.replace('expo start --web', 'expo start --tunnel');
-              pkg.scripts.dev = pkg.scripts.dev.replace('expo start', 'expo start --tunnel');
-            }
+          // Add --web --port 8081 flags to Expo scripts (required for E2B web preview)
+          // We use web mode because E2B proxies port 8081, making it reliable (unlike tunnel)
+          const E2B_FLAGS = 'EXPO_NO_TELEMETRY=1 npx expo start --web --port 8081';
 
-            if (pkg.scripts.start && pkg.scripts.start.includes('expo start')) {
-              pkg.scripts.start = pkg.scripts.start.replace('expo start', 'expo start --tunnel');
-            }
+          if (pkg.scripts) {
+            // Force dev and start scripts to use the robust E2B command
+            pkg.scripts.dev = E2B_FLAGS;
+            pkg.scripts.start = E2B_FLAGS;
           }
 
           // Update the file content with modified package.json
           packageJsonFile.content = JSON.stringify(pkg, null, 2);
-          console.log('✅ [SERVER] Modified package.json for Expo: added --tunnel flags');
+          console.log('✅ [SERVER] Modified package.json for Expo: added --web --port 8081 flags');
         } catch (error) {
           console.error('Failed to modify package.json for Expo:', error);
         }

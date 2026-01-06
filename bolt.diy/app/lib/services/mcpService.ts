@@ -401,8 +401,18 @@ export class MCPService {
             logger.debug(`calling tool "${toolName}" with args: ${JSON.stringify(toolInvocation.args)}`);
 
             try {
+              // CRITICAL: Clean messages before converting to prevent "Cannot read properties of undefined (reading 'map')"
+              const cleanedMessages = messages.map((msg: any) => {
+                if (msg.parts !== undefined && !Array.isArray(msg.parts)) {
+                  const cleaned = { ...msg };
+                  delete cleaned.parts;
+                  return cleaned;
+                }
+                return msg;
+              });
+
               result = await toolInstance.execute(toolInvocation.args, {
-                messages: await convertToModelMessages(messages),
+                messages: await convertToModelMessages(cleanedMessages),
                 toolCallId,
               });
             } catch (error) {

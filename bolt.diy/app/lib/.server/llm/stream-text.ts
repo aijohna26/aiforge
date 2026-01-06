@@ -92,7 +92,7 @@ export async function streamText(props: {
   designScheme?: DesignScheme;
 }) {
   const {
-    messages = [],
+    messages: rawMessages = [],
     env: serverEnv,
     options,
     apiKeys,
@@ -105,34 +105,91 @@ export async function streamText(props: {
     chatMode,
     designScheme,
   } = props;
+
+  // Paranoid check: ensure messages is an array
+  const messages = Array.isArray(rawMessages) ? rawMessages : [];
+
   let currentModel = DEFAULT_MODEL;
   let currentProvider = DEFAULT_PROVIDER.name;
-  let processedMessages = messages.map((message) => {
-    const newMessage = { ...message };
 
-    if (message.role === 'user') {
-      const { model, provider, content } = extractPropertiesFromMessage(message);
-      currentModel = model;
-      currentProvider = provider;
-
-      if (typeof (message as any).content === 'string') {
-        (newMessage as any).content = sanitizeText(content);
+  let processedMessages = messages
+    .filter((m) => m && typeof m === 'object') // Filter out null/undefined messages first
+    .map((message) => {
+      if (!message || typeof message !== 'object') {
+        logger.warn('Skipping invalid message (not an object):', message);
+        return null;
       }
-    } else if (message.role == 'assistant') {
-      if (typeof (message as any).content === 'string') {
-        (newMessage as any).content = sanitizeText((message as any).content);
+
+      const newMessage = { ...message };
+
+      if (message.role === 'user') {
+        const { model, provider, content } = extractPropertiesFromMessage(message);
+        currentModel = model;
+        currentProvider = provider;
+
+        if (typeof (message as any).content === 'string') {
+          (newMessage as any).content = sanitizeText(content);
+        }
+      } else if (message.role == 'assistant') {
+        if (typeof (message as any).content === 'string') {
+          (newMessage as any).content = sanitizeText((message as any).content);
+        }
       }
-    }
 
-    // Sanitize all text parts in parts array, if present
-    if (Array.isArray(message.parts)) {
-      newMessage.parts = message.parts.map((part) =>
-        part.type === 'text' ? { ...part, text: sanitizeText(part.text) } : part,
-      );
-    }
+      // Ensure content is not null/undefined if parts are missing
+      if (
+        !(newMessage as any).content &&
+        (!newMessage.parts || !Array.isArray(newMessage.parts) || newMessage.parts.length === 0)
+      ) {
+        (newMessage as any).content = '';
+      }
 
-    return newMessage;
-  });
+      // Sanitize all text parts in parts array, if present
+      if (Array.isArray(message.parts) && message.parts.length > 0) {
+        newMessage.parts = message.parts
+          // Filter out implementation-specific parts that might confuse the provider
+          .filter((part: any) =>
+            part.type === 'text' ||
+            part.type === 'image' ||
+            part.type === 'file' ||
+            part.type === 'tool-invocation'
+          )
+          .map((part) =>
+            part.type === 'text' ? { ...part, text: sanitizeText(part.text) } : part,
+          );
+
+        // CRITICAL: If after filtering, parts is empty, delete it entirely
+        if (newMessage.parts.length === 0) {
+          delete (newMessage as any).parts;
+        }
+      } else {
+        // CRITICAL: specific fix for "Cannot read properties of undefined (reading 'map')"
+        // If parts is empty/invalid/undefined, DELETE the key entirely so the SDK doesn't try to map it.
+        delete (newMessage as any).parts;
+      }
+
+      // Clean up other potential array properties that might confuse the SDK if undefined/empty
+      if (!Array.isArray(newMessage.toolInvocations) || newMessage.toolInvocations.length === 0) {
+        delete (newMessage as any).toolInvocations;
+      }
+
+      if (!Array.isArray(newMessage.annotations) || newMessage.annotations.length === 0) {
+        delete (newMessage as any).annotations;
+      }
+
+      // If, after all this, we have neither content nor parts nor toolInvocations, this message is junk.
+      // Return null so we can filter it out.
+      const hasContent = typeof (newMessage as any).content === 'string' && (newMessage as any).content.length > 0;
+      const hasParts = Array.isArray(newMessage.parts) && newMessage.parts.length > 0;
+      const hasTools = Array.isArray(newMessage.toolInvocations) && newMessage.toolInvocations.length > 0;
+
+      if (!hasContent && !hasParts && !hasTools) {
+        return null;
+      }
+
+      return newMessage;
+    })
+    .filter((m) => m !== null) as any; // Final filter to remove nulls
 
   const provider = PROVIDER_LIST.find((p) => p.name === currentProvider) || DEFAULT_PROVIDER;
   const staticModels = LLMManager.getInstance().getStaticModelListFromProvider(provider);
@@ -305,14 +362,42 @@ export async function streamText(props: {
 
   // AI SDK 6.0: Convert to model messages directly
   // processedMessages already have the correct format (either content or parts)
-  let modelMessages;
-  try {
-    modelMessages = await convertToModelMessages(processedMessages as any);
-  } catch (err) {
-    console.error('[DEBUG-STREAM] convertToModelMessages failed:', err);
-    console.error('[DEBUG-STREAM] Messages:', JSON.stringify(processedMessages, null, 2));
-    throw err;
-  }
+
+  // CRITICAL: Final validation before converting - ensure no undefined parts arrays
+  processedMessages = processedMessages.map((msg: any) => {
+    if (msg.parts !== undefined && !Array.isArray(msg.parts)) {
+      logger.warn('Found message with non-array parts, deleting:', { role: msg.role, parts: msg.parts });
+      const cleaned = { ...msg };
+      delete cleaned.parts;
+      return cleaned;
+    }
+    return msg;
+  });
+
+  // AI SDK 6.0: Manually convert to CoreMessage to avoid SDK validation bugs
+  // convertToModelMessages is too strict and crashes on valid custom properties
+  const modelMessages: any[] = processedMessages.map(msg => {
+    if (msg.role === 'user') {
+      if (msg.parts && msg.parts.length > 0) {
+        return { role: 'user', content: msg.parts };
+      }
+      return { role: 'user', content: typeof msg.content === 'string' ? msg.content : '' };
+    }
+
+    if (msg.role === 'assistant') {
+      if (msg.parts && msg.parts.length > 0) {
+        // Filter out any non-standard parts for the model
+        const validParts = msg.parts.filter((p: any) => p.type === 'text' || p.type === 'tool-invocation');
+        if (validParts.length > 0) {
+          return { role: 'assistant', content: validParts };
+        }
+      }
+      return { role: 'assistant', content: typeof msg.content === 'string' ? msg.content : '' };
+    }
+
+    // Default for system or other roles
+    return { role: msg.role, content: msg.content };
+  });
 
   const streamParams = {
     model: provider.getModelInstance({

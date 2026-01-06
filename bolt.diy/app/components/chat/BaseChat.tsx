@@ -391,7 +391,8 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                   <div className="flex-1 flex flex-col items-center justify-center p-4 text-center text-bolt-elements-textTertiary">
                     <div className="i-ph:chat-circle-text text-4xl mb-2 opacity-50" />
                     <p className="text-sm">No messages yet.</p>
-                    <p className="text-xs">Start typing below to generate an app.</p>
+                    <p className="text-xs mb-8">Start typing below to generate an app.</p>
+                    <StarterTemplates />
                   </div>
                 )}
 

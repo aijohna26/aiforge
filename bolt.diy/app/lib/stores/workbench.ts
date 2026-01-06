@@ -623,6 +623,11 @@ export class WorkbenchStore {
       }
     } else if (data.action.type === 'design-sync') {
       try {
+        if (!data.action.content) {
+          console.warn('[Workbench] Skipping design-sync with empty content');
+          return;
+        }
+
         const payload = JSON.parse(data.action.content);
 
         updateStep1Data(payload);
@@ -632,7 +637,11 @@ export class WorkbenchStore {
         await artifact.runner.runAction(data);
       } catch (error) {
         console.error('[Workbench] Failed to parse design-sync payload:', error);
-        console.error('[Workbench] Received content:', data.action.content);
+        console.error('[Workbench] Content length:', data.action.content?.length);
+        console.error('[Workbench] Raw Content which failed parsing:', data.action.content);
+
+        // Attempt to soft-recover if it's a simple truncation (optional, but good for stability)
+        // For now, just logging is enough to let us know WHY it failed.
       }
     } else if (data.action.type === 'qa-pass') {
       try {

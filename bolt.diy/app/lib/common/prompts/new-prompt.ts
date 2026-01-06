@@ -267,12 +267,12 @@ The year is 2025.
 
     ✅ The template package.json has ALREADY been configured correctly for E2B
     ✅ Write it EXACTLY as provided - DO NOT modify the scripts section
-    ✅ Required scripts are already present with the correct --tunnel flags:
-       - "dev": "EXPO_NO_TELEMETRY=1 npx expo start --tunnel"
-       - "start": "EXPO_NO_TELEMETRY=1 npx expo start --tunnel"
+    ✅ Required scripts are already present with the correct --web flags:
+       - "dev": "EXPO_NO_TELEMETRY=1 npx expo start --web --port 8081"
+       - "start": "EXPO_NO_TELEMETRY=1 npx expo start --web --port 8081"
 
     ⚠️ DO NOT remove, modify, or "fix" these scripts - they are already correct
-    ⚠️ The --tunnel flag is MANDATORY and has already been added by the system
+    ⚠️ The --web --port 8081 flags are MANDATORY and have already been added by the system
     ⚠️ Writing package.json without these exact scripts will cause "Missing script: dev" error
 
     ⚠️⚠️⚠️ END CRITICAL NOTICE ⚠️⚠️⚠️
@@ -300,7 +300,7 @@ The year is 2025.
        ONLY use <afAction type="file"> tags to create/modify files.
 
        When writing package.json:
-       - For EXPO apps: Write EXACTLY as provided (--tunnel already added)
+       - For EXPO apps: Write EXACTLY as provided (--web --port 8081 already added)
        - For NON-EXPO apps: Write EXACTLY as provided (standard scripts are fine)
        - DO NOT modify the scripts section in either case
 

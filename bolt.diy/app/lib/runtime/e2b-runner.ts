@@ -20,7 +20,9 @@ async function withRetry<T>(operation: () => Promise<T>, retries = MAX_RETRIES):
 
 export class E2BRunner {
     static sandboxId: string | null = null;
-    static templateId: string = 'base'; // Use base template - we write all files ourselves
+    // CRITICAL: Default to 'expo-template-v4' which has the corrected package.json logic
+    // We recently rebuilt this template to force --web --port 8081
+    static templateId: string = 'expo-template-v4';
     private static activeOperations: Set<Promise<any>> = new Set();
 
     static async waitForAllOperations() {
@@ -80,13 +82,13 @@ export class E2BRunner {
             if (result.sandboxId) {
                 this.sandboxId = result.sandboxId;
                 if (typeof window !== 'undefined') {
-                    localStorage.setItem('e2b_sandbox_id', result.sandboxId);
+                    localStorage.setItem('e2b_sandbox_id_v4', result.sandboxId);
                 }
             }
             if (result.url) {
                 this.activeUrl = result.url;
                 if (typeof window !== 'undefined') {
-                    localStorage.setItem('e2b_preview_url', result.url);
+                    localStorage.setItem('e2b_preview_url_v4', result.url);
                 }
             }
 
@@ -102,8 +104,8 @@ export class E2BRunner {
                 this.sandboxId = null;
                 this.activeUrl = null;
                 if (typeof window !== 'undefined') {
-                    localStorage.removeItem('e2b_sandbox_id');
-                    localStorage.removeItem('e2b_preview_url');
+                    localStorage.removeItem('e2b_sandbox_id_v4');
+                    localStorage.removeItem('e2b_preview_url_v4');
                 }
             }
             throw err;
@@ -115,12 +117,13 @@ export class E2BRunner {
     // Initialize from localStorage if available
     static {
         if (typeof window !== 'undefined') {
-            const storedId = localStorage.getItem('e2b_sandbox_id');
+            // CACHE BUSTER: Updated keys to '_v4' to force abandoning old v3 sandboxes
+            const storedId = localStorage.getItem('e2b_sandbox_id_v4');
             if (storedId) {
                 this.sandboxId = storedId;
                 logger.info(`[E2B Client] Restored sandbox ID from localStorage: ${storedId}`);
             }
-            const storedUrl = localStorage.getItem('e2b_preview_url');
+            const storedUrl = localStorage.getItem('e2b_preview_url_v4');
             if (storedUrl) {
                 this.activeUrl = storedUrl;
                 logger.info(`[E2B Client] Restored preview URL from localStorage: ${storedUrl}`);
@@ -134,7 +137,7 @@ export class E2BRunner {
 
     static async writeFile(path: string, content: string, encoding?: 'base64') {
         // Validate and auto-fix package.json before writing (uses shared validator)
-        const validatedContent = validatePackageJson(path, content);
+        const validatedContent = validatePackageJson(path, content, true);
         logger.info(`[E2B Client] Requesting file write: ${path}${encoding ? ' (binary)' : ''} (Sandbox: ${this.sandboxId})`);
 
         // Track this operation
@@ -174,7 +177,7 @@ export class E2BRunner {
                 if (result.sandboxId) {
                     this.sandboxId = result.sandboxId;
                     if (typeof window !== 'undefined') {
-                        localStorage.setItem('e2b_sandbox_id', result.sandboxId);
+                        localStorage.setItem('e2b_sandbox_id_v4', result.sandboxId);
                     }
                 }
             } catch (err: any) {
@@ -183,7 +186,7 @@ export class E2BRunner {
                 if (err.message?.includes('Sandbox not found') || err.message?.includes('not running')) {
                     this.sandboxId = null;
                     if (typeof window !== 'undefined') {
-                        localStorage.removeItem('e2b_sandbox_id');
+                        localStorage.removeItem('e2b_sandbox_id_v4');
                     }
                 }
                 throw err;

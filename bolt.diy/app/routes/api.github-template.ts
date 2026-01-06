@@ -124,8 +124,8 @@ async function fetchRepoContentsCloudflare(repo: string, githubToken?: string) {
 async function fetchRepoContentsZip(repo: string, githubToken?: string) {
   const baseUrl = 'https://api.github.com';
 
-  // Get the latest release
-  const releaseResponse = await fetch(`${baseUrl}/repos/${repo}/releases/latest`, {
+  // Get repository info to find default branch
+  const repoResponse = await fetch(`${baseUrl}/repos/${repo}`, {
     headers: {
       Accept: 'application/vnd.github.v3+json',
       'User-Agent': 'bolt.diy-app',
@@ -133,12 +133,13 @@ async function fetchRepoContentsZip(repo: string, githubToken?: string) {
     },
   });
 
-  if (!releaseResponse.ok) {
-    throw new Error(`GitHub API error: ${releaseResponse.status} - ${releaseResponse.statusText}`);
+  if (!repoResponse.ok) {
+    throw new Error(`Repository not found: ${repo}`);
   }
 
-  const releaseData = (await releaseResponse.json()) as any;
-  const zipballUrl = releaseData.zipball_url;
+  const repoData = (await repoResponse.json()) as any;
+  const defaultBranch = repoData.default_branch;
+  const zipballUrl = `${baseUrl}/repos/${repo}/zipball/${defaultBranch}`;
 
   // Fetch the zipball
   const zipResponse = await fetch(zipballUrl, {

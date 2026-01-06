@@ -8,6 +8,7 @@ import { createClient as createServerClient } from '~/lib/supabase/server';
 import { createClient as createBrowserClient } from '~/lib/supabase/browser';
 import { themeStore, toggleTheme } from '~/lib/stores/theme';
 import { classNames } from '~/utils/classNames';
+import StarterTemplates from '~/components/chat/StarterTemplates';
 
 interface Project {
   id: string;
@@ -199,6 +200,9 @@ export default function Dashboard() {
                   </div>
                 </div>
               </form>
+              <div className="mt-8">
+                <StarterTemplates />
+              </div>
             </motion.div>
           </div>
         )}

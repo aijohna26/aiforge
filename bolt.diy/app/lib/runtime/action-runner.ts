@@ -469,7 +469,7 @@ export class ActionRunner {
     // Normal text file handling (Code generation)
     // CRITICAL: Validate and fix package.json BEFORE writing to ANY destination
     // This ensures browser and E2B see the SAME validated content
-    const validatedContent = validatePackageJson(action.filePath, action.content);
+    const validatedContent = validatePackageJson(action.filePath, action.content, isE2BEnabled());
 
     // E2B INTERCEPT
     // CRITICAL: Only write to E2B when NOT streaming (i.e., when action is complete)

@@ -33,9 +33,25 @@ PROVIDER_LIST.forEach((provider) => {
 
 export const STARTER_TEMPLATES: Template[] = [
   {
-    name: 'Expo App',
-    label: 'Expo App',
+    name: 'Expo Demo',
+    label: 'Expo Demo',
     description: 'Expo starter template for building cross-platform mobile apps',
+    githubRepo: 'xKevIsDev/bolt-expo-template',
+    tags: ['mobile', 'expo', 'mobile-app', 'android', 'iphone'],
+    icon: 'i-bolt:expo',
+  },
+  {
+    name: 'Expo App',
+    label: 'Expo App V4',
+    description: 'Updated Expo starter template v4 with web mode enabled',
+    localPath: 'templates/af-expo-template-v4',
+    tags: ['mobile', 'expo', 'mobile-app', 'android', 'iphone', 'v4'],
+    icon: 'i-bolt:expo',
+  },
+  {
+    name: 'Expo App V1',
+    label: 'Expo App (Classic)',
+    description: 'Classic Expo starter template',
     localPath: 'templates/af-expo-template',
     tags: ['mobile', 'expo', 'mobile-app', 'android', 'iphone'],
     icon: 'i-bolt:expo',

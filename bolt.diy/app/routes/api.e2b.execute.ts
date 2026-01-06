@@ -31,27 +31,50 @@ export async function action({ request }: ActionFunctionArgs) {
                 sandbox = await Sandbox.connect(sandboxId, { apiKey, timeoutMs: 15 * 60 * 1000 });
                 console.log(`[E2B API] Reconnected to sandbox: ${sandboxId} `);
 
-                // DATA RECOVERY: Check if we are connected to a 'base' template (Legacy/Wrong)
-                // If so, we must KILL it and create a new one to get the Expo Environment.
-                // @ts-ignore - Check internal properties or metadata if available
-                const currentTemplate = sandbox.template || (sandbox as any).templateId;
-                console.log(`[E2B API] Connected Sandbox Template: ${currentTemplate}`);
+                // DATA RECOVERY: Content-based verification
+                // The 'sandbox.template' property is proving unreliable (returning undefined).
+                // Instead, we check the ACTUAL configuration on disk to see if it's a legacy environment.
+                try {
+                    const checkPkg = await sandbox.commands.run('cat package.json');
+                    const pkgContent = checkPkg.stdout;
 
-                if (currentTemplate && (currentTemplate === 'base' || currentTemplate === 'node')) {
-                    console.warn(`[E2B API] ⚠️ DETECTED WRONG TEMPLATE (${currentTemplate}). KILLING SANDBOX TO UPGRADE.`);
-                    try {
-                        await sandbox.kill();
-                    } catch (e) { }
-                    sandbox = undefined;
-                    sandboxId = null; // Force creation path
-                } else {
-                    // Ensure git is configured on reconnect as well
-                    await sandbox.commands.run('git config --global user.email "hello@appforge.ai" && git config --global user.name "AF AI"');
+                    if (pkgContent && pkgContent.includes('--tunnel')) {
+                        console.warn(`[E2B API] ⚠️ DETECTED LEGACY CONFIG (--tunnel) in sandbox ${sandboxId}. KILLING TO UPGRADE.`);
+                        try {
+                            await sandbox.kill();
+                        } catch (e) {
+                            console.warn('[E2B API] Kill failed:', e);
+                        }
+                        sandbox = undefined;
+                        sandboxId = null;
+                    } else if (pkgContent && pkgContent.includes('--web')) {
+                        console.log(`[E2B API] ✅ Verified Valid Environment (Web Mode) in sandbox ${sandboxId}`);
+                    } else {
+                        // Ambiguous state - might be empty or non-expo.
+                        // We'll trust the process.env check if available, otherwise assume it's okay-ish 
+                        // but log usage.
+                        const currentTemplate = sandbox.template || (sandbox as any).templateId;
+                        const EXPECTED_TEMPLATE = process.env.E2B_EXPO_TEMPLATE_ID || 'expo-template-v4';
+
+                        console.log(`[E2B API] Sandbox Template ID: ${currentTemplate} | Expected: ${EXPECTED_TEMPLATE}`);
+
+                        if (currentTemplate && currentTemplate !== EXPECTED_TEMPLATE) {
+                            console.warn(`[E2B API] ⚠️ Template ID mismatch. Killing.`);
+                            await sandbox.kill();
+                            sandbox = undefined;
+                            sandboxId = null;
+                        }
+                    }
+                } catch (err) {
+                    console.warn(`[E2B API] Could not verify package.json on reconnect: ${err}`);
+                    // If we can't read package.json, it's safer to maybe assume it's fresh or keep going?
+                    // Let's keep it alive to avoid loops if FS is just slow.
                 }
             } catch (e) {
                 console.warn(`[E2B API] Failed to connect to sandbox ${sandboxId}, creating new one.`);
                 sandboxId = null; // Reset to create new
             }
+
         }
 
         // CONCURRENCY CHECK: Enforce Free Tier limit of 20 active sandboxes
@@ -92,7 +115,7 @@ export async function action({ request }: ActionFunctionArgs) {
             // EXPO-OPTIMIZATION: Use custom high-spec template for Expo projects
             // ID comes from env var or defaults to known high-spec template (4 vCPU, 4GB RAM)
             // This prevents OOM errors and speeds up install significantly
-            const EXPO_TEMPLATE_ID = process.env.E2B_EXPO_TEMPLATE_ID || '0xcsz5virqvvmgjmqqam';
+            const EXPO_TEMPLATE_ID = process.env.E2B_EXPO_TEMPLATE_ID || 'expo-template-v4';
 
             let templateToUse = template;
             if (template !== EXPO_TEMPLATE_ID && !process.env.ALLOW_ARBITRARY_TEMPLATES) {
@@ -243,7 +266,9 @@ export async function action({ request }: ActionFunctionArgs) {
                 // PERSISTENCE: Pipe output to file so we can retrieve logs later
                 // We use tee to keep the stdout stream alive for our immediate listeners
                 const baseCommand = command.replace(/^cd \/home\/user && /, '');
-                command = `cd /home/user && (${baseCommand}) 2>&1 | tee /home/user/app.log`;
+                // Force binding to 0.0.0.0 for E2B visibility (fixes 502 Bad Gateway)
+                const envVars = 'export HOST=0.0.0.0 && export PORT=8081 && export EXPO_DEV_SERVER_ORIGIN="http://0.0.0.0:8081"';
+                command = `cd /home/user && ${envVars} && (${baseCommand}) 2>&1 | tee /home/user/app.log`;
                 console.log(`[E2B API] Start command modified for logging: ${command}`);
             }
 
@@ -275,13 +300,18 @@ export async function action({ request }: ActionFunctionArgs) {
                 // This is crucial for sandbox reuse
                 try {
                     console.log(`[E2B ${sandboxId}] Killing port 8081...`);
-                    // Try multiple methods to kill the process on port 8081
-                    // 1. fuser (standard)
-                    // 2. lsof (if fuser missing)
-                    // 3. netstat + awk (fallback)
-                    const killCmd = 'fuser -k 8081/tcp || kill -9 $(lsof -t -i:8081) || kill -9 $(netstat -tlpn | grep :8081 | awk \'{print $7}\' | cut -d\'/\' -f1) || true';
-                    await sandbox.commands.run(killCmd);
-                    // Wait a moment for OS to release the port
+                    // AGGRESSIVE KILL LOOP: Retry 5 times to ensure the port is truly free
+                    for (let i = 0; i < 5; i++) {
+                        // NUCLEAR OPTION: Kill all node processes. 
+                        // This is safe because the sandbox is isolated for this project.
+                        // We try standard system tools first (fast), then fall back to npx (slow but reliable logic).
+                        // SURGICAL OPTION: Kill only the process on port 8081.
+                        // Try fuser first (fastest/native), then npx kill-port (reliable node fallback), then validly exit.
+                        const killCmd = 'fuser -k 8081/tcp || npx --yes kill-port 8081 || true';
+                        await sandbox.commands.run(killCmd);
+
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    }
                     await new Promise(resolve => setTimeout(resolve, 1000));
                 } catch (e) {
                     console.warn(`[E2B ${sandboxId}] Warning: failed to kill port 8081`, e);
@@ -339,8 +369,8 @@ export async function action({ request }: ActionFunctionArgs) {
                 console.log(`[E2B ${sandboxId}] Detected tunnel URL: ${tunnelUrl || 'NONE'}`);
                 console.log(`[E2B ${sandboxId}] E2B direct URL: ${e2bDirectUrl}`);
                 console.log(`[E2B ${sandboxId}] Using: ${previewUrl}`);
-                
-        
+
+
 
                 // Fetch data from the server inside the sandbox.
                 const response = await fetch(e2bDirectUrl);

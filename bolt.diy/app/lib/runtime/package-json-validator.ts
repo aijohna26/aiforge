@@ -10,7 +10,7 @@ const logger = createScopedLogger('PackageJsonValidator');
  * @param content - The file content to validate
  * @returns Validated/fixed content if package.json, otherwise original content
  */
-export function validatePackageJson(filePath: string, content: string): string {
+export function validatePackageJson(filePath: string, content: string, isE2BContext: boolean = false): string {
   // Only validate package.json files
   if (!filePath.endsWith('package.json')) {
     return content;
@@ -46,7 +46,7 @@ export function validatePackageJson(filePath: string, content: string): string {
     // Detect server-side E2B context - this validator runs in both browser and server
     const isServerSide = typeof window === 'undefined';
     const hasE2BApiKey = typeof process !== 'undefined' && !!process.env.E2B_API_KEY;
-    const isE2B = isServerSide && hasE2BApiKey;
+    const isE2B = isE2BContext || (isServerSide && hasE2BApiKey);
 
     const expoStartCommand = isE2B
       ? 'EXPO_NO_TELEMETRY=1 npx expo start --web --port 8081'

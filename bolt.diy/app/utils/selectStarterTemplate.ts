@@ -300,11 +300,11 @@ Template import complete. The files above have been imported from the template.
 
 ⚠️ EXPO TEMPLATE - PRE-CONFIGURED FOR E2B:
 The package.json has been automatically configured with required scripts:
-- "dev": "EXPO_NO_TELEMETRY=1 npx expo start --tunnel"
-- "start": "EXPO_NO_TELEMETRY=1 npx expo start --tunnel"
+- "dev": "EXPO_NO_TELEMETRY=1 npx expo start --web --port 8081"
+- "start": "EXPO_NO_TELEMETRY=1 npx expo start --web --port 8081"
 
 These scripts are ALREADY CORRECT - DO NOT modify or remove them.
-The --tunnel flag is required for E2B sandboxes to work properly.
+The --web --port 8081 flags are required for E2B sandboxes to work properly via the web proxy.
 
 NEXT STEPS:
 1. Review the template files above - these are now in your project

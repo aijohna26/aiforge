@@ -1,0 +1,30 @@
+⚠️⚠️⚠️ EXPO TEMPLATE - CRITICAL INSTRUCTIONS ⚠️⚠️⚠️
+
+THIS IS AN EXPO TEMPLATE. The template has been pre-configured for both E2B and WebContainer.
+
+🚨 CRITICAL: DO NOT MODIFY THE SCRIPTS SECTION 🚨
+
+The package.json "scripts" section has been automatically configured with the correct flags.
+DO NOT add, remove, or modify ANY scripts in package.json.
+
+The scripts are already correct:
+"scripts": {
+  "dev": "EXPO_NO_TELEMETRY=1 npx expo start --tunnel",
+  "start": "EXPO_NO_TELEMETRY=1 npx expo start --tunnel"
+}
+
+✅ VERIFICATION CHECKLIST:
+- [ ] DO NOT modify package.json scripts section
+- [ ] .npmrc file is included (handles peer dependencies)
+- [ ] babel.config.js is included (required for Expo)
+- [ ] npm install runs before npm run dev
+
+The template includes:
+- .npmrc with legacy-peer-deps=true (fixes React peer dependency conflicts)
+- babel.config.js (required for Expo transpilation)
+- Pre-configured Expo Router with tabs
+- All required dependencies in package.json
+- Asset folders with icons and splash screens
+
+⚠️ DO NOT skip, remove, or modify any template files - they are all required.
+⚠️ ESPECIALLY: DO NOT modify the "scripts" section of package.json.

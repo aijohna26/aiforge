@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react';
-import type { Message } from 'ai';
+import type { UIMessage as Message } from 'ai';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { useAnimate } from 'framer-motion';
@@ -96,6 +96,7 @@ export const ChatImpl = memo(
     const [imageDataList, setImageDataList] = useState<string[]>([]);
     const seedPromptProcessed = useRef(false);
     const [searchParams, setSearchParams] = useSearchParams();
+    const sendMessageRef = useRef<any>(null);
     const [fakeLoading, setFakeLoading] = useState(false);
     const files = useStore(workbenchStore.files);
     const [designScheme, setDesignScheme] = useState<DesignScheme>(defaultDesignScheme);
@@ -265,6 +266,24 @@ export const ChatImpl = memo(
           console.error('[Chat] Error waiting for operations:', err);
         }
 
+        // AUTO-SUMMARY TRIGGER:
+        // If the message was an artifact (ended with </afArtifact>) and has no post-text,
+        // it means we adhered to the "Wait" constraint. Now that actions are done, we ask for the summary.
+        const content = (message as any).content || '';
+        if (content.includes('<afArtifact>') && content.trim().endsWith('</afArtifact>')) {
+          console.log('[Chat] Artifact-only message detected. Auto-requesting summary...');
+
+          if (sendMessageRef.current) {
+            // calculated delay to allow UI to settle
+            setTimeout(() => {
+              sendMessageRef.current({
+                role: 'user',
+                content: 'Actions executed successfully. Please provide a brief summary of what was done.'
+              });
+            }, 500);
+          }
+        }
+
         // Handle automated ticket transitions
         const activeTicketId = chatStore.get().activeTicketId;
 
@@ -323,6 +342,10 @@ export const ChatImpl = memo(
       },
       messages: initialMessages,
     });
+
+    useEffect(() => {
+      sendMessageRef.current = sendMessage;
+    }, [sendMessage]);
 
     // AI SDK 6.0: Create backward-compatible aliases
     const isLoading = status === 'streaming' || status === 'submitted';
@@ -733,12 +756,12 @@ export const ChatImpl = memo(
           // If coming from Design Wizard, force Expo template
           // Otherwise, let AI select the template
           const { template, title } = shouldForceExpoTemplate
-            ? { template: 'Expo App', title: designScheme.step1.appName || 'Mobile App' }
+            ? { template: 'Expo Demo', title: designScheme.step1.appName || 'Mobile App' }
             : await selectStarterTemplate({
-                message: finalMessageContent,
-                model,
-                provider,
-              });
+              message: finalMessageContent,
+              model,
+              provider,
+            });
 
           if (template !== 'blank') {
             const temResp = await getTemplates(template, title).catch((e) => {

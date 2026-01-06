@@ -4,7 +4,7 @@ import * as path from 'path';
 import { execSync } from 'child_process';
 
 // Path to the Golden Template
-const templateDir = path.resolve(__dirname, '../../templates/af-expo-template');
+const templateDir = path.resolve(__dirname, '../../templates/af-expo-template-v4');
 const tempTarPath = path.resolve(__dirname, 'template.tar.gz');
 
 // Create a tarball of the template directory, excluding node_modules and .git
@@ -49,7 +49,7 @@ export const template = t
     // We can remove the manual injection steps if we are sure.
     // Let's keep the manual mkdir just in case but remove the echo if we trust the tarball.
     // To be safe and since I updated utils/supabase.ts LOCALLY in the template, the tarball has it.
-    .setStartCmd("npx expo start", waitForURL("http://localhost:8081"));
+    .setStartCmd("EXPO_NO_TELEMETRY=1 npx expo start --web --port 8081", waitForURL("http://localhost:8081"));
 
 
 //     curl -X POST http://localhost:5173/api/e2b/execute \
