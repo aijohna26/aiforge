@@ -8,6 +8,7 @@
 import { screenGeneration } from './screen-generation';
 import { screenshotExport } from './screenshot-export';
 import { imageGeneration } from './image-generation';
+import { expoBoilerplateCheck } from './expo-boilerplate-check';
 
 /*
  * TODO: Implement remaining functions
@@ -24,6 +25,7 @@ export const functions = [
   screenGeneration,
   screenshotExport,
   imageGeneration,
+  expoBoilerplateCheck,
 
   /*
    * chatContext,

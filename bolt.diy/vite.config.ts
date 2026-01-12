@@ -45,7 +45,7 @@ export default defineConfig((config) => {
         allow: ['..'],
       },
       watch: {
-        // Ignore templates directory to prevent Vite from processing Expo template files
+        // Ignore template directories to prevent Vite from processing Expo template files
         ignored: ['**/templates/**', '**/node_modules/**'],
       },
     },
@@ -57,11 +57,23 @@ export default defineConfig((config) => {
           if (id.includes('/templates/af-expo-template/')) {
             return { id, external: false, moduleSideEffects: false };
           }
+          if (id.includes('/templates/af-expo-template-v8/')) {
+            return { id, external: false, moduleSideEffects: false };
+          }
+          if (id.includes('/templates/af-expo-template-v9/')) {
+            return { id, external: false, moduleSideEffects: false };
+          }
           return null;
         },
         transform(code, id) {
           // Skip processing template files loaded with ?raw
           if (id.includes('/templates/af-expo-template/') && id.includes('?raw')) {
+            return { code, map: null };
+          }
+          if (id.includes('/templates/af-expo-template-v8/') && id.includes('?raw')) {
+            return { code, map: null };
+          }
+          if (id.includes('/templates/af-expo-template-v9/') && id.includes('?raw')) {
             return { code, map: null };
           }
           return null;
@@ -100,7 +112,10 @@ export default defineConfig((config) => {
         },
       }),
       UnoCSS(),
-      tsconfigPaths(),
+      tsconfigPaths({
+        projects: [path.resolve(__dirname, 'tsconfig.json')],
+        ignoreConfigErrors: true,
+      }),
       chrome129IssuePlugin(),
       config.mode === 'production' && optimizeCssModules({ apply: 'build' }),
     ],
@@ -113,6 +128,7 @@ export default defineConfig((config) => {
       'LMSTUDIO_API_BASE_URL',
       'TOGETHER_API_BASE_URL',
       'E2B_',
+      'DAYTONA_',
     ],
     css: {
       preprocessorOptions: {

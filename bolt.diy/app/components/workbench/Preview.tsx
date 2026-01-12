@@ -70,6 +70,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
   const activePreview = previews[activePreviewIndex];
   const [displayPath, setDisplayPath] = useState('/');
   const [iframeUrl, setIframeUrl] = useState<string | undefined>();
+  const [iframeSrcDoc, setIframeSrcDoc] = useState<string | undefined>();
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [isInspectorMode, setIsInspectorMode] = useState(false);
   const [isDeviceModeOn, setIsDeviceModeOn] = useState(true);
@@ -97,6 +98,46 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
   const webPreviewReady = useStore(webPreviewReadyAtom);
   const [isExpoQrModalOpen, setIsExpoQrModalOpen] = useState(false);
 
+  const encodeBase64Url = useCallback((value: string) => {
+    const encoded = btoa(value);
+    return encoded.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  }, []);
+
+  const getDaytonaProxyUrl = useCallback(
+    (baseUrl: string, path: string, token: string | null) => {
+      let cleanBaseUrl = baseUrl;
+      try {
+        const parsed = new URL(baseUrl);
+        parsed.searchParams.delete('DAYTONA_SANDBOX_AUTH_KEY');
+        parsed.searchParams.delete('daytona_token');
+        cleanBaseUrl = parsed.toString();
+      } catch {
+        cleanBaseUrl = baseUrl;
+      }
+
+      const encodedBase = encodeBase64Url(cleanBaseUrl);
+      const normalizedPath = path.replace(/^\//, '');
+      const tokenParam = token ? `?daytona_token=${encodeURIComponent(token)}` : '';
+      return `/api/proxy/${encodedBase}/${normalizedPath}${tokenParam}`;
+    },
+    [encodeBase64Url],
+  );
+
+  const applyDaytonaToken = useCallback((url: string, token?: string | null) => {
+    if (!token) {
+      return url;
+    }
+    try {
+      const previewUrl = new URL(url);
+      if (!previewUrl.searchParams.has('DAYTONA_SANDBOX_AUTH_KEY')) {
+        previewUrl.searchParams.set('DAYTONA_SANDBOX_AUTH_KEY', token);
+      }
+      return previewUrl.toString();
+    } catch {
+      return url;
+    }
+  }, []);
+
   useEffect(() => {
     if (!activePreview) {
       setIframeUrl(undefined);
@@ -106,10 +147,37 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
     }
 
     const { baseUrl } = activePreview;
-    setIframeUrl(baseUrl);
+    const daytonaToken = typeof window !== 'undefined' ? localStorage.getItem('daytona_preview_token') : null;
+    let hasDaytonaAuth = false;
+    if (baseUrl) {
+      try {
+        const parsed = new URL(baseUrl);
+        hasDaytonaAuth = parsed.searchParams.has('DAYTONA_SANDBOX_AUTH_KEY');
+      } catch {
+        hasDaytonaAuth = false;
+      }
+    }
+    const resolvedBaseUrl = baseUrl ? applyDaytonaToken(baseUrl, daytonaToken) : baseUrl;
+
+    // Daytona Warning Bypass: Always use proxy to strip frame-blocking headers.
+    if (baseUrl && baseUrl.includes('daytona')) {
+      // Clear previous states
+      setIframeUrl(undefined);
+      setIframeSrcDoc(undefined);
+      setIsLoading(true);
+
+      const proxyTarget = resolvedBaseUrl || baseUrl;
+      setIframeUrl(getDaytonaProxyUrl(proxyTarget, '/', daytonaToken));
+      setIsLoading(false);
+    } else {
+      setIframeUrl(baseUrl);
+      setIframeSrcDoc(undefined);
+      setDisplayPath('/');
+      setIsLoading(true);
+    }
+
     setDisplayPath('/');
-    setIsLoading(true);
-  }, [activePreview]);
+  }, [activePreview, applyDaytonaToken, getDaytonaProxyUrl]);
 
   useEffect(() => {
     if (webPreviewReady) {
@@ -729,8 +797,22 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                   targetPath = '/' + targetPath;
                 }
 
-                const fullUrl = activePreview.baseUrl + targetPath;
-                setIframeUrl(fullUrl);
+                let fullUrl = activePreview.baseUrl + targetPath;
+                try {
+                  const base = new URL(activePreview.baseUrl);
+                  base.pathname = targetPath;
+                  fullUrl = base.toString();
+                } catch {
+                  // Fall back to naive concat for non-standard URLs
+                }
+                if (activePreview.baseUrl.includes('daytona')) {
+                  const token =
+                    typeof window !== 'undefined' ? localStorage.getItem('daytona_preview_token') : null;
+                  const resolved = applyDaytonaToken(fullUrl, token);
+                  setIframeUrl(getDaytonaProxyUrl(resolved, targetPath, token));
+                } else {
+                  setIframeUrl(fullUrl);
+                }
                 setDisplayPath(targetPath);
 
                 if (inputRef.current) {
@@ -973,6 +1055,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                             <iframe
                               ref={iframeRef}
                               src={iframeUrl}
+                              srcDoc={iframeSrcDoc}
                               title="preview"
                               style={{
                                 border: 'none',
@@ -1026,6 +1109,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
                   title="preview"
                   className="border-none w-full h-full bg-bolt-elements-background-depth-1"
                   src={iframeUrl}
+                  srcDoc={iframeSrcDoc}
                   sandbox="allow-scripts allow-forms allow-popups allow-modals allow-storage-access-by-user-activation allow-same-origin"
                   allow="geolocation; ch-ua-full-version-list; cross-origin-isolated; screen-wake-lock; publickey-credentials-get; shared-storage-select-url; ch-ua-arch; bluetooth; compute-pressure; ch-prefers-reduced-transparency; deferred-fetch; usb; ch-save-data; publickey-credentials-create; shared-storage; deferred-fetch-minimal; run-ad-auction; ch-ua-form-factors; ch-downlink; otp-credentials; payment; ch-ua; ch-ua-model; ch-ect; autoplay; camera; private-state-token-issuance; accelerometer; ch-ua-platform-version; idle-detection; private-aggregation; interest-cohort; ch-viewport-height; local-fonts; ch-ua-platform; midi; ch-ua-full-version; xr-spatial-tracking; clipboard-read; gamepad; display-capture; keyboard-map; join-ad-interest-group; ch-width; ch-prefers-reduced-motion; browsing-topics; encrypted-media; gyroscope; serial; ch-rtt; ch-ua-mobile; window-management; unload; ch-dpr; ch-prefers-color-scheme; ch-ua-wow64; attribution-reporting; fullscreen; identity-credentials-get; private-state-token-redemption; hid; ch-ua-bitness; storage-access; sync-xhr; ch-device-memory; ch-viewport-width; picture-in-picture; magnetometer; clipboard-write; microphone"
                 />
@@ -1037,9 +1121,7 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
               />
             </>
           ) : (
-            <div className="flex w-full h-full justify-center items-center bg-bolt-elements-background-depth-1 text-bolt-elements-textPrimary">
-              No preview available
-            </div>
+            null
           )}
 
           {isDeviceModeOn && !showDeviceFrameInPreview && (

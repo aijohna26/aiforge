@@ -10,7 +10,8 @@ export type JobType =
   | 'screenshot-export'
   | 'chat-context'
   | 'style-extraction'
-  | 'image-generation';
+  | 'image-generation'
+  | 'expo-boilerplate-check';
 export type JobStatus = 'pending' | 'processing' | 'completed' | 'failed';
 
 export interface TokenUsage {

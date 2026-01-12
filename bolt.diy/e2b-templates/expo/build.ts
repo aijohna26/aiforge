@@ -19,7 +19,7 @@ async function main() {
     }
 
     const templateID = await Template.build(template, {
-        alias: 'expo-template-v4',
+        alias: 'expo-template-v9',
         cpuCount: 4,
         memoryMB: 4096,
         onBuildLogs: defaultBuildLogger(),

@@ -9,15 +9,16 @@ DO NOT add, remove, or modify ANY scripts in package.json.
 
 The scripts are already correct:
 "scripts": {
-  "dev": "EXPO_NO_TELEMETRY=1 npx expo start --tunnel",
-  "start": "EXPO_NO_TELEMETRY=1 npx expo start --tunnel"
+  "dev": "EXPO_NO_TELEMETRY=1 npx expo start --web --port 8082",
+  "start": "EXPO_NO_TELEMETRY=1 npx expo start --web --port 8082"
 }
 
 ✅ VERIFICATION CHECKLIST:
 - [ ] DO NOT modify package.json scripts section
 - [ ] .npmrc file is included (handles peer dependencies)
 - [ ] babel.config.js is included (required for Expo)
-- [ ] npm install runs before npm run dev
+- [ ] DEPENDENCIES ARE PRE-INSTALLED. DO NOT RUN npm install.
+- [ ] DO NOT RUN lint or test commands. These are disabled.
 
 The template includes:
 - .npmrc with legacy-peer-deps=true (fixes React peer dependency conflicts)

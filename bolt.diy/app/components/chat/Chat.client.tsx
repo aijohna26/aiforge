@@ -9,7 +9,7 @@ import { useMessageParser, usePromptEnhancer, useShortcuts } from '~/lib/hooks';
 import { description, useChatHistory } from '~/lib/persistence';
 import { chatStore } from '~/lib/stores/chat';
 import { workbenchStore } from '~/lib/stores/workbench';
-import { DEFAULT_MODEL, DEFAULT_PROVIDER, PROMPT_COOKIE_KEY, PROVIDER_LIST } from '~/utils/constants';
+import { DEFAULT_MODEL, DEFAULT_PROVIDER, PROMPT_COOKIE_KEY, PROVIDER_LIST, WORK_DIR } from '~/utils/constants';
 
 import { createScopedLogger, renderLogger } from '~/utils/logger';
 import { BaseChat } from './BaseChat';
@@ -31,7 +31,7 @@ import { useMCPStore } from '~/lib/stores/mcp';
 import type { LlmErrorAlertType } from '~/types/actions';
 import { updateTicketStatus, getTicketById } from '~/lib/stores/plan';
 import { yoloModeStore } from '~/lib/stores/settings';
-import { loadWizardData } from '~/lib/stores/designWizard';
+import { loadWizardData, designWizardStore, initializeSession } from '~/lib/stores/designWizard';
 
 const logger = createScopedLogger('Chat');
 
@@ -97,6 +97,8 @@ export const ChatImpl = memo(
     const seedPromptProcessed = useRef(false);
     const [searchParams, setSearchParams] = useSearchParams();
     const sendMessageRef = useRef<any>(null);
+    const expoAutoFixTriggeredRef = useRef(0);
+    const expoTemplateAutoFixRef = useRef(false);
     const [fakeLoading, setFakeLoading] = useState(false);
     const files = useStore(workbenchStore.files);
     const [designScheme, setDesignScheme] = useState<DesignScheme>(defaultDesignScheme);
@@ -140,6 +142,22 @@ export const ChatImpl = memo(
     const mcpSettings = useMCPStore((state) => state.settings);
 
     const currentView = useStore(workbenchStore.currentView);
+
+
+    const wizardState = useStore(designWizardStore);
+
+    // Session Initialization Logic (Separated from Hydration)
+    useEffect(() => {
+      if (projectId) {
+        console.log(`[Chat] 🔄 Project ID changed to: ${projectId}. Initializing session scope.`);
+        initializeSession(projectId);
+      } else {
+        // No project ID - likely a new chat/wizard flow
+        // We should ensure we aren't carrying over data from a previous project
+        console.log('[Chat] 🆕 No Project ID. Initializing generic session.');
+        initializeSession('new-session');
+      }
+    }, [projectId]);
 
     // Project Hydration Logic
     useEffect(() => {
@@ -185,7 +203,7 @@ export const ChatImpl = memo(
             }
           } catch (error) {
             console.error('[Chat] Project hydration failed:', error);
-            toast.error('Could not sync project data');
+            // toast.error('Could not sync project data'); // Suppress error for now
           }
         };
 
@@ -254,14 +272,17 @@ export const ChatImpl = memo(
         // Wait for all queued actions to complete before showing completion message
         // This prevents premature "finished working" notifications while files are still being written
         try {
+          // Allow time for the useEffect to process the final message chunk and add actions to the queue
+          await new Promise((resolve) => setTimeout(resolve, 200));
+
           await workbenchStore.waitForExecutionQueue();
           console.log('[Chat] All queued actions completed');
 
-          // CRITICAL: Also wait for E2B operations to complete
-          // The execution queue resolves when callbacks finish, but E2B HTTP requests may still be in flight
+          // CRITICAL: Also wait for Sandbox operations to complete
+          // The execution queue resolves when callbacks finish, but Sandbox HTTP requests may still be in flight
           const { E2BRunner } = await import('~/lib/runtime/e2b-runner');
           await E2BRunner.waitForAllOperations();
-          console.log('[Chat] All E2B operations completed, signaling completion');
+          console.log('[Chat] All Sandbox operations completed, signaling completion');
         } catch (err) {
           console.error('[Chat] Error waiting for operations:', err);
         }
@@ -282,6 +303,112 @@ export const ChatImpl = memo(
               });
             }, 500);
           }
+        }
+
+        // Expo boilerplate auto-check + auto-correct (silent to user)
+        try {
+          const { EXPO_BOILERPLATE_REQUIRED_FILES, EXPO_BOILERPLATE_MARKERS } =
+            await import('~/lib/expo/boilerplate');
+          const filesMap = workbenchStore.files.get() || {};
+          const filePaths = Object.keys(filesMap);
+          const normalized = new Set(
+            filePaths.map((path) => (path.startsWith('/') ? path : `/${path}`)),
+          );
+          const looksLikeExpo = EXPO_BOILERPLATE_MARKERS.some((marker) =>
+            normalized.has(marker),
+          );
+
+          if (looksLikeExpo) {
+            // Fire background validation (Inngest)
+            fetch('/api/expo/validate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ filePaths }),
+            }).catch((err) => console.warn('[Chat] Expo validate request failed', err));
+
+            const missing = EXPO_BOILERPLATE_REQUIRED_FILES.filter(
+              (path) => !normalized.has(path),
+            );
+            if (missing.length === 0) {
+              expoAutoFixTriggeredRef.current = 0;
+            }
+
+            let remainingMissing = missing;
+
+            // Auto-inject missing Expo boilerplate files from v9 template (WebContainer only)
+            if (
+              missing.length > 0 &&
+              !expoTemplateAutoFixRef.current &&
+              import.meta.env.E2B_ON !== 'true' &&
+              import.meta.env.DAYTONA_ON !== 'true'
+            ) {
+              expoTemplateAutoFixRef.current = true;
+              try {
+                const templateResp = await fetch('/api/local-template?path=templates/af-expo-template-v9');
+                if (templateResp.ok) {
+                  const templateFiles = (await templateResp.json()) as {
+                    name: string;
+                    path: string;
+                    content: string;
+                    encoding?: 'base64';
+                  }[];
+                  const templateMap = new Map(templateFiles.map((file) => [`/${file.path}`, file]));
+                  const createdFiles: string[] = [];
+
+                  for (const missingPath of missing) {
+                    const templateFile = templateMap.get(missingPath);
+                    if (!templateFile) {
+                      continue;
+                    }
+
+                    const absolutePath = `${WORK_DIR}${missingPath}`;
+                    if (templateFile.encoding === 'base64') {
+                      const binary = atob(templateFile.content);
+                      const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+                      await workbenchStore.createFile(absolutePath, bytes);
+                    } else {
+                      await workbenchStore.createFile(absolutePath, templateFile.content);
+                    }
+                    createdFiles.push(missingPath);
+                  }
+
+                  if (createdFiles.length > 0) {
+                    setMessages([
+                      ...messages,
+                      {
+                        id: `expo-autofix-${Date.now()}`,
+                        role: 'assistant',
+                        content: `Auto-created missing Expo files: ${createdFiles.join(', ')}.`,
+                      },
+                    ]);
+                  }
+
+                  remainingMissing = missing.filter((path) => !createdFiles.includes(path));
+                }
+              } catch (err) {
+                console.warn('[Chat] Expo template auto-fix failed', err);
+              } finally {
+                expoTemplateAutoFixRef.current = false;
+              }
+            }
+
+            if (remainingMissing.length > 0 && sendMessageRef.current) {
+              const currentAttempt = expoAutoFixTriggeredRef.current || 0;
+              if (currentAttempt < 2) {
+                expoAutoFixTriggeredRef.current = currentAttempt + 1;
+                setTimeout(() => {
+                  sendMessageRef.current({
+                    role: 'user',
+                    content: `Auto-fix required: create missing Expo boilerplate files (${remainingMissing.join(
+                      ', ',
+                    )}). Use the full Expo template scaffold and do not claim completion until everything is present.`,
+                  });
+                }, 600);
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('[Chat] Expo auto-check failed', err);
         }
 
         // Handle automated ticket transitions
@@ -470,6 +597,9 @@ export const ChatImpl = memo(
     }, [model, provider, searchParams, append]);
 
     // Handle automated ticket prompts (from Plan view)
+    const [pendingTicketWork, setPendingTicketWork] = useState<{ ticket: any; prompt: string } | null>(null);
+
+    // Handle automated ticket prompts (from Plan view)
     useEffect(() => {
       const handleTicketToCode = (event: any) => {
         const { ticket, prompt } = event.detail;
@@ -505,17 +635,33 @@ export const ChatImpl = memo(
       };
 
       const startTicketWork = (ticket: any, prompt: string) => {
-        // Track active ticket
-        chatStore.setKey('activeTicketId', ticket.id);
-
         // Switch to code view
         workbenchStore.currentView.set('code');
 
-        // Append message
+        // Check if we need to switch mode first
+        if (chatMode !== 'build') {
+          setChatMode('build');
+          // Queue the work for when the mode switches
+          setPendingTicketWork({ ticket, prompt });
+          return;
+        }
+
+        executeTicketWork(ticket, prompt);
+      };
+
+      const executeTicketWork = (ticket: any, prompt: string) => {
+        // Track active ticket
+        chatStore.setKey('activeTicketId', ticket.id);
+
         append({
           text: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${prompt}`,
         });
       };
+
+      if (pendingTicketWork && chatMode === 'build') {
+        executeTicketWork(pendingTicketWork.ticket, pendingTicketWork.prompt);
+        setPendingTicketWork(null);
+      }
 
       window.addEventListener('ticket-to-code', handleTicketToCode);
       window.addEventListener('ticket-to-qa', handleTicketToQA);
@@ -524,7 +670,7 @@ export const ChatImpl = memo(
         window.removeEventListener('ticket-to-code', handleTicketToCode);
         window.removeEventListener('ticket-to-qa', handleTicketToQA);
       };
-    }, [isLoading, append, model, provider]);
+    }, [isLoading, append, model, provider, chatMode, pendingTicketWork]);
 
     const { enhancingPrompt, promptEnhanced, enhancePrompt, resetEnhancer } = usePromptEnhancer();
     const { parsedMessages, parseMessages } = useMessageParser();
@@ -749,14 +895,14 @@ export const ChatImpl = memo(
 
         // CRITICAL: Detect Design Wizard handoff - force load Expo template
         // Check if we have design scheme data (from wizard) but no files loaded yet
-        const isDesignWizardHandoff = designScheme?.step1?.appName && Object.keys(files).length === 0;
+        const isDesignWizardHandoff = wizardState.step1.appName && Object.keys(files).length === 0;
         const shouldForceExpoTemplate = isDesignWizardHandoff;
 
         if (autoSelectTemplate || shouldForceExpoTemplate) {
           // If coming from Design Wizard, force Expo template
           // Otherwise, let AI select the template
           const { template, title } = shouldForceExpoTemplate
-            ? { template: 'Expo Demo', title: designScheme.step1.appName || 'Mobile App' }
+            ? { template: 'Expo Demo', title: wizardState.step1.appName || 'Mobile App' }
             : await selectStarterTemplate({
               message: finalMessageContent,
               model,
@@ -1138,7 +1284,7 @@ export const ChatImpl = memo(
         setDesignScheme={setDesignScheme}
         selectedElement={selectedElement}
         setSelectedElement={setSelectedElement}
-        addToolResult={addToolResult}
+        addToolResult={addToolResult as any}
       />
     );
   },

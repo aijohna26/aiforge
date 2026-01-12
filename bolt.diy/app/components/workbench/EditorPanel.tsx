@@ -173,6 +173,7 @@ export const EditorPanel = memo(
                   <Tabs.Content
                     value="search"
                     className="flex-1 overflow-hidden flex flex-col focus:outline-none bg-bolt-elements-background-depth-1 data-[state=inactive]:hidden"
+                    style={{ display: 'none' }}
                   >
                     <div className="flex-1 overflow-y-auto px-4 py-2">
                       <Search />

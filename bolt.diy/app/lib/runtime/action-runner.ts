@@ -9,9 +9,11 @@ import { unreachable } from '~/utils/unreachable';
 import type { ActionCallbackData } from './message-parser';
 import type { BoltShell } from '~/utils/shell';
 import { E2BRunner } from './e2b-runner';
+import { DaytonaRunner } from './daytona-runner';
 import { validatePackageJson } from './package-json-validator';
 
 const isE2BEnabled = () => import.meta.env.E2B_ON === 'true';
+const isDaytonaEnabled = () => import.meta.env.DAYTONA_ON === 'true';
 
 const logger = createScopedLogger('ActionRunner');
 
@@ -71,6 +73,7 @@ class ActionCommandError extends Error {
 
 export class ActionRunner {
   #webcontainer: Promise<WebContainer>;
+  #expoBoilerplateCheckTimer: ReturnType<typeof setTimeout> | null = null;
   #currentExecutionPromise: Promise<void> = Promise.resolve();
   #shellTerminal: () => BoltShell;
   runnerId = atom<string>(`${Date.now()}`);
@@ -259,6 +262,12 @@ export class ActionRunner {
       unreachable('Expected shell action');
     }
 
+    // CRITICAL FIX: Intercept and correct common LLM hallucinations
+    if (action.content.includes('npm run start:web')) {
+      logger.warn('[ActionRunner] 🛡️ Intercepted hallucinated "start:web" command (Shell Action) - Auto-correcting to "npm start"');
+      action.content = 'npm start';
+    }
+
     const shell = this.#shellTerminal();
     await shell.ready();
 
@@ -272,6 +281,80 @@ export class ActionRunner {
     if (validationResult.shouldModify && validationResult.modifiedCommand) {
       logger.debug(`Modified command: ${action.content} -> ${validationResult.modifiedCommand}`);
       action.content = validationResult.modifiedCommand;
+    }
+
+    // DAYTONA INTERCEPT
+    if (isDaytonaEnabled()) {
+      await DaytonaRunner.waitForAllOperations();
+      logger.info(`[Daytona] Executing command: ${action.content}`);
+      shell.terminal.write(`\r\n[Daytona] > ${action.content}\r\n`);
+
+      try {
+        const result = await DaytonaRunner.executeShell(action.content, {
+          onStdout: (data) => {
+            shell.terminal?.write(data + '\r\n');
+
+            // Strip ANSI codes for regex matching
+            const cleanData = data.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+
+            // Detect Expo URL for QR code (Standard log output)
+            const expoUrlMatch = cleanData.match(/(exp:\/\/[^ \n]+)|(exp\+[a-z0-9-]+\:\/\/[^ \n]+)/);
+            if (expoUrlMatch) {
+              const url = expoUrlMatch[0];
+              logger.info('[Daytona] 📱 Found Expo URL for QR code:', url);
+              expoUrlAtom.set(url);
+            }
+          },
+          onStderr: (data) => shell.terminal?.write(data + '\r\n'),
+        });
+
+        // Trigger Preview if it's a start command
+        if (
+          action.content.includes('npm run dev') ||
+          action.content.includes('npx expo start') ||
+          action.content.includes('npm start')
+        ) {
+          // Use the URL returned from the command execution result
+          const previewUrl = result.url || DaytonaRunner.getPreviewUrl();
+          const previewToken = result.token || DaytonaRunner.getPreviewToken();
+          const previewUrlWithToken = DaytonaRunner.applyPreviewToken(previewUrl, previewToken);
+          logger.info('[Daytona] ========== PREVIEW URL SETUP ==========');
+          logger.info('[Daytona] Command:', action.content);
+          logger.info('[Daytona] Result URL:', result.url);
+          logger.info('[Daytona] DaytonaRunner.getPreviewUrl():', DaytonaRunner.getPreviewUrl());
+          logger.info('[Daytona] Final preview URL to use:', previewUrlWithToken || previewUrl);
+
+          if (previewUrl) {
+            // Derived Expo URL fallback if log parsing failed
+            // If we have a preview URL (http/s), we can usually assume exp://hostname works for Daytona/Proxies
+            if (!expoUrlAtom.get() && previewUrl.includes('proxy.daytona')) {
+              try {
+                const hostname = new URL(previewUrl).hostname;
+                const derivedExpoUrl = `exp://${hostname}:80`;
+                logger.info('[Daytona] 📱 Deriving Expo URL from Preview URL:', derivedExpoUrl);
+                expoUrlAtom.set(derivedExpoUrl);
+              } catch (e) {
+                logger.error('[Daytona] Failed to derive Expo URL', e);
+              }
+            }
+            const resolvedPreviewUrl = previewUrlWithToken || previewUrl;
+            logger.info('[Daytona] ✅ Setting Preview URL in workbench:', resolvedPreviewUrl);
+            workbenchStore.setPreviews([{ baseUrl: resolvedPreviewUrl, port: 8082 }]);
+            webPreviewReadyAtom.set(true);
+            logger.info('[Daytona] ✅ Preview setup complete');
+          } else {
+            logger.error('[Daytona] ❌ No preview URL available! Check sandbox creation');
+          }
+          logger.info('[Daytona] ======================================');
+        }
+
+        if (result.exitCode !== 0) {
+          throw new ActionCommandError('Daytona Command Failed', result.output);
+        }
+        return;
+      } catch (err: any) {
+        throw new ActionCommandError('Daytona Execution Error', err.message || String(err));
+      }
     }
 
     // E2B INTERCEPT
@@ -321,7 +404,7 @@ export class ActionRunner {
 
           if (previewUrl) {
             logger.info('[E2B] ✅ Setting Preview URL in workbench:', previewUrl);
-            workbenchStore.setPreviews([{ baseUrl: previewUrl, port: 8081 }]);
+            workbenchStore.setPreviews([{ baseUrl: previewUrl, port: 8082 }]);
             webPreviewReadyAtom.set(true);
             logger.info('[E2B] ✅ Preview setup complete');
           } else {
@@ -356,6 +439,35 @@ export class ActionRunner {
       unreachable('Expected shell action');
     }
 
+    // CRITICAL FIX: Intercept and correct common LLM hallucinations
+    if (action.content.includes('npm run start:web')) {
+      logger.warn('[ActionRunner] 🛡️ Intercepted hallucinated "start:web" command - Auto-correcting to "npm start"');
+      action.content = 'npm start';
+    }
+
+    if (isDaytonaEnabled()) {
+      logger.info(`[Daytona] Starting Application: ${action.content}`);
+      try {
+        const result = await DaytonaRunner.executeShell(action.content, {});
+
+        // Set preview URL if available
+        const previewUrl = result.url || DaytonaRunner.getPreviewUrl();
+        const previewToken = result.token || DaytonaRunner.getPreviewToken();
+        const previewUrlWithToken = DaytonaRunner.applyPreviewToken(previewUrl, previewToken);
+        if (previewUrl) {
+          const resolvedPreviewUrl = previewUrlWithToken || previewUrl;
+          logger.info('[Daytona] ✅ Setting Preview URL in workbench (Start Action):', resolvedPreviewUrl);
+          workbenchStore.setPreviews([{ baseUrl: resolvedPreviewUrl, port: 8082 }]);
+          webPreviewReadyAtom.set(true);
+        }
+
+        return { exitCode: 0, output: result.output || '' };
+      } catch (e: any) {
+        logger.warn('[Daytona] Start action completed (or timed out)', e);
+        return { exitCode: 0, output: '' };
+      }
+    }
+
     if (isE2BEnabled()) {
       logger.info(`[E2B] Starting Application: ${action.content}`);
       // We treat start action similar to shell for E2B, but we know it's long running.
@@ -368,7 +480,7 @@ export class ActionRunner {
         // If valid, set preview
         const previewUrl = E2BRunner.getPreviewUrl();
         if (previewUrl) {
-          workbenchStore.setPreviews([{ baseUrl: previewUrl, port: 8081 }]);
+          workbenchStore.setPreviews([{ baseUrl: previewUrl, port: 8082 }]);
           webPreviewReadyAtom.set(true);
         }
         return { exitCode: 0, output: result.output || '' };
@@ -380,7 +492,7 @@ export class ActionRunner {
         // Fallback: Assume it started if we have an ID
         const previewUrl = E2BRunner.getPreviewUrl();
         if (previewUrl) {
-          workbenchStore.setPreviews([{ baseUrl: previewUrl, port: 8081 }]);
+          workbenchStore.setPreviews([{ baseUrl: previewUrl, port: 8082 }]);
           webPreviewReadyAtom.set(true);
           return { exitCode: 0, output: '' };
         }
@@ -433,6 +545,20 @@ export class ActionRunner {
         const buffer = await response.arrayBuffer();
         const uint8Array = new Uint8Array(buffer);
 
+        // 1. Write to Daytona if enabled
+        if (isDaytonaEnabled()) {
+          // Convert to base64 for Daytona transfer
+          let binary = '';
+          const len = uint8Array.byteLength;
+          for (let i = 0; i < len; i++) {
+            binary += String.fromCharCode(uint8Array[i]);
+          }
+          const base64Content = btoa(binary);
+
+          logger.info(`[Daytona] Writing binary file from source: ${action.filePath}`);
+          await DaytonaRunner.writeFile(action.filePath, base64Content, 'base64');
+        }
+
         // 1. Write to E2B if enabled
         if (isE2BEnabled()) {
           // Convert to base64 for E2B transfer
@@ -468,8 +594,20 @@ export class ActionRunner {
 
     // Normal text file handling (Code generation)
     // CRITICAL: Validate and fix package.json BEFORE writing to ANY destination
-    // This ensures browser and E2B see the SAME validated content
-    const validatedContent = validatePackageJson(action.filePath, action.content, isE2BEnabled());
+    // This ensures browser and E2B/Daytona see the SAME validated content
+    const validatedContent = validatePackageJson(action.filePath, action.content, isE2BEnabled() || isDaytonaEnabled());
+
+    // DAYTONA INTERCEPT
+    if (isDaytonaEnabled() && !isStreaming) {
+      logger.info(`[Daytona] Writing file (Complete): ${action.filePath}`);
+      try {
+        await DaytonaRunner.writeFile(action.filePath, validatedContent, fileAction.encoding);
+        logger.info(`[Daytona] ✅ File written successfully: ${action.filePath}`);
+      } catch (err) {
+        logger.error(`[Daytona] ❌ Failed to write file ${action.filePath}`, err);
+        throw err;
+      }
+    }
 
     // E2B INTERCEPT
     // CRITICAL: Only write to E2B when NOT streaming (i.e., when action is complete)
@@ -518,6 +656,49 @@ export class ActionRunner {
       logger.error('Failed to write file\n\n', error);
       throw error;
     }
+
+    if (!isStreaming) {
+      this.#scheduleExpoBoilerplateCheck(action.filePath);
+    }
+  }
+
+  #scheduleExpoBoilerplateCheck(filePath?: string) {
+    if (filePath && (filePath.includes('/.history/') || filePath.startsWith('.history'))) {
+      return;
+    }
+
+    if (this.#expoBoilerplateCheckTimer) {
+      clearTimeout(this.#expoBoilerplateCheckTimer);
+    }
+
+    this.#expoBoilerplateCheckTimer = setTimeout(async () => {
+      try {
+        const { EXPO_BOILERPLATE_MARKERS } = await import('~/lib/expo/boilerplate');
+        const filesMap = workbenchStore.files.get() || {};
+        const filePaths = Object.keys(filesMap);
+        if (filePaths.length === 0) {
+          return;
+        }
+
+        const normalized = new Set(
+          filePaths.map((path) => (path.startsWith('/') ? path : `/${path}`)),
+        );
+        const looksLikeExpo = EXPO_BOILERPLATE_MARKERS.some((marker) =>
+          normalized.has(marker),
+        );
+        if (!looksLikeExpo) {
+          return;
+        }
+
+        fetch('/api/expo/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filePaths }),
+        }).catch((err) => logger.warn('[Expo] Validation request failed', err));
+      } catch (error) {
+        logger.warn('[Expo] Auto-check failed', error);
+      }
+    }, 800);
   }
 
   #updateAction(id: string, newState: ActionStateUpdate) {
@@ -919,9 +1100,9 @@ export class ActionRunner {
 
     // Handle npm install to add --legacy-peer-deps and CHECK FOR package.json
     if (trimmedCommand.startsWith('npm install') || trimmedCommand === 'npm i') {
-      // If E2B is enabled, we skip the local package.json check because the file
+      // If E2B or Daytona is enabled, we skip the local package.json check because the file
       // might exist in the sandbox (created via shell) but not locally yet.
-      if (isE2BEnabled()) {
+      if (isE2BEnabled() || isDaytonaEnabled()) {
         return { shouldModify: false };
       }
 

@@ -167,6 +167,10 @@ export class PreviewsStore {
   }
 
   async #init() {
+    if (import.meta.env.DAYTONA_ON === 'true' || import.meta.env.E2B_ON === 'true') {
+      return;
+    }
+
     const webcontainer = await this.#webcontainer;
 
     // Listen for server ready events

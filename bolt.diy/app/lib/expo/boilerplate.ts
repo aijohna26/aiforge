@@ -1,0 +1,31 @@
+export const EXPO_BOILERPLATE_REQUIRED_FILES = [
+  '/.gitignore',
+  '/.npmrc',
+  '/.prettierrc',
+  '/app.json',
+  '/package.json',
+  '/tsconfig.json',
+  '/expo-env.d.ts',
+  '/index.js',
+  '/babel.config.js',
+  '/metro.config.js',
+  '/webpack.config.js',
+  '/app/_layout.tsx',
+  '/app/index.tsx',
+  '/app/+not-found.tsx',
+  '/app/(tabs)/_layout.tsx',
+  '/app/(tabs)/index.tsx',
+  '/hooks/useFrameworkReady.ts',
+  '/utils/supabase.ts',
+  '/assets/images/icon.png',
+  '/assets/images/splash.png',
+  '/assets/images/adaptive-icon.png',
+  '/assets/images/favicon.png',
+  '/assets/images/logo.png',
+];
+
+export const EXPO_BOILERPLATE_MARKERS = [
+  '/app.json',
+  '/app/_layout.tsx',
+  '/expo-env.d.ts',
+];

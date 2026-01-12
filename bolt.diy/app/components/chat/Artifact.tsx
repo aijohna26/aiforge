@@ -254,6 +254,16 @@ const ActionList = memo(({ actions }: ActionListProps) => {
                   >
                     <span className="flex-1">Start Application</span>
                   </a>
+                ) : type === 'design-sync' ? (
+                  <div className="flex items-center w-full min-h-[28px]">
+                    <span className="flex-1">
+                      {status === 'failed'
+                        ? `Synchronization failed: ${(action as any).error || 'Unknown error'}`
+                        : status === 'complete'
+                          ? 'Design synchronized'
+                          : 'Synchronizing design...'}
+                    </span>
+                  </div>
                 ) : null}
               </div>
               {(type === 'shell' || type === 'start') && (

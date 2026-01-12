@@ -19,7 +19,7 @@ export async function openDatabase(): Promise<IDBDatabase | undefined> {
   }
 
   return new Promise((resolve) => {
-    const request = indexedDB.open('boltHistory', 2);
+    const request = indexedDB.open('boltHistory', 3);
 
     request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
       const db = (event.target as IDBOpenDBRequest).result;
@@ -29,13 +29,29 @@ export async function openDatabase(): Promise<IDBDatabase | undefined> {
         if (!db.objectStoreNames.contains('chats')) {
           const store = db.createObjectStore('chats', { keyPath: 'id' });
           store.createIndex('id', 'id', { unique: true });
-          store.createIndex('urlId', 'urlId', { unique: true });
+          store.createIndex('urlId', 'urlId', { unique: false }); // Changed to non-unique - multiple chats can share the same URL
         }
       }
 
       if (oldVersion < 2) {
         if (!db.objectStoreNames.contains('snapshots')) {
           db.createObjectStore('snapshots', { keyPath: 'chatId' });
+        }
+      }
+
+      // Version 3: Fix urlId index to allow non-unique values
+      if (oldVersion < 3) {
+        const transaction = (event.target as IDBOpenDBRequest).transaction;
+        if (transaction && db.objectStoreNames.contains('chats')) {
+          const store = transaction.objectStore('chats');
+
+          // Delete the old unique index
+          if (store.indexNames.contains('urlId')) {
+            store.deleteIndex('urlId');
+          }
+
+          // Recreate as non-unique index
+          store.createIndex('urlId', 'urlId', { unique: false });
         }
       }
     };

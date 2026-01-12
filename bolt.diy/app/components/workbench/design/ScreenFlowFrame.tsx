@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '@nanostores/react';
 import { toast } from 'sonner';
-import { designWizardStore, updateStep4Data, setIsProcessing } from '~/lib/stores/designWizard';
+import { useParams } from '@remix-run/react';
+import { designWizardStore, updateStep4Data, setIsProcessing, checkAndClearStaleStudioData } from '~/lib/stores/designWizard';
 import type { Step4Data } from '~/lib/stores/designWizard';
 import { ImageEditor } from './ImageEditor';
 import { migrateImageToSupabase } from './utils/migrateImages';
@@ -140,10 +141,26 @@ const getDefaultScreenOptions = (type: Step4Data['screens'][0]['type']) => {
   };
 };
 
+
+
+// ... (existing imports)
+
 export function ScreenFlowFrame() {
   const wizardData = useStore(designWizardStore);
   const { screens, initialScreen, authRequired, navigation } = wizardData.step4;
   const { step1, step2, step3 } = wizardData;
+
+  // CRITICAL: Validate that we don't have stale frames from another chat
+  // This runs when Step 4 is mounted (viewed) to ensure a clean slate if needed
+  const params = useParams();
+  const chatId = params.id;
+
+  useEffect(() => {
+    if (chatId) {
+      checkAndClearStaleStudioData(chatId);
+    }
+  }, [chatId]);
+
 
   // Auto-add splash screen for Expo apps
   useEffect(() => {
@@ -893,8 +910,8 @@ export function ScreenFlowFrame() {
                   onClick={() => handleQuickAddScreen(type.id)}
                   disabled={isAlreadyAdded}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${isAlreadyAdded
-                      ? 'bg-[#0a0a0a] border border-[#2a2a2a] text-slate-600 cursor-not-allowed'
-                      : 'bg-blue-600/20 border border-blue-500/30 text-blue-300 hover:bg-blue-600/30 hover:border-blue-500/50'
+                    ? 'bg-[#0a0a0a] border border-[#2a2a2a] text-slate-600 cursor-not-allowed'
+                    : 'bg-blue-600/20 border border-blue-500/30 text-blue-300 hover:bg-blue-600/30 hover:border-blue-500/50'
                     }`}
                   title={isAlreadyAdded ? 'Already added' : `Add ${type.name} screen`}
                 >
@@ -1014,27 +1031,27 @@ export function ScreenFlowFrame() {
                         }}
                         disabled={isAlreadyAdded && !isCustom}
                         className={`p-3 rounded-lg border text-left transition-all ${isAlreadyAdded && !isCustom
-                            ? 'border-[#2a2a2a] bg-[#0a0a0a] text-slate-600 cursor-not-allowed opacity-50'
-                            : isCustom
-                              ? 'border-purple-500 bg-purple-500/10 text-white hover:bg-purple-500/20'
-                              : 'border-[#444] bg-[#1A1F32] hover:border-blue-500 hover:bg-blue-500/10 text-slate-300'
+                          ? 'border-[#2a2a2a] bg-[#0a0a0a] text-slate-600 cursor-not-allowed opacity-50'
+                          : isCustom
+                            ? 'border-purple-500 bg-purple-500/10 text-white hover:bg-purple-500/20'
+                            : 'border-[#444] bg-[#1A1F32] hover:border-blue-500 hover:bg-blue-500/10 text-slate-300'
                           }`}
                       >
                         <div
                           className={`${type.icon} text-xl mb-1 ${isAlreadyAdded && !isCustom
-                              ? 'text-slate-700'
-                              : isCustom
-                                ? 'text-purple-400'
-                                : 'text-blue-400'
+                            ? 'text-slate-700'
+                            : isCustom
+                              ? 'text-purple-400'
+                              : 'text-blue-400'
                             }`}
                         />
                         <p className="text-xs font-medium">{type.name}</p>
                         <p
                           className={`text-[10px] mt-0.5 ${isAlreadyAdded && !isCustom
-                              ? 'text-slate-700'
-                              : isCustom
-                                ? 'text-purple-300'
-                                : 'text-slate-500'
+                            ? 'text-slate-700'
+                            : isCustom
+                              ? 'text-purple-300'
+                              : 'text-slate-500'
                             }`}
                         >
                           {isAlreadyAdded && !isCustom ? 'Already added' : type.description}
@@ -1095,8 +1112,8 @@ export function ScreenFlowFrame() {
                         <button
                           onClick={() => handleToggleScreenOption(screen.id, 'showLogo')}
                           className={`flex items-center gap-1.5 px-2.5 py-1 rounded transition-all text-[10px] font-semibold ${screen.showLogo !== false
-                              ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-                              : 'bg-[#2a2a2a] text-slate-400 hover:bg-[#333] hover:text-slate-300'
+                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
+                            : 'bg-[#2a2a2a] text-slate-400 hover:bg-[#333] hover:text-slate-300'
                             }`}
                           title={screen.showLogo !== false ? 'Logo will be shown' : 'Logo will be hidden'}
                         >
@@ -1107,8 +1124,8 @@ export function ScreenFlowFrame() {
                         <button
                           onClick={() => handleToggleScreenOption(screen.id, 'showBottomNav')}
                           className={`flex items-center gap-1.5 px-2.5 py-1 rounded transition-all text-[10px] font-semibold ${screen.showBottomNav !== false
-                              ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-                              : 'bg-[#2a2a2a] text-slate-400 hover:bg-[#333] hover:text-slate-300'
+                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
+                            : 'bg-[#2a2a2a] text-slate-400 hover:bg-[#333] hover:text-slate-300'
                             }`}
                           title={
                             screen.showBottomNav !== false ? 'Bottom nav will be shown' : 'Bottom nav will be hidden'
@@ -1174,8 +1191,8 @@ export function ScreenFlowFrame() {
           <button
             onClick={() => handleToggleNavType('bottom')}
             className={`flex-1 p-3 rounded-lg border-2 transition-all ${navType === 'bottom'
-                ? 'border-blue-500 bg-blue-500/10'
-                : 'border-[#2F344B] bg-[#171C2D] hover:border-blue-500/50'
+              ? 'border-blue-500 bg-blue-500/10'
+              : 'border-[#2F344B] bg-[#171C2D] hover:border-blue-500/50'
               }`}
           >
             <div className="flex items-center gap-2 mb-1">
@@ -1187,8 +1204,8 @@ export function ScreenFlowFrame() {
           <button
             onClick={() => handleToggleNavType('none')}
             className={`flex-1 p-3 rounded-lg border-2 transition-all ${navType === 'none'
-                ? 'border-blue-500 bg-blue-500/10'
-                : 'border-[#2F344B] bg-[#171C2D] hover:border-blue-500/50'
+              ? 'border-blue-500 bg-blue-500/10'
+              : 'border-[#2F344B] bg-[#171C2D] hover:border-blue-500/50'
               }`}
           >
             <div className="flex items-center gap-2 mb-1">
@@ -1219,8 +1236,8 @@ export function ScreenFlowFrame() {
                         onClick={() => handleToggleNavigationScreen(screen.id)}
                         disabled={!isSelected && atLimit}
                         className={`px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${isSelected
-                            ? 'border-blue-500 bg-blue-500/20 text-blue-200'
-                            : 'border-[#2F344B] bg-[#171C2D] text-slate-300 hover:border-blue-500'
+                          ? 'border-blue-500 bg-blue-500/20 text-blue-200'
+                          : 'border-[#2F344B] bg-[#171C2D] text-slate-300 hover:border-blue-500'
                           } ${!isSelected && atLimit ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
                         {screen.name}

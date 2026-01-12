@@ -218,11 +218,11 @@ export async function getTemplates(templateName: string, title?: string) {
      */
   }
 
-  // exclude    .bolt
-  filteredFiles = filteredFiles.filter((x) => x.path.startsWith('.bolt') == false);
+  // exclude    .af
+  filteredFiles = filteredFiles.filter((x) => x.path.startsWith('.af') == false);
 
-  // check for ignore file in .bolt folder
-  const templateIgnoreFile = files.find((x) => x.path.startsWith('.bolt') && x.name == 'ignore');
+  // check for ignore file in .af folder
+  const templateIgnoreFile = files.find((x) => x.path.startsWith('.af') && x.name == 'ignore');
 
   const filesToImport = {
     files: filteredFiles,
@@ -254,7 +254,7 @@ ${file.content}
 </afArtifact>
 `;
   let userMessage = ``;
-  const templatePromptFile = files.filter((x) => x.path.startsWith('.bolt')).find((x) => x.name == 'prompt');
+  const templatePromptFile = files.filter((x) => x.path.startsWith('.af')).find((x) => x.name == 'prompt');
 
   if (templatePromptFile) {
     userMessage = `
@@ -300,11 +300,11 @@ Template import complete. The files above have been imported from the template.
 
 ⚠️ EXPO TEMPLATE - PRE-CONFIGURED FOR E2B:
 The package.json has been automatically configured with required scripts:
-- "dev": "EXPO_NO_TELEMETRY=1 npx expo start --web --port 8081"
-- "start": "EXPO_NO_TELEMETRY=1 npx expo start --web --port 8081"
+- "dev": "EXPO_NO_TELEMETRY=1 npx expo start --web --port 8082"
+- "start": "EXPO_NO_TELEMETRY=1 npx expo start --web --port 8082"
 
 These scripts are ALREADY CORRECT - DO NOT modify or remove them.
-The --web --port 8081 flags are required for E2B sandboxes to work properly via the web proxy.
+The --web --port 8082 flags are required for E2B sandboxes to work properly via the web proxy.
 
 NEXT STEPS:
 1. Review the template files above - these are now in your project

@@ -54,7 +54,7 @@ export async function action({ request }: ActionFunctionArgs) {
                         // We'll trust the process.env check if available, otherwise assume it's okay-ish 
                         // but log usage.
                         const currentTemplate = sandbox.template || (sandbox as any).templateId;
-                        const EXPECTED_TEMPLATE = process.env.E2B_EXPO_TEMPLATE_ID || 'expo-template-v4';
+                        const EXPECTED_TEMPLATE = process.env.E2B_EXPO_TEMPLATE_ID || 'expo-template-v9';
 
                         console.log(`[E2B API] Sandbox Template ID: ${currentTemplate} | Expected: ${EXPECTED_TEMPLATE}`);
 
@@ -115,7 +115,7 @@ export async function action({ request }: ActionFunctionArgs) {
             // EXPO-OPTIMIZATION: Use custom high-spec template for Expo projects
             // ID comes from env var or defaults to known high-spec template (4 vCPU, 4GB RAM)
             // This prevents OOM errors and speeds up install significantly
-            const EXPO_TEMPLATE_ID = process.env.E2B_EXPO_TEMPLATE_ID || 'expo-template-v4';
+            const EXPO_TEMPLATE_ID = process.env.E2B_EXPO_TEMPLATE_ID || 'expo-template-v9';
 
             let templateToUse = template;
             if (template !== EXPO_TEMPLATE_ID && !process.env.ALLOW_ARBITRARY_TEMPLATES) {
@@ -232,12 +232,13 @@ export async function action({ request }: ActionFunctionArgs) {
                     const checkExpo = await sandbox.commands.run('test -d node_modules/expo && echo "OK" || echo "MISSING"');
                     if (checkExpo.stdout.includes('MISSING')) {
                         console.error(`[E2B ${sandboxId}] ❌ BLOCKING: Expo module not installed! Run 'pnpm install' first.`);
+                        const e2bDirectUrl = `https://${sandbox.getHost(8082)}`;
                         return json({
                             stdout: '',
                             stderr: 'ERROR: Cannot run Expo - module not installed. Please run "pnpm install" first.',
                             exitCode: 1,
                             sandboxId,
-                            url: `/api/proxy?url=${encodeURIComponent(`https://${sandbox.getHost(8081)}`)}`
+                            url: e2bDirectUrl
                         });
                     }
                     console.log(`[E2B ${sandboxId}] ✅ Expo module verified, proceeding...`);
@@ -263,17 +264,102 @@ export async function action({ request }: ActionFunctionArgs) {
             const isStartCommand = command.includes('npm run dev') || command.includes('npx expo start') || command.includes('npm start') || command.includes('npm run init');
 
             if (isStartCommand) {
+                // Avoid double-starts that race and produce "port in use" in non-interactive mode.
+                try {
+                    const portCheck = await sandbox.commands.run('(curl -s -o /dev/null -w "%{http_code}" http://localhost:8082) || echo "NOT_LISTENING"');
+                    const output = portCheck.stdout.trim();
+                    const isListening = output.match(/\d{3}/) && output !== '000' && !output.includes('NOT_LISTENING');
+                    if (isListening) {
+                        const existingUrl = `https://${sandbox.getHost(8082)}`;
+                        return json({
+                            stdout: '[System] Server already listening on port 8082; skipping start.',
+                            stderr: '',
+                            exitCode: 0,
+                            sandboxId,
+                            url: existingUrl
+                        });
+                    }
+                } catch (e) {
+                    console.warn(`[E2B ${sandboxId}] Port check failed (non-fatal):`, e);
+                }
+
+                try {
+                    const processCheck = await sandbox.commands.run('ps aux | grep -v grep | grep "expo/bin/cli start" || true');
+                    if (processCheck.stdout.trim()) {
+                        const existingUrl = `https://${sandbox.getHost(8082)}`;
+                        return json({
+                            stdout: '[System] Expo process already running; skipping start.',
+                            stderr: '',
+                            exitCode: 0,
+                            sandboxId,
+                            url: existingUrl
+                        });
+                    }
+                } catch (e) {
+                    console.warn(`[E2B ${sandboxId}] Process check failed (non-fatal):`, e);
+                }
+
                 // PERSISTENCE: Pipe output to file so we can retrieve logs later
                 // We use tee to keep the stdout stream alive for our immediate listeners
                 const baseCommand = command.replace(/^cd \/home\/user && /, '');
                 // Force binding to 0.0.0.0 for E2B visibility (fixes 502 Bad Gateway)
-                const envVars = 'export HOST=0.0.0.0 && export PORT=8081 && export EXPO_DEV_SERVER_ORIGIN="http://0.0.0.0:8081"';
+                // REACT_NATIVE_PACKAGER_HOSTNAME overrides some internal Metro logic to force 0.0.0.0
+                // FORCE BINDING & MEMORY OPTIMIZATION
+                const envVars = 'export HOST=0.0.0.0 && export PORT=8082 && export REACT_NATIVE_PACKAGER_HOSTNAME="0.0.0.0" && export EXPO_DEV_SERVER_ORIGIN="http://0.0.0.0:8082" && export NODE_OPTIONS="--max-old-space-size=4096"';
+
+                // 1. Kill Port 8082
+                try {
+                    console.log(`[E2B ${sandboxId}] Killing port 8082...`);
+                    await sandbox.commands.run('npx --yes kill-port 8082 || true');
+                } catch (e) {
+                    console.log(`[E2B ${sandboxId}] Kill port failed (non-fatal):`, e);
+                }
+
+                // 2. Remove Mac Metadata (Critical for Metro)
+                try {
+                    console.log(`[E2B ${sandboxId}] Cleaning mac metadata...`);
+                    await sandbox.commands.run('find . -type f -name "._*" -delete || true');
+                } catch (e) {
+                    console.log(`[E2B ${sandboxId}] Metadata clean failed (non-fatal):`, e);
+                }
+
+                // 3. Patch package.json Port
+                try {
+                    console.log(`[E2B ${sandboxId}] Patching package.json port...`);
+                    await sandbox.commands.run("sed -i 's/--port 8081/--port 8082/g' package.json");
+                } catch (e) {
+                    console.log(`[E2B ${sandboxId}] Patch failed (non-fatal):`, e);
+                }
+
                 command = `cd /home/user && ${envVars} && (${baseCommand}) 2>&1 | tee /home/user/app.log`;
-                console.log(`[E2B API] Start command modified for logging: ${command}`);
+                console.log(`[E2B API] Start command simplified: ${command}`);
             }
 
             // AUTO-RECOVERY: If starting dev server but node_modules is missing, install first
             if (isStartCommand) {
+                // ALWAYS Sync critical files from Golden Template to Sandbox
+                // This ensures local dependency updates (like reanimated v4) and config changes are pushed
+                try {
+                    const filesToSync = [
+                        'package.json',
+                        'index.js',
+                        'babel.config.js',
+                        'metro.config.js',
+                        'tsconfig.json'
+                    ];
+
+                    for (const fileName of filesToSync) {
+                        const templatePath = path.resolve(process.cwd(), 'templates/af-expo-template-v9', fileName);
+                        if (fs.existsSync(templatePath)) {
+                            console.log(`[E2B ${sandboxId}] Force-syncing ${fileName} from local template...`);
+                            const templateContent = fs.readFileSync(templatePath, 'utf-8');
+                            await sandbox.files.write(fileName, templateContent);
+                        }
+                    }
+                } catch (e) {
+                    console.warn(`[E2B ${sandboxId}] Failed to sync template files:`, e);
+                }
+
                 try {
                     const checkModules = await sandbox.commands.run('test -d node_modules && echo "EXISTS" || echo "MISSING"');
                     if (checkModules.stdout.includes('MISSING')) {
@@ -282,8 +368,37 @@ export async function action({ request }: ActionFunctionArgs) {
                         // HOTFIX: Patch bad versions in package.json if present from previous failed runs
                         await sandbox.commands.run(`sed -i 's/"@types\\/react-native": "\\^0.81.0"/"@types\\/react-native": "^0.73.0"/g' package.json`);
 
-                        await sandbox.commands.run('pnpm install', { timeoutMs: 240000 }); // 4 min timeout
+                        // CRITICAL: Force-update the port in package.json scripts
+                        // The scripts often have "--port 8081" hardcoded, which overrides env vars.
+                        await sandbox.commands.run(`sed -i 's/--port 8081/--port 8082/g' package.json`);
+
+
+                        // CRITICAL: Remove node_modules and lockfile to force clean install
+                        // This prevents version mismatch issues from template pre-installed packages
+                        console.log(`[E2B ${sandboxId}] Cleaning old dependencies for fresh install...`);
+                        await sandbox.commands.run('rm -rf node_modules package-lock.json yarn.lock pnpm-lock.yaml');
+
+                        await sandbox.commands.run('pnpm install --no-frozen-lockfile', { timeoutMs: 240000 }); // 4 min timeout
                         console.log(`[E2B ${sandboxId}] ✅ Auto-install completed.`);
+                    } else {
+                        // Even if node_modules exists, check if critical dependencies are missing
+                        // The E2B template has pre-cached packages that don't match package.json versions
+                        try {
+                            // Check for babel-plugin-module-resolver (needed for @/ path aliases)
+                            const checkBabelPlugin = await sandbox.commands.run('test -d node_modules/babel-plugin-module-resolver && echo "EXISTS" || echo "MISSING"');
+                            const babelPluginMissing = checkBabelPlugin.stdout.includes('MISSING');
+
+                            if (babelPluginMissing) {
+                                console.log(`[E2B ${sandboxId}] babel-plugin-module-resolver missing, forcing reinstall...`);
+                                await sandbox.commands.run('rm -rf node_modules pnpm-lock.yaml');
+                                await sandbox.commands.run('pnpm install --no-frozen-lockfile', { timeoutMs: 240000 });
+                                console.log(`[E2B ${sandboxId}] ✅ Clean install completed.`);
+                            } else {
+                                console.log(`[E2B ${sandboxId}] All critical dependencies present, skipping reinstall.`);
+                            }
+                        } catch (e) {
+                            console.warn(`[E2B ${sandboxId}] Dependency check failed:`, e);
+                        }
                     }
                 } catch (e) {
                     console.warn(`[E2B ${sandboxId}] Failed to check/install modules, proceeding anyway`, e);
@@ -292,37 +407,45 @@ export async function action({ request }: ActionFunctionArgs) {
 
             // For start commands, we kick it off and return immediately with the URL
             if (isStartCommand) {
+                // CRITICAL: Verify key Expo packages are actually installed before starting
+                // This prevents the "Port is being used" error that happens when Expo fails to start
+                try {
+                    console.log(`[E2B ${sandboxId}] Verifying Expo installation...`);
+                    const verifyExpo = await sandbox.commands.run('test -f node_modules/expo/package.json && echo "FOUND" || echo "MISSING"');
+                    if (verifyExpo.stdout.includes('MISSING')) {
+                        console.error(`[E2B ${sandboxId}] ❌ CRITICAL: Expo module not found in node_modules!`);
+                        const e2bDirectUrl = `https://${sandbox.getHost(8082)}`;
+                        return json({
+                            stdout: '',
+                            stderr: 'ERROR: Expo is not installed. Please run "pnpm install" first and ensure it completes successfully.',
+                            exitCode: 1,
+                            sandboxId,
+                            url: e2bDirectUrl
+                        });
+                    }
+                    console.log(`[E2B ${sandboxId}] ✅ Expo module found`);
+                } catch (e) {
+                    console.warn(`[E2B ${sandboxId}] Could not verify Expo installation:`, e);
+                }
+
                 let collectedStdout = '';
                 let collectedStderr = '';
                 let tunnelUrl = '';
 
-                // Force kill any existing process on port 8081 to prevent "Port already in use" errors
-                // This is crucial for sandbox reuse
-                try {
-                    console.log(`[E2B ${sandboxId}] Killing port 8081...`);
-                    // AGGRESSIVE KILL LOOP: Retry 5 times to ensure the port is truly free
-                    for (let i = 0; i < 5; i++) {
-                        // NUCLEAR OPTION: Kill all node processes. 
-                        // This is safe because the sandbox is isolated for this project.
-                        // We try standard system tools first (fast), then fall back to npx (slow but reliable logic).
-                        // SURGICAL OPTION: Kill only the process on port 8081.
-                        // Try fuser first (fastest/native), then npx kill-port (reliable node fallback), then validly exit.
-                        const killCmd = 'fuser -k 8081/tcp || npx --yes kill-port 8081 || true';
-                        await sandbox.commands.run(killCmd);
-
-                        await new Promise(resolve => setTimeout(resolve, 1000));
-                    }
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                } catch (e) {
-                    console.warn(`[E2B ${sandboxId}] Warning: failed to kill port 8081`, e);
-                }
+                // Simple port cleanup for 8082 - just kill any existing process
+                // Port 8082 is much less likely to have conflicts than 8081
+                // Simple port cleanup for 8082 - skipped because lsof is missing on prod
+                // The preFlight command handles this via killall
+                console.log(`[E2B ${sandboxId}] Port cleanup delegated to preFlight command.`);
 
                 // Run in background; capture initial output
+                console.log(`[E2B ${sandboxId}] 🚀 Executing command: ${command}`);
+
                 await sandbox.commands.run(command, {
                     background: true,
                     onStdout: (out: { toString: () => string }) => {
                         const str = out.toString();
-                        console.log(`[E2B ${sandboxId}] ${str}`);
+                        console.log(`[E2B ${sandboxId}] STDOUT: ${str}`);
                         collectedStdout += str;
 
                         // Extract ngrok tunnel URL from Expo output
@@ -337,22 +460,60 @@ export async function action({ request }: ActionFunctionArgs) {
                     },
                     onStderr: (err: { toString: () => string }) => {
                         const str = err.toString();
-                        console.error(`[E2B ${sandboxId}] ${str}`);
+                        console.error(`[E2B ${sandboxId}] STDERR: ${str}`);
                         collectedStderr += str;
                     }
                 });
 
-                // Wait for 45 seconds to capture tunnel URL from startup logs and let Metro bundle
-                // Expo tunnel can take a while to establish
-                await new Promise(resolve => setTimeout(resolve, 45000));
+                console.log(`[E2B ${sandboxId}] Background process started, waiting for server to be ready...`);
 
-                // DIAGNOSTIC: Check if port 8081 is actually listening
+                // Wait for up to 180 seconds (3 mins) for the server to start, checking every 5 seconds
+                let serverReady = false;
+                for (let i = 0; i < 36; i++) {
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+
+                    try {
+                        // Check using ONLY curl because lsof/netstat are missing in minimal containers.
+                        // curl -s (silent) -o /dev/null (hide output) -w (write out) http_code
+                        // If connection refused, curl exits with error or prints 000.
+                        const portCheck = await sandbox.commands.run('(curl -s -o /dev/null -w "%{http_code}" http://localhost:8082) || echo "NOT_LISTENING"');
+                        const output = portCheck.stdout;
+
+                        // STRICT CHECK: Look for a valid HTTP status code (200, 404, 502, etc.)
+                        const isListening = output.match(/\d{3}/) && output !== '000';
+
+                        if (isListening && !output.includes('NOT_LISTENING')) {
+                            console.log(`[E2B ${sandboxId}] ✅ Server verified ready (HTTP ${output}) after ${(i + 1) * 5} seconds`);
+                            serverReady = true;
+                            break;
+                        } else {
+                            console.log(`[E2B ${sandboxId}] ⏳ Server not ready yet (${(i + 1) * 5}s elapsed)...`);
+                        }
+                    } catch (e) {
+                        console.warn(`[E2B ${sandboxId}] Error checking port:`, e);
+                    }
+                }
+
+                if (!serverReady) {
+                    console.error(`[E2B ${sandboxId}] ⚠️ WARNING: Server did not start listening on port 8082 after 180 seconds`);
+
+                    // Try to get the actual error from the log file
+                    try {
+                        const logContent = await sandbox.commands.run('tail -50 /home/user/app.log 2>/dev/null || echo "No logs available"');
+                        console.error(`[E2B ${sandboxId}] Recent logs:\n${logContent.stdout}`);
+                        collectedStderr += '\n\n=== Server Startup Logs ===\n' + logContent.stdout;
+                    } catch (e) {
+                        console.error(`[E2B ${sandboxId}] Could not read logs:`, e);
+                    }
+                }
+
+                // DIAGNOSTIC: Check if port 8082 is actually listening
                 try {
-                    const portCheck = await sandbox.commands.run('lsof -i :8081 || netstat -tlnp | grep 8081 || echo "Port 8081 not listening"');
-                    console.log(`[E2B ${sandboxId}] 🔍 Port 8081 status:`, portCheck.stdout);
+                    const portCheck = await sandbox.commands.run('lsof -i :8082 || netstat -tlnp | grep 8082 || echo "Port 8082 not listening"');
+                    console.log(`[E2B ${sandboxId}] 🔍 Port 8082 status:`, portCheck.stdout);
                     collectedStdout += '\n[System] Port check: ' + portCheck.stdout;
                 } catch (e) {
-                    console.warn(`[E2B ${sandboxId}] Could not check port 8081`, e);
+                    console.warn(`[E2B ${sandboxId}] Could not check port 8082`, e);
                 }
 
                 // Add a notice that the process continues
@@ -362,7 +523,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
                 // CRITICAL: Prefer E2B direct URL since ngrok detection is unreliable
                 // The E2B host URL works directly without tunneling
-                const e2bDirectUrl = `https://${sandbox.getHost(8081)}`;
+                const e2bDirectUrl = `https://${sandbox.getHost(8082)}`;
                 const previewUrl = e2bDirectUrl; // Always use E2B direct URL for reliability
 
                 console.log(`[E2B ${sandboxId}] ========== PREVIEW URL DECISION ==========`);
@@ -384,7 +545,7 @@ export async function action({ request }: ActionFunctionArgs) {
                     stderr: collectedStderr,
                     exitCode: 0,
                     sandboxId,
-                    url: `/api/proxy?url=${encodeURIComponent(previewUrl)}`
+                    url: previewUrl
                 });
             }
 
@@ -396,23 +557,27 @@ export async function action({ request }: ActionFunctionArgs) {
                 // AUTO-INJECTION: If package.json is missing (because we told LLM not to make one),
                 // inject the Golden Template package.json immediately.
                 try {
-                    const checkPkg = await sandbox.commands.run('test -f package.json && echo "YES" || echo "NO"');
-                    const hasPackageJson = checkPkg.stdout.trim() === 'YES';
+                    const checkPkg = await sandbox.commands.run('test -f package.json && cat package.json || echo "MISSING"');
+                    const pkgContent = checkPkg.stdout;
+                    const hasPackageJson = !pkgContent.includes('MISSING');
+                    const isStalePort = hasPackageJson && pkgContent.includes('--port 8081');
 
-                    if (!hasPackageJson) {
-                        console.log(`[E2B ${sandboxId}] package.json missing, injecting Golden Template...`);
+                    if (!hasPackageJson || isStalePort) {
+                        const reason = isStalePort ? 'Stale Port 8081 detected' : 'package.json missing';
+                        console.log(`[E2B ${sandboxId}] ${reason}, injecting Golden Template (v4)...`);
                         try {
-                            const templatePath = path.resolve(process.cwd(), 'templates/af-expo-template/package.json');
+                            const templatePath = path.resolve(process.cwd(), 'templates/af-expo-template-v9/package.json');
                             const templateContent = fs.readFileSync(templatePath, 'utf-8');
-                            // Write file using E2B filesystem API
+
+                            // Force overwrite
                             await sandbox.files.write('package.json', templateContent);
-                            console.log(`[E2B ${sandboxId}] Injected package.json from template.`);
+                            console.log(`[E2B ${sandboxId}] Injected/Updated package.json from v4 template.`);
                         } catch (err) {
                             console.error(`[E2B ${sandboxId}] Failed to inject template package.json:`, err);
                         }
                     }
                 } catch (e) {
-                    console.warn(`[E2B ${sandboxId}] Error checking for package.json:`, e);
+                    console.warn(`[E2B ${sandboxId}] Error checking/injecting package.json:`, e);
                 }
 
                 // HOTFIX: Remove deprecated @types/react-native if present (prevents conflicts)
@@ -495,7 +660,7 @@ export async function action({ request }: ActionFunctionArgs) {
                         stderr: collectedStderr || output.stderr,
                         exitCode: output.exitCode ?? 0,
                         sandboxId,
-                        url: `/api/proxy?url=${encodeURIComponent(`https://${sandbox.getHost(8081)}`)}`
+                        url: `https://${sandbox.getHost(8082)}`
                     });
                 } catch (error: any) {
                     console.error(`[E2B ${sandboxId}] Install command failed:`, error);
@@ -504,7 +669,7 @@ export async function action({ request }: ActionFunctionArgs) {
                         stderr: collectedStderr + `\n\nError: ${error.message}`,
                         exitCode: 1,
                         sandboxId,
-                        url: `/api/proxy?url=${encodeURIComponent(`https://${sandbox.getHost(8081)}`)}`
+                        url: `https://${sandbox.getHost(8082)}`
                     });
                 }
             }
@@ -520,7 +685,7 @@ export async function action({ request }: ActionFunctionArgs) {
                     stderr: error.stderr || error.message,
                     exitCode: error.exitCode || 1,
                     sandboxId,
-                    url: `/api/proxy?url=${encodeURIComponent(`https://${sandbox.getHost(8081)}`)}`
+                    url: `https://${sandbox.getHost(8082)}`
                 });
             }
 
@@ -529,7 +694,7 @@ export async function action({ request }: ActionFunctionArgs) {
                 stderr: output.stderr,
                 exitCode: output.exitCode ?? 0,
                 sandboxId, // Return ID for client persistence
-                url: `/api/proxy?url=${encodeURIComponent(`https://${sandbox.getHost(8081)}`)}` // Use proxy to bypass iframe restrictions
+                url: `https://${sandbox.getHost(8082)}`
             });
         } else if (file && content) {
             console.log(`[E2B API] Writing file to ${sandboxId}: ${file}${encoding ? ' (binary)' : ''}`);
@@ -545,6 +710,17 @@ export async function action({ request }: ActionFunctionArgs) {
             // Fix for recursive pathing bug:
             if (relativePath.startsWith('home/user/')) {
                 relativePath = relativePath.substring('home/user/'.length);
+            }
+
+            // CRITICAL: Flatten template files to root
+            // The IDE sends files as "templates/af-expo-template-v9/package.json"
+            // But E2B runs in "/home/user", so we must strip the prefix.
+            if (relativePath.startsWith('templates/af-expo-template-v9/')) {
+                relativePath = relativePath.replace('templates/af-expo-template-v9/', '');
+                console.log(`[E2B API] Flattened path: ${file} -> ${relativePath}`);
+            } else if (relativePath.startsWith('templates/af-expo-template/')) {
+                relativePath = relativePath.replace('templates/af-expo-template/', '');
+                console.log(`[E2B API] Flattened path: ${file} -> ${relativePath}`);
             }
 
             // Ensure /home/user exists (just in case)

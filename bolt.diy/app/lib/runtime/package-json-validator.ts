@@ -49,20 +49,27 @@ export function validatePackageJson(filePath: string, content: string, isE2BCont
     const isE2B = isE2BContext || (isServerSide && hasE2BApiKey);
 
     const expoStartCommand = isE2B
-      ? 'EXPO_NO_TELEMETRY=1 npx expo start --web --port 8081'
-      : 'EXPO_NO_TELEMETRY=1 npx expo start --tunnel';
+      ? 'EXPO_NO_TELEMETRY=1 npx --yes expo start --web --port 8082'
+      : 'EXPO_NO_TELEMETRY=1 npx --yes expo start --tunnel';
 
     // Ensure dev script exists with correct mode
-    if (!pkg.scripts.dev || pkg.scripts.dev.includes('expo start')) {
+    if (!pkg.scripts.dev || (pkg.scripts.dev.includes('expo start') && !pkg.scripts.dev.includes('--host 0.0.0.0'))) {
       pkg.scripts.dev = expoStartCommand;
       logger.warn(`[Validator] Auto-fixed dev script for ${isE2B ? 'E2B (web mode)' : 'local (tunnel mode)'}`);
       fixed = true;
     }
 
     // Ensure start script exists with correct mode
-    if (!pkg.scripts.start || pkg.scripts.start.includes('expo start')) {
+    if (!pkg.scripts.start || (pkg.scripts.start.includes('expo start') && !pkg.scripts.start.includes('--host 0.0.0.0'))) {
       pkg.scripts.start = expoStartCommand;
       logger.warn(`[Validator] Auto-fixed start script for ${isE2B ? 'E2B (web mode)' : 'local (tunnel mode)'}`);
+      fixed = true;
+    }
+
+    // CRITICAL: Remove forbidden scripts that cause failures
+    if (pkg.scripts['start:web']) {
+      delete pkg.scripts['start:web'];
+      logger.warn('[Validator] Removed forbidden "start:web" script');
       fixed = true;
     }
 
@@ -111,57 +118,150 @@ export function validatePackageJson(filePath: string, content: string, isE2BCont
       fixed = true;
     }
 
+    // GLOBAL CLEANUP: Remove deprecated or conflicting packages
+    // @types/react-native is deprecated and included in react-native now
+    if (pkg.devDependencies?.['@types/react-native']) {
+      delete pkg.devDependencies['@types/react-native'];
+      fixed = true;
+    }
+    if (pkg.dependencies?.['@types/react-native']) {
+      delete pkg.dependencies['@types/react-native'];
+      fixed = true;
+    }
+
+
+
     // CRITICAL: Strictly enforce Expo SDK 54 "Golden Set" versions
     // This overrides any hallucinated or mismatched versions from the LLM
+    // These versions are taken from the template package.json and verified against Expo warnings
     const STRICT_EXPO_54_VERSIONS: Record<string, string> = {
-      'expo': '~54.0.30',
+      // Core SDK 54 versions
+      'expo': '~54.0.31',
       'react': '19.1.0',
       'react-dom': '19.1.0',
       'react-native': '0.81.5',
       'react-native-web': '~0.21.2',
       'babel-preset-expo': '~54.0.0',
-      '@expo/metro-config': '~54.0.12',
       '@types/react': '~19.1.10',
-      '@types/react-dom': '~19.0.0',
-      'typescript': '^5.3.0',
+      'typescript': '^5.3.3',
 
-      // Extended Stack (Router, UI, etc.)
+      // Expo Router & Navigation
       'expo-router': '~6.0.21',
-      'react-native-safe-area-context': '5.3.0',
-      'react-native-screens': '~4.16.0', // Updated for compatibility
-      'expo-linking': '~7.1.3',
-      'expo-constants': '~18.0.12',
-      'expo-status-bar': '~2.2.2',
-      'react-native-reanimated': '~3.17.4',
-      'react-native-gesture-handler': '~2.24.0',
-      '@expo/vector-icons': '^14.1.0',
-
-      // Template Essentials (from user screenshot)
-      '@lucide/lab': '^0.1.2',
+      'react-native-safe-area-context': '5.6.0',
+      'react-native-screens': '~4.16.0',
+      'expo-linking': '~8.0.11',
+      'expo-constants': '~18.0.13',
+      'expo-status-bar': '~3.0.9',
       '@react-navigation/bottom-tabs': '^7.2.0',
       '@react-navigation/native': '^7.0.14',
-      'expo-blur': '~14.1.3',
-      'expo-camera': '~16.1.5',
-      'expo-font': '~13.2.2',
-      'expo-haptics': '~14.1.3',
-      'expo-linear-gradient': '~14.1.3',
-      'expo-splash-screen': '~0.30.6',
-      'expo-symbols': '~0.4.3',
-      'expo-system-ui': '~5.0.5',
-      'expo-web-browser': '~14.1.5',
-      'lucide-react-native': '^0.475.0',
-      'react-native-svg': '15.11.2',
+
+      // Animation & Gestures - CRITICAL: These were causing warnings
+      'react-native-reanimated': '~4.1.1',  // Was 3.16.7, needs to be ~4.1.1
+      'react-native-gesture-handler': '~2.28.0',  // Was 2.20.2, needs to be ~2.28.0
+      '@react-native-async-storage/async-storage': '2.2.0',  // Was 1.23.1
+
+      // UI & Icons
+      '@expo/vector-icons': '^15.0.3',  // Was 14.1.0, needs to be ^15.0.3
+      '@lucide/lab': '^0.1.2',
+      'lucide-react-native': '^0.562.0',
+
+      // Expo Modules - CRITICAL: Match exact versions from warnings
+      'expo-asset': '~12.0.2',
+      'expo-blur': '~15.0.8',
+      'expo-camera': '~17.0.10',
+      'expo-font': '~14.0.10',
+      'expo-image': '~2.0.0',
+      'expo-haptics': '~15.0.8',
+      'expo-linear-gradient': '~15.0.8',
+      'expo-secure-store': '~15.0.8',
+      'expo-splash-screen': '~31.0.13',  // Was 0.29.24, needs to be ~31.0.13
+      'expo-sqlite': '~16.0.10',
+      'expo-symbols': '~1.0.8',  // Was 0.2.2, needs to be ~1.0.8
+      'expo-system-ui': '~6.0.9',
+      'expo-web-browser': '~15.0.10',
+
+      // Other essentials
+      'react-native-svg': '15.12.1',
       'react-native-url-polyfill': '^2.0.0',
-      'react-native-webview': '13.13.5'
+      'react-native-webview': '13.15.0',
+      'react-native-worklets': '0.5.1',
+      'zustand': '^5.0.3',
+
+      // Dev dependencies (kept here for version enforcement)
+      '@babel/core': '^7.20.0',
+      'babel-plugin-module-resolver': '^5.0.0'
     };
 
-    // Apply strict overrides to dependencies
-    if (pkg.dependencies) {
-      for (const [dep, version] of Object.entries(STRICT_EXPO_54_VERSIONS)) {
-        if (pkg.dependencies[dep]) {
-          pkg.dependencies[dep] = version;
-          fixed = true;
-        }
+    const REQUIRED_EXPO_DEPENDENCIES = [
+      '@expo/vector-icons',
+      '@lucide/lab',
+      '@react-native-async-storage/async-storage',
+      '@react-navigation/bottom-tabs',
+      '@react-navigation/native',
+      'expo',
+      'expo-asset',
+      'expo-blur',
+      'expo-camera',
+      'expo-constants',
+      'expo-font',
+      'expo-haptics',
+      'expo-linear-gradient',
+      'expo-linking',
+      'expo-router',
+      'expo-secure-store',
+      'expo-splash-screen',
+      'expo-sqlite',
+      'expo-status-bar',
+      'expo-symbols',
+      'expo-system-ui',
+      'expo-web-browser',
+      'lucide-react-native',
+      'react',
+      'react-dom',
+      'react-native',
+      'react-native-gesture-handler',
+      'react-native-reanimated',
+      'react-native-safe-area-context',
+      'react-native-screens',
+      'react-native-svg',
+      'react-native-url-polyfill',
+      'react-native-web',
+      'react-native-webview',
+      'react-native-worklets',
+      'zustand',
+    ];
+
+    const REQUIRED_EXPO_DEV_DEPENDENCIES = [
+      '@babel/core',
+      '@types/react',
+      'babel-plugin-module-resolver',
+      'babel-preset-expo',
+      'typescript',
+    ];
+
+    // Apply strict overrides and inject missing dependencies
+    pkg.dependencies = pkg.dependencies || {};
+    for (const dep of REQUIRED_EXPO_DEPENDENCIES) {
+      const version = STRICT_EXPO_54_VERSIONS[dep];
+      if (!pkg.dependencies[dep]) {
+        pkg.dependencies[dep] = version;
+        fixed = true;
+      } else if (version && pkg.dependencies[dep] !== version) {
+        pkg.dependencies[dep] = version;
+        fixed = true;
+      }
+    }
+
+    // Apply strict overrides and inject missing devDependencies
+    pkg.devDependencies = pkg.devDependencies || {};
+    for (const dep of REQUIRED_EXPO_DEV_DEPENDENCIES) {
+      const version = STRICT_EXPO_54_VERSIONS[dep] || pkg.devDependencies[dep];
+      if (!pkg.devDependencies[dep] && version) {
+        pkg.devDependencies[dep] = version;
+        fixed = true;
+      } else if (version && pkg.devDependencies[dep] && pkg.devDependencies[dep] !== version) {
+        pkg.devDependencies[dep] = version;
+        fixed = true;
       }
     }
 
@@ -176,6 +276,12 @@ export function validatePackageJson(filePath: string, content: string, isE2BCont
         fixed = true;
       }
 
+      // CRITICAL: Ensure babel-plugin-module-resolver is present for @/ path aliases
+      if (!pkg.devDependencies['babel-plugin-module-resolver']) {
+        pkg.devDependencies['babel-plugin-module-resolver'] = '^5.0.0';
+        fixed = true;
+      }
+
       // Explicitly remove deprecated @types/react-native to prevent conflicts
       if (pkg.devDependencies?.['@types/react-native']) {
         delete pkg.devDependencies['@types/react-native'];
@@ -185,6 +291,8 @@ export function validatePackageJson(filePath: string, content: string, isE2BCont
         delete pkg.dependencies['@types/react-native'];
         fixed = true;
       }
+
+      // react-native-worklets is required by Reanimated in SDK 54
 
       // Ensure tunneling
       if (!pkg.devDependencies['@expo/ngrok']) {

@@ -158,6 +158,8 @@ export class StreamingMessageParser {
                 if (!currentAction.filePath.endsWith('.md')) {
                   content = cleanoutMarkdownSyntax(content);
                   content = cleanEscapedTags(content);
+                  // CRITICAL FIX: Strip CDATA tags if present to avoid build errors
+                  content = content.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1');
                 }
                 content += '\n';
               }

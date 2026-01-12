@@ -623,25 +623,43 @@ export class WorkbenchStore {
       }
     } else if (data.action.type === 'design-sync') {
       try {
-        if (!data.action.content) {
-          console.warn('[Workbench] Skipping design-sync with empty content');
-          return;
+        // Remove markdown code fences if present
+        let cleanContent = data.action.content.trim();
+        if (cleanContent.startsWith('```json')) {
+          cleanContent = cleanContent.replace(/^```json/, '').replace(/```$/, '');
+        } else if (cleanContent.startsWith('```')) {
+          cleanContent = cleanContent.replace(/^```/, '').replace(/```$/, '');
         }
 
-        const payload = JSON.parse(data.action.content);
+        const payload = JSON.parse(cleanContent);
 
-        updateStep1Data(payload);
-        chatStore.setKey('showChat', false);
-        chatStore.setKey('handedOver', true);
+        if (payload) {
+          updateStep1Data(payload);
+          chatStore.setKey('showChat', false);
+          chatStore.setKey('handedOver', true);
+          this.currentView.set('design');
 
-        await artifact.runner.runAction(data);
-      } catch (error) {
+          // Mark as complete via runner
+          await artifact.runner.runAction(data);
+        } else {
+          throw new Error('Parsed payload is empty');
+        }
+      } catch (error: any) {
         console.error('[Workbench] Failed to parse design-sync payload:', error);
-        console.error('[Workbench] Content length:', data.action.content?.length);
-        console.error('[Workbench] Raw Content which failed parsing:', data.action.content);
+        console.error('[Workbench] Received content:', data.action.content);
 
-        // Attempt to soft-recover if it's a simple truncation (optional, but good for stability)
-        // For now, just logging is enough to let us know WHY it failed.
+        // Manually mark action as failed to stop spinner
+        if (artifact.runner.actions) {
+          const currentAction = artifact.runner.actions.get()[data.actionId];
+          if (currentAction) {
+            artifact.runner.actions.setKey(data.actionId, {
+              ...currentAction,
+              status: 'failed',
+              executed: true,
+              error: error.message || 'Failed to parse design data'
+            } as any);
+          }
+        }
       }
     } else if (data.action.type === 'qa-pass') {
       try {

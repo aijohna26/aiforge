@@ -1,4 +1,7 @@
 import { useStore } from '@nanostores/react';
+import { DEFAULT_MODEL, DEFAULT_PROVIDER } from '~/utils/constants';
+
+
 import { designWizardStore, updateStep1Data, loadWizardData, type DataModel } from '~/lib/stores/designWizard';
 import { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
@@ -95,7 +98,7 @@ export function WizardStep1Form({ zoom = 1, panX = 0, panY = 0 }: WizardStep1For
         body: JSON.stringify({
           system: 'You are an expert database architect. Return only valid JSON.',
           message: prompt,
-          model: 'gpt-4o',
+          model: 'gpt-5.2',
           provider: { name: 'OpenAI' },
         }),
       });
@@ -106,7 +109,30 @@ export function WizardStep1Form({ zoom = 1, panX = 0, panY = 0 }: WizardStep1For
         throw new Error(result.message);
       }
 
-      const content = result.text;
+      let content = result.text;
+
+      // Fallback for custom/newer model response structures
+      if (!content) {
+        if (typeof result._output === 'string') {
+          // Case: _output is a direct string (seen in recent logs)
+          content = result._output;
+        } else if (result.output && Array.isArray(result.output)) {
+          // Case: output is an array of messages
+          const firstOutput = result.output[0];
+          if (firstOutput?.content && Array.isArray(firstOutput.content)) {
+            const textPart = firstOutput.content.find((c: any) => c.type === 'output_text' || c.text);
+            if (textPart) {
+              content = textPart.text;
+            }
+          }
+        }
+      }
+
+      if (!content) {
+        console.error('API Response missing text:', result);
+        throw new Error('No content received from AI');
+      }
+
       const cleanContent = content.replace(/```json|```/g, '').trim();
       const models = JSON.parse(cleanContent);
 
@@ -150,7 +176,7 @@ export function WizardStep1Form({ zoom = 1, panX = 0, panY = 0 }: WizardStep1For
         body: JSON.stringify({
           system: 'You are an expert database architect. Return only valid JSON.',
           message: prompt,
-          model: 'gpt-4o',
+          model: 'gpt-5.2',
           provider: { name: 'OpenAI' },
         }),
       });
@@ -161,7 +187,28 @@ export function WizardStep1Form({ zoom = 1, panX = 0, panY = 0 }: WizardStep1For
         throw new Error(result.message);
       }
 
-      const content = result.text;
+      let content = result.text;
+
+      // Fallback for custom/newer model response structures
+      if (!content) {
+        if (typeof result._output === 'string') {
+          content = result._output;
+        } else if (result.output && Array.isArray(result.output)) {
+          const firstOutput = result.output[0];
+          if (firstOutput?.content && Array.isArray(firstOutput.content)) {
+            const textPart = firstOutput.content.find((c: any) => c.type === 'output_text' || c.text);
+            if (textPart) {
+              content = textPart.text;
+            }
+          }
+        }
+      }
+
+      if (!content) {
+        console.error('API Response missing text:', result);
+        throw new Error('No content received from AI');
+      }
+
       const cleanContent = content.replace(/```json|```/g, '').trim();
       const models = JSON.parse(cleanContent);
 
@@ -190,7 +237,6 @@ export function WizardStep1Form({ zoom = 1, panX = 0, panY = 0 }: WizardStep1For
         { ...model, id: `model-${Date.now()}-${Math.random().toString(36).substr(2, 9)}` },
       ],
     });
-    toast.success(`Added ${model.name} model`);
   };
 
   const removeModel = (modelId: string) => {
@@ -203,6 +249,26 @@ export function WizardStep1Form({ zoom = 1, panX = 0, panY = 0 }: WizardStep1For
   const clearAllModels = () => {
     updateStep1Data({ dataModels: [] });
     toast.success('Cleared all data models');
+  };
+
+  const selectAllModels = () => {
+    const currentModels = step1.dataModels || [];
+    const newModels = suggestedModels
+      .filter((sm) => !currentModels.some((cm) => cm.name === sm.name))
+      .map((m) => ({
+        ...m,
+        id: `model-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      }));
+
+    if (newModels.length === 0) {
+      toast.info('All models are already added.');
+      return;
+    }
+
+    updateStep1Data({
+      dataModels: [...currentModels, ...newModels],
+    });
+    toast.success(`Added ${newModels.length} models`);
   };
 
   return (
@@ -491,7 +557,16 @@ export function WizardStep1Form({ zoom = 1, panX = 0, panY = 0 }: WizardStep1For
                     animate={{ opacity: 1 }}
                     className="space-y-2 max-h-[250px] overflow-y-auto custom-scrollbar pr-2"
                   >
-                    <h4 className="text-[10px] font-bold text-cyan-400 uppercase">Suggested Models</h4>
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="text-[10px] font-bold text-cyan-400 uppercase">Suggested Models</h4>
+                      <button
+                        onClick={selectAllModels}
+                        className="text-[10px] font-bold text-cyan-400 hover:text-cyan-300 uppercase flex items-center gap-1 transition-colors"
+                      >
+                        <div className="i-ph:check-all-bold" />
+                        Select All
+                      </button>
+                    </div>
                     {suggestedModels.map((model, idx) => {
                       const alreadyAdded = (step1.dataModels || []).some((m) => m.name === model.name);
                       return (
@@ -505,7 +580,7 @@ export function WizardStep1Form({ zoom = 1, panX = 0, panY = 0 }: WizardStep1For
                           <div className="flex justify-between items-start">
                             <div>
                               <span className="text-xs font-bold text-white block">{model.name}</span>
-                              <span className="text-[10px] text-slate-400">{(model.fields || []).length} fields</span>
+                              <span className="text-[10px] text-slate-400">{model.fields.length} fields</span>
                             </div>
                             <button
                               onClick={() => acceptModel(model)}
@@ -529,7 +604,11 @@ export function WizardStep1Form({ zoom = 1, panX = 0, panY = 0 }: WizardStep1For
             <div className="mt-6 pt-4 border-t border-[#333]">
               <div className="flex items-center justify-between mb-3">
                 <h4 className="text-[10px] font-bold text-slate-400 uppercase">Active Models</h4>
-                <button onClick={clearAllModels} className="text-[10px] text-rose-500 hover:text-rose-400">
+                <button
+                  onClick={clearAllModels}
+                  className="flex items-center gap-1.5 px-2 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[10px] font-bold uppercase rounded transition-colors"
+                >
+                  <div className="i-ph:trash-bold" />
                   Clear All
                 </button>
               </div>
@@ -552,6 +631,7 @@ export function WizardStep1Form({ zoom = 1, panX = 0, panY = 0 }: WizardStep1For
               </div>
             </div>
           )}
+
         </div>
       </div>
 

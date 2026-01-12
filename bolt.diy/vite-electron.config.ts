@@ -6,6 +6,7 @@ import { optimizeCssModules } from 'vite-plugin-optimize-css-modules';
 import tsconfigPaths from 'vite-tsconfig-paths';
 
 import { execSync } from 'child_process';
+import path from 'node:path';
 
 // Get git hash with fallback
 const getGitHash = () => {
@@ -39,7 +40,10 @@ export default defineConfig((config) => {
         serverModuleFormat: 'esm',
       }),
       UnoCSS(),
-      tsconfigPaths(),
+      tsconfigPaths({
+        projects: [path.resolve(__dirname, 'tsconfig.json')],
+        ignoreConfigErrors: true,
+      }),
       config.mode === 'production' && optimizeCssModules({ apply: 'build' }),
       {
         name: 'replaceReactDomServerImport',

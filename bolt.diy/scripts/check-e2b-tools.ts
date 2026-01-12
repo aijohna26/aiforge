@@ -14,8 +14,8 @@ async function checkTools() {
     }
 
     console.log('Connecting to E2B to check available system tools...');
-    // Use the v4 template if defined, or default
-    const template = process.env.E2B_EXPO_TEMPLATE_ID || 'expo-template-v4';
+    // Use the v9 template if defined, or default
+    const template = process.env.E2B_EXPO_TEMPLATE_ID || 'expo-template-v9';
 
     let sandbox;
     try {

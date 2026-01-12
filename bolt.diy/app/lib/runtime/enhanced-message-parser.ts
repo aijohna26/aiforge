@@ -36,6 +36,12 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
       input = wrappedInput;
     }
 
+    // CRITICAL FIX: Wrap naked actions in artifacts so they are detected
+    const wrappedActions = this._wrapNakedActions(input, messageId);
+    if (wrappedActions !== input) {
+      input = wrappedActions;
+    }
+
     // CRITICAL FIX: Detect and wrap package.json content to prevent it from appearing in chat
     const wrappedPackageJson = this._wrapPackageJSON(messageId, input);
     if (wrappedPackageJson !== input) {
@@ -62,6 +68,12 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
       // Reset and reparse with enhanced input
       this.reset();
       output = super.parse(messageId, enhancedInput);
+    }
+
+    // Final guard: strip any raw code that still slipped outside artifacts.
+    const sanitizedOutput = this._stripRawCodeOutsideArtifacts(output);
+    if (sanitizedOutput !== output) {
+      output = sanitizedOutput;
     }
 
     return output;
@@ -301,6 +313,40 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
     return enhanced;
   }
 
+  private _wrapNakedActions(input: string, messageId: string): string {
+    const artifactRanges = this._findArtifactRanges(input);
+    const actionRegex = /<afAction\s+[^>]*>[\s\S]*?<\/afAction>/gi;
+
+    let match;
+    let modifications: { start: number; end: number; replacement: string }[] = [];
+
+    while ((match = actionRegex.exec(input)) !== null) {
+      const start = match.index;
+      const end = start + match[0].length;
+
+      // Check if this action is inside any existing artifact
+      const isInside = artifactRanges.some(([aStart, aEnd]) => start >= aStart && end <= aEnd);
+
+      if (!isInside) {
+        // It's naked! Wrap it.
+        const originalAction = match[0];
+        const artifactId = `artifact-${messageId}-naked-${start}`;
+        const replacement = `<afArtifact id="${artifactId}" title="Generated Action" type="bundled">\n${originalAction}\n</afArtifact>`;
+        modifications.push({ start, end, replacement });
+      }
+    }
+
+    // Apply modifications from back to front to preserve indices
+    modifications.sort((a, b) => b.start - a.start);
+
+    let result = input;
+    for (const mod of modifications) {
+      result = result.slice(0, mod.start) + mod.replacement + result.slice(mod.end);
+    }
+
+    return result;
+  }
+
   private _wrapInArtifact(artifactId: string, filePath: string, content: string): string {
     const title = filePath.split('/').pop() || 'File';
 
@@ -319,6 +365,103 @@ ${content}
 ${content.trim()}
 </afAction>
 </afArtifact>`;
+  }
+
+  private _stripRawCodeOutsideArtifacts(input: string): string {
+    if (!input) {
+      return input;
+    }
+
+    const artifactRanges = this._findArtifactRanges(input);
+    const actionRanges = this._findActionRanges(input);
+    const lines = input.split('\n');
+    let offset = 0;
+    let removedAny = false;
+    const output: string[] = [];
+
+    const isCodeLine = (line: string) => {
+      const trimmed = line.trim();
+      if (!trimmed) return false;
+      if (trimmed.startsWith('<![CDATA[') || trimmed === ']]>') return true;
+      if (/^(import|export|const|let|var|function|class|interface|type)\b/.test(trimmed)) return true;
+      if (/^<\/?[A-Za-z][^>]*>/.test(trimmed) || trimmed.startsWith('<>') || trimmed.startsWith('</>')) return true;
+      if (/^\s*[\{\}\(\);\[\]]+\s*$/.test(trimmed)) return true;
+      if (/^\w[\w.\[\]]*\s*=\s*.+/.test(trimmed)) return true;
+      return false;
+    };
+
+    let codeBuffer: string[] = [];
+    let codeBufferStart = 0;
+
+    const flushBuffer = (forceKeep: boolean = false) => {
+      if (codeBuffer.length === 0) {
+        return;
+      }
+
+      const shouldRemove = !forceKeep && (codeBuffer.length >= 2 || isCodeLine(codeBuffer[0]));
+
+      if (shouldRemove) {
+        removedAny = true;
+      } else {
+        output.push(...codeBuffer);
+      }
+
+      codeBuffer = [];
+      codeBufferStart = 0;
+    };
+
+    for (const line of lines) {
+      const lineStart = offset;
+      const inArtifact = this._isInsideArtifact(lineStart, artifactRanges) || this._isInsideAction(lineStart, actionRanges);
+
+      if (!inArtifact && isCodeLine(line)) {
+        if (codeBuffer.length === 0) {
+          codeBufferStart = lineStart;
+        }
+        codeBuffer.push(line);
+      } else {
+        flushBuffer(true);
+        output.push(line);
+      }
+
+      offset += line.length + 1;
+    }
+
+    flushBuffer(false);
+
+    if (!removedAny) {
+      return input;
+    }
+
+    const fileHints = this._extractFileHints(input, artifactRanges, actionRanges);
+    const notice = fileHints.length
+      ? `Code output removed from chat. Please use artifacts for all code and files. Detected files: ${fileHints.join(', ')}.`
+      : 'Code output removed from chat. Please use artifacts for all code and files.';
+    return `${output.join('\n').trim()}\n\n${notice}`.trim();
+  }
+
+  private _extractFileHints(input: string, artifactRanges: [number, number][], actionRanges: [number, number][]) {
+    const filePaths = new Set<string>();
+    const pathRegex = /(?:^|\s)(\/[\w\-./]+\.[\w]+|[\w\-./]+\.[\w]+)(?=\s|$|[),.;:])/g;
+
+    let match: RegExpExecArray | null;
+    while ((match = pathRegex.exec(input)) !== null) {
+      const offset = match.index;
+      if (this._isInsideArtifact(offset, artifactRanges) || this._isInsideAction(offset, actionRanges)) {
+        continue;
+      }
+
+      const raw = match[1];
+      if (!raw || raw.length > 200) continue;
+      if (raw.startsWith('http') || raw.includes('://')) continue;
+
+      const normalized = this._normalizeFilePath(raw);
+      if (this._isValidFilePath(normalized)) {
+        filePaths.add(normalized);
+      }
+    }
+
+    return Array.from(filePaths).slice(0, 6);
   }
 
   private _normalizeFilePath(filePath: string): string {

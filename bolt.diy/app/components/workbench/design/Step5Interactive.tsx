@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-toastify';
 import { useStore } from '@nanostores/react';
-import { designWizardStore, updateStep5Data, setStudioActive, enableAutoSaveAfterHydration } from '../../../lib/stores/designWizard';
+import { designWizardStore, updateStep5Data, setStudioActive, enableAutoSaveAfterHydration, type Step4Data } from '../../../lib/stores/designWizard';
 import { Canvas, type FrameData } from './interactive/Canvas';
 import { useScreenGenerationPolling } from '~/lib/hooks/useJobPolling';
 import { JobProgressBar } from '~/components/inngest/JobProgressBar';
@@ -146,13 +146,13 @@ export function Step5Interactive() {
             // Fix: Calculate position relative to the last frame in the list to ensure consistent spacing
             const lastFrame = updatedFrames[updatedFrames.length - 1];
 
-            // Align X: Right of last frame + standard spacing - offset
+            // Align X: Right of last frame + standard spacing
             const startX = lastFrame ? (lastFrame.x || CANVAS_CENTER_X) : CANVAS_CENTER_X;
-            const x = startX + (DEVICE_WIDTH + FRAME_SPACING) - 3000;
+            const x = startX + (DEVICE_WIDTH + FRAME_SPACING);
 
             // Align Y: Strictly follow the row's Y coordinate (anchor to first frame)
-            const rowY = updatedFrames.length > 0 ? updatedFrames[0].y : CANVAS_CENTER_Y;
-            const y = (rowY ?? CANVAS_CENTER_Y) - 800;
+            const rowY = updatedFrames.length > 0 ? updatedFrames[0].y : (CANVAS_CENTER_Y - 800);
+            const y = rowY ?? (CANVAS_CENTER_Y - 800);
 
             updatedFrames.push({
               id: screen.id,
@@ -162,6 +162,7 @@ export function Step5Interactive() {
               y,
               isNew: true, // Mark for offset normalization on save
             });
+
           }
         });
 
@@ -271,7 +272,38 @@ export function Step5Interactive() {
       // This prevents the race condition where we set stale frames, then DB frames, then stale frames again
       (async () => {
         try {
-          let targetProj = routeProjectId || wizardData.projectId || 'default';
+          const targetProj = routeProjectId || wizardData.projectId;
+
+          // If no Project ID, we cannot possibly have DB frames. Skip DB check.
+          if (!targetProj) {
+            console.log('[Hydration] 🆕 New project (no ID), skipping DB check. Using local frames.');
+
+            // Optimized logic for local-only frames (copied from fallback)
+            const optimizedFrames = optimizeLayout(storedStudioFrames);
+            const alignedFrames = optimizedFrames.map(frame => ({
+              ...frame,
+              x: (frame.x || 0) - 3000,
+              y: (frame.y ?? CANVAS_CENTER_Y) - 800,
+              isNew: false
+            }));
+
+            setFrames(alignedFrames);
+            if (wizardData.step5?.customTheme) {
+              setCustomTheme(wizardData.step5.customTheme);
+            }
+            setStatus('preview');
+            setIsFullscreen(true);
+            hasGeneratedRef.current = true;
+            snapshotRef.current = storedStudioSnapshot || wizardSnapshot;
+
+            enableAutoSaveAfterHydration();
+            updateStep5Data({
+              studioFrames: alignedFrames,
+              studioSnapshot: wizardSnapshot
+            });
+            return;
+          }
+
           console.log(`[Hydration] 🔍 Checking project: ${targetProj} (local has ${storedStudioFrames.length} frames)`);
 
           let dbRes = await fetch(`/api/studio/workspace?projectId=${targetProj}`);
@@ -436,7 +468,7 @@ export function Step5Interactive() {
           snapshotHash: hash,
           frames: finalScreens, // Use the offset-corrected frames
           theme: customTheme,
-          projectId: routeProjectId || wizardData.projectId || 'default',
+          projectId: routeProjectId || wizardData.projectId, // Force explicit project ID check - no 'default'
         }),
       });
 
@@ -510,43 +542,43 @@ export function Step5Interactive() {
     }
 
     // 2. Check Database for existing design with this snapshot hash
-    setIsCheckingDb(true);
+    // ONLY if we have a valid projectId. New projects should SKIP this.
+    if (wizardData.projectId) {
+      setIsCheckingDb(true);
 
-    try {
-      const hash = await import('~/utils/hash').then((m) => m.hashString(wizardSnapshot));
-      const dbResponse = await fetch(
-        `/api/studio/workspace?hash=${hash}&projectId=${wizardData.projectId || 'default'}`,
-      );
+      try {
+        const hash = await import('~/utils/hash').then((m) => m.hashString(wizardSnapshot));
+        const dbResponse = await fetch(
+          `/api/studio/workspace?hash=${hash}&projectId=${wizardData.projectId}`,
+        );
 
-      const data = await dbResponse.json();
+        const data = await dbResponse.json();
 
-      if (dbResponse.ok && data.workspace) {
-        console.log('[Studio] Found existing design in database');
-        setFrames(data.workspace.frames);
+        if (dbResponse.ok && data.workspace) {
+          console.log('[Studio] Found existing design in database');
+          setFrames(data.workspace.frames);
 
-        if (data.workspace.theme) {
-          setCustomTheme(data.workspace.theme);
+          if (data.workspace.theme) {
+            setCustomTheme(data.workspace.theme);
+          }
+
+          persistStudioFrames(data.workspace.frames);
+          setStatus('preview');
+          hasGeneratedRef.current = true;
+          snapshotRef.current = wizardSnapshot;
+          setIsCheckingDb(false);
+
+          return;
+        } else if (!dbResponse.ok && data.errorCode === 'TABLE_MISSING') {
+          console.warn('[Studio] studio_workspaces table missing. Please run migration.');
         }
-
-        persistStudioFrames(data.workspace.frames);
-        setStatus('preview');
-        hasGeneratedRef.current = true;
-        snapshotRef.current = wizardSnapshot;
+      } catch (error) {
+        console.warn('[Studio] DB lookup failed, falling back to generation:', error);
+      } finally {
         setIsCheckingDb(false);
-
-        return;
-      } else if (!dbResponse.ok && data.errorCode === 'TABLE_MISSING') {
-        console.warn('[Studio] studio_workspaces table missing. Please run migration.');
-
-        /*
-         * We don't show toast here during initialize to avoid noise,
-         * but we might show it if user tries to Save.
-         */
       }
-    } catch (error) {
-      console.warn('[Studio] DB lookup failed, falling back to generation:', error);
-    } finally {
-      setIsCheckingDb(false);
+    } else {
+      console.log('[Studio] New project (no ID), skipping DB lookup and generating fresh.');
     }
 
     // 3. If no existing design, proceed with LLM generation
@@ -689,7 +721,7 @@ export function Step5Interactive() {
 
         console.log(
           '[Initial Generation] Generated frames:',
-          generatedFrames.map((f) => ({ id: f.id, x: f.x, y: f.y })),
+          generatedFrames.map((f: any) => ({ id: f.id, x: f.x, y: f.y })),
         );
         setFrames(generatedFrames);
         persistStudioFrames(generatedFrames);
@@ -775,8 +807,8 @@ export function Step5Interactive() {
         id: s.id,
         title: s.name,
         html: '', // Empty HTML triggers skeleton loader
-        x: baseX + DEVICE_WIDTH + FRAME_SPACING + (DEVICE_WIDTH + FRAME_SPACING) * index - 3000,
-        y: rowY - 800,
+        x: baseX + DEVICE_WIDTH + FRAME_SPACING + (DEVICE_WIDTH + FRAME_SPACING) * index,
+        y: rowY,
         isNew: true, // Mark for offset normalization on save
       }));
 
@@ -804,7 +836,7 @@ export function Step5Interactive() {
         title: s.title,
         html: s.html,
         x: baseX + DEVICE_WIDTH + FRAME_SPACING + (DEVICE_WIDTH + FRAME_SPACING) * index,
-        y: baseY,
+        y: rowY,
       }));
 
       /*
@@ -921,7 +953,7 @@ export function Step5Interactive() {
           keyElements: ['Navigation', 'Content'],
           showLogo: false,
           showBottomNav: true,
-        })) as Step4Data['screens'];
+        })) as any;
       }
 
       // If there's nothing to generate (shouldn't happen due to fallback), exit
@@ -1000,7 +1032,7 @@ export function Step5Interactive() {
           x:
             placeholderFrames[index]?.x ??
             baseX + DEVICE_WIDTH + FRAME_SPACING + (DEVICE_WIDTH + FRAME_SPACING) * index,
-          y: placeholderFrames[index]?.y ?? baseY,
+          y: placeholderFrames[index]?.y ?? visualRowY,
         }));
 
         setFrames((prev) => {

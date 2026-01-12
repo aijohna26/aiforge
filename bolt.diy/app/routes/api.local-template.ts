@@ -84,9 +84,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
         try {
           const pkg = JSON.parse(packageJsonFile.content);
 
-          // Add --web --port 8081 flags to Expo scripts (required for E2B web preview)
-          // We use web mode because E2B proxies port 8081, making it reliable (unlike tunnel)
-          const E2B_FLAGS = 'EXPO_NO_TELEMETRY=1 npx expo start --web --port 8081';
+          // Add --web --port 8082 flags to Expo scripts (required for E2B web preview)
+          // We use web mode because E2B proxies port 8082, making it reliable (unlike tunnel)
+          const E2B_FLAGS = 'EXPO_NO_TELEMETRY=1 npx expo start --web --port 8082';
 
           if (pkg.scripts) {
             // Force dev and start scripts to use the robust E2B command
@@ -96,7 +96,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
           // Update the file content with modified package.json
           packageJsonFile.content = JSON.stringify(pkg, null, 2);
-          console.log('✅ [SERVER] Modified package.json for Expo: added --web --port 8081 flags');
+          console.log('✅ [SERVER] Modified package.json for Expo: added --web --port 8082 flags');
         } catch (error) {
           console.error('Failed to modify package.json for Expo:', error);
         }

@@ -15,7 +15,7 @@ There is a persistent **desynchronization** between the User's Browser Editor (W
 *   **Backend (E2B):** ✅ **HEALTHY**.
     *   Project Root: `/home/user`.
     *   Cleanup: Root (`/`) and `/user` pollution have been removed.
-    *   Process: Port 8081 collision and "zombie process" issues are resolved.
+    *   Process: Port 8082 collision and "zombie process" issues are resolved.
 *   **Frontend (Browser):** ❌ **CRITICAL FAILURE**.
     *   Missing `app/`, `hooks/`, `utils/`.
     *   Manual file injections are not reflecting in the File Tree.

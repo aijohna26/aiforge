@@ -573,23 +573,23 @@ export function generateTicketsFromPRD(wizardData: DesignWizardData): PlanTicket
         createTicket(
           `Implement ${model.name} Data Model`,
           model.description,
-        'task',
-        'medium',
-        [
-          'Data model schema defined with all fields',
-          'CRUD operations implemented',
-          'Field validation added',
-          'Integration with backend tested',
-          'Error handling implemented',
-        ],
-        [],
-        [model.id],
-        [],
-        ['backend', 'data-model'],
-        4,
-        true, // Data models can be built in parallel
-      ),
-    );
+          'task',
+          'medium',
+          [
+            'Data model schema defined with all fields',
+            'CRUD operations implemented',
+            'Field validation added',
+            'Integration with backend tested',
+            'Error handling implemented',
+          ],
+          [],
+          [model.id],
+          [],
+          ['backend', 'data-model'],
+          4,
+          true, // Data models can be built in parallel
+        ),
+      );
     });
   }
 
@@ -598,28 +598,28 @@ export function generateTicketsFromPRD(wizardData: DesignWizardData): PlanTicket
     wizardData.step6.integrations
       .filter((i) => i.enabled)
       .forEach((integration) => {
-      tickets.push(
-        createTicket(
-          `Setup ${integration.id} Integration`,
-          `Configure and integrate ${integration.id} into the application.`,
-          'task',
-          'medium',
-          [
-            'Integration SDK/library installed',
-            'API keys and configuration set up',
-            'Core functionality implemented',
-            'Error handling added',
-            'Integration tested end-to-end',
-          ],
-          [],
-          [],
-          [],
-          ['integration', integration.id],
-          3,
-          wizardData.step1.parallelReady === true,
-        ),
-      );
-    });
+        tickets.push(
+          createTicket(
+            `Setup ${integration.id} Integration`,
+            `Configure and integrate ${integration.id} into the application.`,
+            'task',
+            'medium',
+            [
+              'Integration SDK/library installed',
+              'API keys and configuration set up',
+              'Core functionality implemented',
+              'Error handling added',
+              'Integration tested end-to-end',
+            ],
+            [],
+            [],
+            [],
+            ['integration', integration.id],
+            3,
+            wizardData.step1.parallelReady === true,
+          ),
+        );
+      });
   }
 
   // Story: Testing (if enabled)
@@ -656,7 +656,7 @@ export function triggerCodingBot(ticket: PlanTicket) {
   // Store the prompt to be picked up by the chat
   if (typeof window !== 'undefined') {
     localStorage.setItem(
-      'bolt_ticket_prompt',
+      'af_ticket_prompt',
       JSON.stringify({
         ticketId: ticket.id,
         ticketKey: ticket.key,
@@ -727,91 +727,85 @@ ${ticket.description}
 ## Acceptance Criteria
 ${ticket.acceptanceCriteria.map((c, i) => `${i + 1}. ✅ ${c}`).join('\n')}
 
-${
-  ticket.metadata?.screenAnalysis && ticket.metadata?.screenUrl
-    ? `
+${ticket.metadata?.screenAnalysis && ticket.metadata?.screenUrl
+      ? `
 ## 🎨 SCREEN DESIGN ANALYSIS
 
 **Reference Design**: ${ticket.metadata.screenUrl}
 
 ### Component Structure
 ${ticket.metadata.screenAnalysis.visualLayout.components
-  .map((comp) => `- **${comp.name}** (${comp.type}): ${comp.description}`)
-  .join('\n')}
+        .map((comp) => `- **${comp.name}** (${comp.type}): ${comp.description}`)
+        .join('\n')}
 
-${
-  ticket.metadata.screenAnalysis.interactions.buttons.length > 0
-    ? `
+${ticket.metadata.screenAnalysis.interactions.buttons.length > 0
+        ? `
 ### Required Interactions
 ${ticket.metadata.screenAnalysis.interactions.buttons.map((btn) => `- Button "${btn.label}": ${btn.action}`).join('\n')}
 `
-    : ''
-}
+        : ''
+      }
 
-${
-  ticket.metadata.screenAnalysis.dataRequirements.displayedData.length > 0
-    ? `
+${ticket.metadata.screenAnalysis.dataRequirements.displayedData.length > 0
+        ? `
 ### Data Schema
 ${ticket.metadata.screenAnalysis.dataRequirements.displayedData
-  .map((field) => `- **${field.name}** (${field.type}): ${field.description}`)
-  .join('\n')}
+          .map((field) => `- **${field.name}** (${field.type}): ${field.description}`)
+          .join('\n')}
 `
-    : ''
-}
+        : ''
+      }
 
-${
-  ticket.metadata.screenAnalysis.accessibility.labels.length > 0
-    ? `
+${ticket.metadata.screenAnalysis.accessibility.labels.length > 0
+        ? `
 ### Accessibility Requirements
 ${ticket.metadata.screenAnalysis.accessibility.labels.map((label) => `- ${label}`).join('\n')}
 `
-    : ''
-}
+        : ''
+      }
 
-${
-  ticket.metadata.screenAnalysis.implementationNotes
-    ? `
+${ticket.metadata.screenAnalysis.implementationNotes
+        ? `
 ### Implementation Notes
 ${ticket.metadata.screenAnalysis.implementationNotes}
 `
-    : ''
-}
+        : ''
+      }
 `
-    : ''
-}
+      : ''
+    }
 
-${
-  ticket.relatedScreens.length > 0
-    ? `
+${ticket.relatedScreens.length > 0
+      ? `
 ## Related Screens
 ${ticket.relatedScreens.join(', ')}
 > Please reference the design mockups for these screens in the PRD.
 `
-    : ''
-}
+      : ''
+    }
 
-${
-  ticket.relatedDataModels.length > 0
-    ? `
+${ticket.relatedDataModels.length > 0
+      ? `
 ## Related Data Models
 ${ticket.relatedDataModels.join(', ')}
 > Ensure data models are implemented according to the schema defined in the PRD.
 `
-    : ''
-}
+      : ''
+    }
 
-${
-  ticket.labels.length > 0
-    ? `
+${ticket.labels.length > 0
+      ? `
 ## Labels
 ${ticket.labels.map((l) => `\`${l}\``).join(', ')}
 `
-    : ''
-}
+      : ''
+    }
 
 ---
 
 Please implement this ${ticket.type} following best practices, ensuring all acceptance criteria are met. Write clean, maintainable code with proper error handling and TypeScript types.
+
+IMPORTANT: Output the code artifact immediately. Do NOT claim the Acceptance Criteria are met until the code is fully implemented and you have been prompted to verify. Do NOT add a "Notes / What's included" section after the artifact.
 `;
 
   return prompt.trim();

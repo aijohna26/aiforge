@@ -6,6 +6,7 @@ import {
   setViewMode,
   getTicketsByStatus,
   addTicket,
+  triggerCodingBot,
   type PlanTicket,
   type TicketStatus,
   type TicketPriority,
@@ -45,6 +46,19 @@ export function PlanPanel() {
   const handleDrop = (status: TicketStatus) => {
     if (draggedTicket) {
       updateTicketStatus(draggedTicket, status);
+
+      if (status === 'in-progress') {
+        const ticket = planState.tickets.find((t) => t.id === draggedTicket);
+
+        if (ticket) {
+          // Trigger the coding bot with the updated status
+          triggerCodingBot({ ...ticket, status: 'in-progress' });
+
+          // Toast is handled by Chat, but redundant feedback is okay or we can skip it. 
+          // Chat component will toast or show message.
+        }
+      }
+
       setDraggedTicket(null);
     }
   };

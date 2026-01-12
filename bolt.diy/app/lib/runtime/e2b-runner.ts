@@ -20,28 +20,27 @@ async function withRetry<T>(operation: () => Promise<T>, retries = MAX_RETRIES):
 
 export class E2BRunner {
     static sandboxId: string | null = null;
-    // CRITICAL: Default to 'expo-template-v4' which has the corrected package.json logic
-    // We recently rebuilt this template to force --web --port 8081
-    static templateId: string = 'expo-template-v4';
+    // CRITICAL: Default to 'expo-template-v9' which includes the updated Expo scaffold
+    // This template is configured for --web --port 8082
+    static templateId: string = 'expo-template-v9';
     private static activeOperations: Set<Promise<any>> = new Set();
+    private static sandboxInitPromise: Promise<void> | null = null;
+    private static startPromise: Promise<{ exitCode: number; output: string; url?: string }> | null = null;
 
-    static async waitForAllOperations() {
-        if (this.activeOperations.size > 0) {
-            logger.info(`[E2B] Waiting for ${this.activeOperations.size} active operations to complete...`);
-            await Promise.all(Array.from(this.activeOperations));
-            logger.info('[E2B] All operations completed');
+    private static async ensureSandboxInitialized() {
+        if (this.sandboxId) {
+            return;
         }
-    }
 
-    static async executeShell(command: string, callbacks: { onStdout?: (data: string) => void; onStderr?: (data: string) => void }) {
-        logger.info(`[E2B Client] Requesting execution: ${command} (Sandbox: ${this.sandboxId}, Template: ${this.templateId})`);
+        if (this.sandboxInitPromise) {
+            await this.sandboxInitPromise;
+            return;
+        }
 
-        // Call the API route
-        try {
+        this.sandboxInitPromise = (async () => {
             const response = await withRetry(async () => {
                 const controller = new AbortController();
-                // 5 minute timeout for shell commands to allow npm install
-                const timeoutId = setTimeout(() => controller.abort(), 300000);
+                const timeoutId = setTimeout(() => controller.abort(), 30000);
 
                 try {
                     const res = await fetch('/api/e2b/execute', {
@@ -50,7 +49,7 @@ export class E2BRunner {
                             'Content-Type': 'application/json',
                         },
                         body: JSON.stringify({
-                            command,
+                            command: 'echo "Initializing E2B sandbox"',
                             sandboxId: this.sandboxId,
                             template: this.templateId
                         }),
@@ -70,14 +69,7 @@ export class E2BRunner {
             });
 
             const result = await response.json();
-
             if (result.error) throw new Error(result.error);
-
-            // Send captured output to the terminal via callbacks
-            if ((result.stdout || result.stderr) && callbacks.onStdout) {
-                const combinedOutput = (result.stdout || '') + (result.stderr || '');
-                callbacks.onStdout(combinedOutput);
-            }
 
             if (result.sandboxId) {
                 this.sandboxId = result.sandboxId;
@@ -91,25 +83,122 @@ export class E2BRunner {
                     localStorage.setItem('e2b_preview_url_v4', result.url);
                 }
             }
+        })();
 
-            return {
-                exitCode: result.exitCode ?? 0,
-                output: (result.stdout || '') + (result.stderr || ''),
-                url: result.url
-            };
-        } catch (err: any) {
-            logger.error('E2B API Request Failed', err);
-            // Only reset if we are sure it's a dead sandbox and not a transient error
-            if (err.message?.includes('Sandbox not found') || err.message?.includes('not running')) {
-                this.sandboxId = null;
-                this.activeUrl = null;
-                if (typeof window !== 'undefined') {
-                    localStorage.removeItem('e2b_sandbox_id_v4');
-                    localStorage.removeItem('e2b_preview_url_v4');
-                }
-            }
-            throw err;
+        try {
+            await this.sandboxInitPromise;
+        } finally {
+            this.sandboxInitPromise = null;
         }
+    }
+
+    static async waitForAllOperations() {
+        if (this.activeOperations.size > 0) {
+            logger.info(`[E2B] Waiting for ${this.activeOperations.size} active operations to complete...`);
+            await Promise.all(Array.from(this.activeOperations));
+            logger.info('[E2B] All operations completed');
+        }
+    }
+
+    static async executeShell(command: string, callbacks: { onStdout?: (data: string) => void; onStderr?: (data: string) => void }) {
+        const isStartCommand = command.includes('npm run dev') ||
+            command.includes('npx expo start') ||
+            command.includes('npm start') ||
+            command.includes('npm run init');
+
+        if (isStartCommand && this.startPromise) {
+            logger.info('[E2B Client] Start already in progress; waiting for existing start.');
+            return this.startPromise;
+        }
+
+        const executionPromise = (async () => {
+            await this.ensureSandboxInitialized();
+            logger.info(`[E2B Client] Requesting execution: ${command} (Sandbox: ${this.sandboxId}, Template: ${this.templateId})`);
+
+            // Call the API route
+            try {
+                const response = await withRetry(async () => {
+                    const controller = new AbortController();
+                    // 5 minute timeout for shell commands to allow npm install
+                    const timeoutId = setTimeout(() => controller.abort(), 300000);
+
+                    try {
+                        const res = await fetch('/api/e2b/execute', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                command,
+                                sandboxId: this.sandboxId,
+                                template: this.templateId
+                            }),
+                            signal: controller.signal
+                        });
+                        clearTimeout(timeoutId);
+
+                        if (!res.ok) {
+                            const errData = await res.json().catch(() => ({}));
+                            throw new Error(errData.error || `Server returned ${res.status}`);
+                        }
+                        return res;
+                    } catch (err) {
+                        clearTimeout(timeoutId);
+                        throw err;
+                    }
+                });
+
+                const result = await response.json();
+
+                if (result.error) throw new Error(result.error);
+
+                // Send captured output to the terminal via callbacks
+                if ((result.stdout || result.stderr) && callbacks.onStdout) {
+                    const combinedOutput = (result.stdout || '') + (result.stderr || '');
+                    callbacks.onStdout(combinedOutput);
+                }
+
+                if (result.sandboxId) {
+                    this.sandboxId = result.sandboxId;
+                    if (typeof window !== 'undefined') {
+                        localStorage.setItem('e2b_sandbox_id_v4', result.sandboxId);
+                    }
+                }
+                if (result.url) {
+                    this.activeUrl = result.url;
+                    if (typeof window !== 'undefined') {
+                        localStorage.setItem('e2b_preview_url_v4', result.url);
+                    }
+                }
+
+                return {
+                    exitCode: result.exitCode ?? 0,
+                    output: (result.stdout || '') + (result.stderr || ''),
+                    url: result.url
+                };
+            } catch (err: any) {
+                logger.error('E2B API Request Failed', err);
+                // Only reset if we are sure it's a dead sandbox and not a transient error
+                if (err.message?.includes('Sandbox not found') || err.message?.includes('not running')) {
+                    this.sandboxId = null;
+                    this.activeUrl = null;
+                    if (typeof window !== 'undefined') {
+                        localStorage.removeItem('e2b_sandbox_id_v4');
+                        localStorage.removeItem('e2b_preview_url_v4');
+                    }
+                }
+                throw err;
+            }
+        })();
+
+        if (isStartCommand) {
+            this.startPromise = executionPromise.finally(() => {
+                this.startPromise = null;
+            });
+            return this.startPromise;
+        }
+
+        return executionPromise;
     }
 
     static activeUrl: string | null = null;
@@ -132,7 +221,25 @@ export class E2BRunner {
     }
 
     static getPreviewUrl() {
-        return this.activeUrl || (this.sandboxId ? `/api/proxy?url=${encodeURIComponent(`https://${this.sandboxId}-8081.e2b.dev`)}` : null);
+        if (this.activeUrl) {
+            try {
+                if (this.activeUrl.startsWith('/api/proxy?url=')) {
+                    const encoded = this.activeUrl.split('/api/proxy?url=')[1]?.split('&')[0];
+                    if (encoded) {
+                        const decoded = decodeURIComponent(encoded);
+                        const host = new URL(decoded).hostname;
+                        if (host.endsWith('.e2b.app') || host.endsWith('.e2b.dev')) {
+                            return decoded;
+                        }
+                    }
+                }
+            } catch {
+                // fall back to activeUrl as-is
+            }
+            return this.activeUrl;
+        }
+
+        return this.sandboxId ? `https://8082-${this.sandboxId}.e2b.app` : null;
     }
 
     static async writeFile(path: string, content: string, encoding?: 'base64') {
@@ -143,6 +250,7 @@ export class E2BRunner {
         // Track this operation
         const operationPromise = (async () => {
             try {
+                await this.ensureSandboxInitialized();
                 const response = await withRetry(async () => {
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout

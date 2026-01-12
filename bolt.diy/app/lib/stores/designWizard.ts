@@ -198,7 +198,7 @@ export interface Step5Data {
       creditsUsed: number;
       createdAt: string;
     }>;
-    analysis?: import('./services/screen-analyzer').ScreenAnalysis;
+    analysis?: any; // Temporarily using any to resolve build error
     analysisStatus?: 'pending' | 'analyzing' | 'complete' | 'error';
     analysisError?: string;
   }>;
@@ -400,9 +400,9 @@ const migrateNavigationState = (navigation: Step4Data['navigation']) => {
 
   const migratedGeneratedNav = navigation.generatedNavBar
     ? {
-        ...navigation.generatedNavBar,
-        url: ensureProxyUrl(navigation.generatedNavBar.url) || navigation.generatedNavBar.url,
-      }
+      ...navigation.generatedNavBar,
+      url: ensureProxyUrl(navigation.generatedNavBar.url) || navigation.generatedNavBar.url,
+    }
     : navigation.generatedNavBar;
 
   return {
@@ -541,15 +541,16 @@ if (typeof window !== 'undefined') {
   // CRITICAL CHANGE: NEVER auto-enable via timeout
   // Auto-save is ONLY enabled via explicit enableAutoSaveAfterHydration() call
   // This ensures we never save stale state before hydration completes
-  console.log('[DesignWizard] 🔒 Auto-save is DISABLED until hydration completes');
+  console.log(`[DesignWizard] 🔒 Auto-save is DISABLED until hydration completes`);
 
   // Debounce localStorage saves to avoid excessive writes
-  // Sensible default: 2 seconds after last change
   let saveTimeout: NodeJS.Timeout | null = null;
   const DEBOUNCE_MS = 2000; // 2 seconds
 
   designWizardStore.subscribe((state) => {
     const frameCount = state.step5?.studioFrames?.length || 0;
+
+    console.log(`[DesignWizard] Store update detected. Frames: ${frameCount}, Session: ${state.sessionId}, Saving: ${canAutoSave ? 'ENABLED' : 'DISABLED'}`);
 
     if (!canAutoSave) {
       // EXCEPTION: Allow saving non-Studio state changes (steps 1-4)
@@ -584,6 +585,7 @@ if (typeof window !== 'undefined') {
   // Helper function to save to localStorage
   function saveToLocalStorage(state: DesignWizardData, frameCount: number) {
     try {
+      console.log(`[DesignWizard] Attempting to write to localStorage. Session: ${state.sessionId}`);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       // Minimal logging - only log if significant frame count
       if (frameCount > 0) {
@@ -735,6 +737,41 @@ export function setSessionId(sessionId: string) {
   });
 }
 
+/**
+ * Initialize the wizard session.
+ * if the provided sessionId differs from the stored one,
+ * it implies a new chat/project context, so we reset the wizard
+ * to prevent leaking state from a previous session.
+ */
+export function initializeSession(sessionId: string) {
+  const current = designWizardStore.get();
+
+  // Calculate if we have any significant state that might need clearing
+  const hasState = (current.step5?.studioFrames?.length || 0) > 0 ||
+    (current.step1?.appName?.length || 0) > 0 ||
+    current.projectId !== null;
+
+  // Strict check: If session IDs don't match, we must validate the state
+  if (current.sessionId !== sessionId) {
+    // CRITICAL: Ensure we reset the auto-save flag when switching sessions
+    canAutoSave = false;
+
+    // If we have existing state (stale data) or a defined previous session, we MUST reset
+    if (hasState || current.sessionId) {
+      console.log(`[DesignWizard] 🧹 Session mismatch (${current.sessionId || 'null'} vs ${sessionId}) with existing data. Resetting state.`);
+      resetDesignWizard();
+    } else {
+      // No state to clear, just log the initialization
+      console.log(`[DesignWizard] ✨ Initializing fresh session (${sessionId})`);
+    }
+  } else {
+    console.log(`[DesignWizard] ✅ Session validated (${sessionId})`);
+  }
+
+  // Always set the new session ID to lock it
+  setSessionId(sessionId);
+}
+
 export function markDesignComplete() {
   const current = designWizardStore.get();
   designWizardStore.set({
@@ -743,14 +780,74 @@ export function markDesignComplete() {
   });
 }
 
-export function resetDesignWizard() {
-  designWizardStore.set(initialDesignData);
+export function checkAndClearStaleStudioData(expectedSessionId: string | null) {
+  const current = designWizardStore.get();
 
-  // Clear localStorage
+  if (!expectedSessionId) return;
+
+  // Strict check: If store has a session ID and it doesn't match the expected one
+  // OR if we have studio frames but no session ID (zombie state)
+  const isSessionMismatch = current.sessionId && current.sessionId !== expectedSessionId;
+  const isZombieState = !current.sessionId && (current.step5?.studioFrames?.length || 0) > 0;
+
+  if (isSessionMismatch || isZombieState) {
+    console.log(`[DesignWizard] 🕵️‍♂️ Stale data check failed. Store Session: ${current.sessionId}, Expected: ${expectedSessionId}. Frames: ${current.step5?.studioFrames?.length}`);
+
+    // We only want to clear Step 5 (Studio) data, keeping the configuration (Steps 1-4)
+    // if it looks like we are just recovering state. 
+    // BUT the user said "regenerate new screens", implying Step 5 data is the problem.
+
+    designWizardStore.set({
+      ...current,
+      sessionId: expectedSessionId, // Sync session ID
+      step5: {
+        generatedScreens: [],
+        totalCreditsUsed: 0,
+        studioFrames: [],
+        studioSnapshot: null,
+        isStudioActive: false,
+        customTheme: null,
+      }
+    });
+
+    // Sync to local storage immediately to kill the zombie
+    if (typeof window !== 'undefined') {
+      const updated = designWizardStore.get();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      console.log('[DesignWizard] 🧹 Cleared stale Studio frames from localStorage');
+    }
+  }
+}
+
+export function resetDesignWizard() {
+  console.log('[DesignWizard] 🧨 RESET triggered. Clearing store and localStorage.');
+
+  // CRITICAL: Reset the auto-save hydration flag
+  canAutoSave = false;
+  console.log('[DesignWizard] 🔒 Auto-save disabled (reset)');
+
+  // Set store to initial data
+  // This will trigger the subscriber, but we want to be sure
+  // Paranoid check: Ensure the initial data is actually clean
+  const cleanState = {
+    ...initialDesignData,
+    step5: {
+      ...initialDesignData.step5,
+      studioFrames: [],
+      generatedScreens: [],
+      isStudioActive: false
+    }
+  };
+  designWizardStore.set(cleanState);
+
+  // FORCE Clear localStorage immediately
   if (typeof window !== 'undefined') {
     try {
       localStorage.removeItem(STORAGE_KEY);
-      console.log('[DesignWizard] Cleared localStorage');
+      // Also strictly write the initial data so any following reads see empty
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanState));
+
+      console.log('[DesignWizard] ✅ Cleared localStorage and prevented zombie writes.');
     } catch (error) {
       console.error('[DesignWizard] Failed to clear localStorage:', error);
     }

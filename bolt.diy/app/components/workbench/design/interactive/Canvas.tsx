@@ -14,6 +14,7 @@ export interface FrameData {
   title?: string;
   x?: number;
   y?: number;
+  isNew?: boolean;
 }
 
 interface CanvasProps {
@@ -296,9 +297,9 @@ export const Canvas: React.FC<CanvasProps> = ({
       const rowY = frames.length > 0 ? frames[0].y : 4000;
 
       const newX = frames.length > 0
-        ? Math.max(...frames.map((f) => f.x || 0)) + 375 + 400 - 3000 // Offset -3000
+        ? Math.max(...frames.map((f) => f.x || 0)) + 375 + 400
         : 4000;
-      const newY = (rowY ?? 4000) - 800;
+      const newY = frames.length > 0 ? (frames[0].y ?? 3200) : 3200;
 
       const newFrame: FrameData & { isNew?: boolean } = {
         id: result.screen.id,

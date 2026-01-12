@@ -31,6 +31,31 @@ ${prd}
 5. **No Downgrades**: If a dependency error occurs (like ETARGET), fix the specific version in package.json (e.g. use expo-av@~15.0.1) instead of reverting the global SDK version.
 6. **Config Plugins (CRITICAL)**: Do NOT add \`expo-web-browser\` or \`expo-font\` to the \`plugins\` array in \`app.json\`. These packages do not have config plugins and will cause a \`PluginError\` on startup. Use only \`expo-router\` and other valid plugins.
 7. **CRITICAL ASSET RULE**: You are FORBIDDEN from using Unsplash or other external placeholder domains. Pexels is ALLOWED for content images. You MUST use the Supabase URLs provided in the PRD for all brand assets (logo, splash, icon).
+8. **FULL EXPO BOILERPLATE (MANDATORY)**: You MUST output a complete Expo scaffold before claiming any work is done. The baseline must include (at minimum):
+   - /.gitignore
+   - /.npmrc
+   - /.prettierrc
+   - /app.json
+   - /package.json
+   - /tsconfig.json
+   - /expo-env.d.ts
+   - /index.js
+   - /babel.config.js
+   - /metro.config.js
+   - /webpack.config.js
+   - /app/_layout.tsx
+   - /app/index.tsx
+   - /app/+not-found.tsx
+   - /app/(tabs)/_layout.tsx
+   - /app/(tabs)/index.tsx
+   - /hooks/useFrameworkReady.ts
+   - /utils/supabase.ts
+   - /assets/images/icon.png
+   - /assets/images/splash.png
+   - /assets/images/adaptive-icon.png
+   - /assets/images/favicon.png
+   - /assets/images/logo.png
+9. **SELF-CHECK BEFORE DONE**: Before saying work is complete, explicitly verify each required Expo file exists. If anything is missing, create it first and only then proceed.
        
 ### Technical Stack:
 - Expo SDK (Managed Workflow)

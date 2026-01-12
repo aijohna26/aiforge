@@ -10,6 +10,7 @@ config.resolver.nodeModulesPaths = [
 
 // Add explicit module resolution for problematic packages
 config.resolver.extraNodeModules = {
+  '@': __dirname, // Support @/ path alias
   'expo-linking': path.resolve(__dirname, 'node_modules/expo-linking'),
   'expo-router': path.resolve(__dirname, 'node_modules/expo-router'),
   '@react-navigation/native': path.resolve(__dirname, 'node_modules/@react-navigation/native'),

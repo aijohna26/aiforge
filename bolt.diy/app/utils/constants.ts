@@ -6,7 +6,7 @@ export const WORK_DIR = `/home/${WORK_DIR_NAME}`;
 export const MODIFICATIONS_TAG_NAME = 'bolt_file_modifications';
 export const MODEL_REGEX = /^\[Model: (.*?)\]\n\n/;
 export const PROVIDER_REGEX = /\[Provider: (.*?)\]\n\n/;
-export const DEFAULT_MODEL = 'claude-sonnet-4-5';
+export const DEFAULT_MODEL = 'claude-3-5-sonnet-20240620';
 export const PROMPT_COOKIE_KEY = 'cachedPrompt';
 export const TOOL_EXECUTION_APPROVAL = {
   APPROVE: 'Yes, approved.',
@@ -42,10 +42,10 @@ export const STARTER_TEMPLATES: Template[] = [
   },
   {
     name: 'Expo App',
-    label: 'Expo App V4',
-    description: 'Updated Expo starter template v4 with web mode enabled',
-    localPath: 'templates/af-expo-template-v4',
-    tags: ['mobile', 'expo', 'mobile-app', 'android', 'iphone', 'v4'],
+    label: 'Expo App V9',
+    description: 'Updated Expo starter template v9 with web mode enabled',
+    localPath: 'templates/af-expo-template-v9',
+    tags: ['mobile', 'expo', 'mobile-app', 'android', 'iphone', 'v9'],
     icon: 'i-bolt:expo',
   },
   {
