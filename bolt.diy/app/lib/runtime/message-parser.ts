@@ -72,7 +72,12 @@ function cleanoutMarkdownSyntax(content: string) {
 }
 
 function cleanEscapedTags(content: string) {
-  return content.replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+  return content
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
 }
 export class StreamingMessageParser {
   #messages = new Map<string, MessageState>();

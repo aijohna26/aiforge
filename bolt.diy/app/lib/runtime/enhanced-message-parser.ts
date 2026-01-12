@@ -40,6 +40,8 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
     const wrappedActions = this._wrapNakedActions(input, messageId);
     if (wrappedActions !== input) {
       input = wrappedActions;
+      // Reset logic to handle retrospective wrapping and ensure parser state sync
+      this.reset();
     }
 
     // CRITICAL FIX: Detect and wrap package.json content to prevent it from appearing in chat
@@ -54,6 +56,13 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
     const cleanedInput = this._removeStyleObjects(input);
     if (cleanedInput !== input) {
       input = cleanedInput;
+    }
+
+    // CRITICAL FIX: Enforce 'npm install' before 'npm start' commands provided by LLM
+    // This guarantees dependencies are present even if the LLM forgets to ask for install.
+    const safeInput = this._enforceGuaranteedInstall(input);
+    if (safeInput !== input) {
+      input = safeInput;
     }
 
     // First try the normal parsing
@@ -314,37 +323,96 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
   }
 
   private _wrapNakedActions(input: string, messageId: string): string {
-    const artifactRanges = this._findArtifactRanges(input);
-    const actionRegex = /<afAction\s+[^>]*>[\s\S]*?<\/afAction>/gi;
+    const tokens = input.split(/(<afArtifact[^>]*>|<\/afArtifact>|<afAction[^>]*>|<\/afAction>)/gi);
+    let output = '';
+    let insideArtifact = false;
+    let insideHealingArtifact = false;
+    let actionCounter = 0;
 
-    let match;
-    let modifications: { start: number; end: number; replacement: string }[] = [];
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i];
+      const lowerToken = token.toLowerCase();
 
-    while ((match = actionRegex.exec(input)) !== null) {
-      const start = match.index;
-      const end = start + match[0].length;
+      if (lowerToken.startsWith('<afartifact')) {
+        insideArtifact = true;
+        output += token;
+      } else if (lowerToken === '</afartifact>') {
+        insideArtifact = false;
+        output += token;
+      } else if (lowerToken.startsWith('<afaction')) {
+        if (!insideArtifact && lowerToken.endsWith('>')) {
+          const artifactId = `artifact-${messageId}-naked-${actionCounter++}`;
+          output += `<afArtifact id="${artifactId}" title="Generated Action" type="bundled">${token}`;
+          insideHealingArtifact = true;
+          insideArtifact = true; // logically inside now
+        } else {
+          output += token;
+        }
+      } else if (lowerToken === '</afaction>') {
+        output += token;
+        if (insideHealingArtifact) {
+          // Look ahead to see if we should close the artifact
+          let shouldClose = true;
 
-      // Check if this action is inside any existing artifact
-      const isInside = artifactRanges.some(([aStart, aEnd]) => start >= aStart && end <= aEnd);
+          // Check next tokens
+          const nextToken = tokens[i + 1]; // Text between tags
+          const nextTag = tokens[i + 2];   // Next tag
 
-      if (!isInside) {
-        // It's naked! Wrap it.
-        const originalAction = match[0];
-        const artifactId = `artifact-${messageId}-naked-${start}`;
-        const replacement = `<afArtifact id="${artifactId}" title="Generated Action" type="bundled">\n${originalAction}\n</afArtifact>`;
-        modifications.push({ start, end, replacement });
+          if (nextToken === undefined) {
+            // End of stream (so far). Keep open to allow streaming!
+            shouldClose = false;
+          } else if (!nextToken.trim()) {
+            // Only whitespace follows. Check the tag after.
+            if (nextTag && nextTag.toLowerCase().startsWith('<afaction')) {
+              // Another action follows immediately! Keep open.
+              shouldClose = false;
+            } else if (nextTag === undefined) {
+              // Stream ended at whitespace. Keep open.
+              shouldClose = false;
+            }
+          }
+
+          if (shouldClose) {
+            output += '</afArtifact>';
+            insideHealingArtifact = false;
+            insideArtifact = false;
+          }
+        }
+      } else {
+        output += token;
       }
     }
 
-    // Apply modifications from back to front to preserve indices
-    modifications.sort((a, b) => b.start - a.start);
+    return output;
+  }
 
-    let result = input;
-    for (const mod of modifications) {
-      result = result.slice(0, mod.start) + mod.replacement + result.slice(mod.end);
-    }
+  private _enforceGuaranteedInstall(input: string): string {
+    // Regex to find shell actions containing npm start/dev commands
+    // Capture groups:
+    // 1. Opening tag up to content
+    // 2. Pre-command whitespace
+    // 3. npx --yes (optional, existing fix) or just start of command
+    // 4. The command (npm start, npm run dev, etc)
+    // 5. Training content/closing tag
+    // We strictly look for "npm start", "npm run dev", "npm run ios", etc.
 
-    return result;
+    return input.replace(
+      /(<afAction\s+[^>]*type="shell"[^>]*>)(\s*)(?:EXPO_NO_TELEMETRY=1\s+)?(?:npx\s+(?:--yes\s+)?expo\s+start|npm\s+(?:run\s+)?(?:start|dev|ios|android|web))/gi,
+      (match, openTag, whitespace) => {
+        // If the command already has "npm install", ignore it
+        if (match.includes('npm install')) return match;
+
+        // Use a generic safe start command replacement that includes install
+        // We reconstruct the command carefully.
+        // Actually, simpler logic: verify if "npm install" is preceding.
+
+        // Let's use a simpler replacement strategy:
+        // Find existing match. Replace the command part.
+
+        // Improved Regex for replacement:
+        return match.replace(/((?:npm\s+(?:run\s+)?(?:start|dev|ios|android|web)|npx\s+(?:--yes\s+)?expo\s+start))/i, 'npm install && $1');
+      }
+    );
   }
 
   private _wrapInArtifact(artifactId: string, filePath: string, content: string): string {
@@ -434,10 +502,10 @@ ${content.trim()}
     }
 
     const fileHints = this._extractFileHints(input, artifactRanges, actionRanges);
-    const notice = fileHints.length
-      ? `Code output removed from chat. Please use artifacts for all code and files. Detected files: ${fileHints.join(', ')}.`
-      : 'Code output removed from chat. Please use artifacts for all code and files.';
-    return `${output.join('\n').trim()}\n\n${notice}`.trim();
+    // const notice = fileHints.length
+    //   ? `Code output removed from chat. Please use artifacts for all code and files. Detected files: ${fileHints.join(', ')}.`
+    //   : 'Code output removed from chat. Please use artifacts for all code and files.';
+    return `${output.join('\n').trim()}\n\n`.trim();
   }
 
   private _extractFileHints(input: string, artifactRanges: [number, number][], actionRanges: [number, number][]) {

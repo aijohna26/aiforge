@@ -48,6 +48,13 @@ export function validatePackageJson(filePath: string, content: string, isE2BCont
       fixed = true;
     }
 
+    // CRITICAL: Ensure main entry point is expo-router/entry for Router projects
+    if (pkg.dependencies?.['expo-router'] && pkg.main !== 'expo-router/entry') {
+      pkg.main = 'expo-router/entry';
+      logger.warn('[Validator] Enforced main: "expo-router/entry"');
+      fixed = true;
+    }
+
     // CRITICAL: For E2B environments, use --web mode for iframe previewing
     // For local development, use --tunnel mode for mobile device testing
     // Detect server-side E2B context - this validator runs in both browser and server
