@@ -41,6 +41,13 @@ export function validatePackageJson(filePath: string, content: string, isE2BCont
       fixed = true;
     }
 
+    // CRITICAL: Remove "type": "module" to prevent babel.config.js ReferenceError
+    if (pkg.type === 'module') {
+      delete pkg.type;
+      logger.warn('[Validator] Removed "type": "module" to ensure compatibility');
+      fixed = true;
+    }
+
     // CRITICAL: For E2B environments, use --web mode for iframe previewing
     // For local development, use --tunnel mode for mobile device testing
     // Detect server-side E2B context - this validator runs in both browser and server

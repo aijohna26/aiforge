@@ -504,7 +504,8 @@ Setup:
   - FORBIDDEN: NEVER use "npm install <package>" commands.
   - FORBIDDEN: NEVER run "npm run lint", "npm run typecheck", or "tsc". Keep it simple: install + start ONLY.
   - FORBIDDEN: NEVER output code blocks (markdown code blocks) in the chat text. All code must be in artifacts.
-  - ALWAYS update package.json with all dependencies and run "npm install" (no args).
+  - REQUIRED: content inside <afAction> tags must be RAW CODE ONLY. NO markdown backticks. NO explanations.
+  - REQUIRED: Always run "npm install && npm start" to start the app. Do not run them separately.
   - You MUST PRESERVE the existing versions (Expo 54, React 19, RN 0.76) and only ADD new dependencies.
   - NEVER downgrade versions to what you "think" they should be. Trust the environment.
   
