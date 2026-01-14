@@ -8,6 +8,13 @@ export const SettingsPanel = memo(() => {
 
     const sections = [
         {
+            title: 'Mobile App Settings',
+            items: [
+                { icon: 'i-ph:device-mobile', label: 'App Info & Branding' },
+                { icon: 'i-ph:image', label: 'Assets & Media' }
+            ]
+        },
+        {
             title: 'Authentication',
             items: [
                 { icon: 'i-ph:users', label: 'Identity Providers' },
@@ -49,13 +56,6 @@ export const SettingsPanel = memo(() => {
                 { icon: 'i-ph:chart-line-up', label: 'Analytics' },
                 { icon: 'i-ph:bug-beetle', label: 'Crash Reporting' },
                 { icon: 'i-ph:terminal-window', label: 'Real-time Logs' }
-            ]
-        },
-        {
-            title: 'Mobile App Settings',
-            items: [
-                { icon: 'i-ph:device-mobile', label: 'App Info & Branding' },
-                { icon: 'i-ph:image', label: 'Assets & Media' }
             ]
         },
         {

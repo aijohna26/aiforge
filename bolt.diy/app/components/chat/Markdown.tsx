@@ -122,6 +122,8 @@ export const Markdown = memo(
 
           if (
             dataProps?.class?.toString().includes('__afQuickAction__') ||
+            dataProps?.className?.toString().includes('__afQuickAction__') ||
+            (props.className && String(props.className).includes('__afQuickAction__')) ||
             dataProps?.dataBoltQuickAction === 'true'
           ) {
             const type = dataProps['data-type'] || dataProps.dataType;

@@ -181,6 +181,20 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }:
         throw new Error('Failed to finalize images');
       }
 
+      // Save logo to assets library
+      if (finalizeData.logoUrl) {
+        try {
+          const { workbenchStore } = await import('~/lib/stores/workbench');
+          const response = await fetch(finalizeData.logoUrl);
+          const blob = await response.arrayBuffer();
+          const extension = wizardData.step3.logo?.format || 'png';
+          await workbenchStore.createFile(`assets/logo.${extension}`, new Uint8Array(blob));
+          toast.success('Logo added to assets library');
+        } catch (error) {
+          console.error('[Finalize] Failed to save logo to assets:', error);
+        }
+      }
+
       // Create a finalized version of data with permanent Supabase URLs
       const finalizedWizardData = {
         ...wizardData,
@@ -377,7 +391,7 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }:
       <div
         className={`absolute top-6 left-1/2 transform -translate-x-1/2 z-[9970] flex items-center gap-4 transition-opacity duration-300 ${wizardData.step5.isStudioActive ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
       >
-        <div className="flex items-center gap-2 bg-[#1A1A1A] border border-[#333] rounded-full px-6 py-2.5 shadow-2xl">
+        <div className="flex items-center gap-1.5 bg-[#1A1A1A]/90 backdrop-blur-md border border-[#333] rounded-full px-4 py-2 shadow-2xl">
           {steps.map((step, index) => (
             <div key={step.id} className="flex items-center">
               <div
@@ -392,21 +406,19 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }:
                     toast.info(`Complete Step ${currentStep} to unlock Step ${step.id}`);
                   }
                 }}
-                className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${isProcessing ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} ${
-                  currentStep === step.id
-                    ? 'bg-blue-600 text-white scale-110 shadow-[0_0_12px_rgba(37,99,235,0.4)]'
-                    : wizardData.completedSteps.includes(step.id)
-                      ? 'bg-green-600/90 text-white'
-                      : 'bg-[#252525] text-slate-400 border border-[#404040]'
-                }`}
+                className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold transition-all duration-300 ${isProcessing ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} ${currentStep === step.id
+                  ? 'bg-blue-600 text-white shadow-[0_0_10px_rgba(37,99,235,0.4)]'
+                  : wizardData.completedSteps.includes(step.id)
+                    ? 'bg-green-600/90 text-white'
+                    : 'bg-[#252525] text-slate-500 border border-[#404040]'
+                  }`}
               >
-                {wizardData.completedSteps.includes(step.id) ? <div className="i-ph:check-bold text-sm" /> : step.id}
+                {wizardData.completedSteps.includes(step.id) ? <div className="i-ph:check-bold text-xs" /> : step.id}
               </div>
               {index < steps.length - 1 && (
                 <div
-                  className={`w-10 h-[1px] mx-1 transition-all duration-300 ${
-                    wizardData.completedSteps.includes(step.id) ? 'bg-green-600/50' : 'bg-[#333]'
-                  }`}
+                  className={`w-6 h-[1px] mx-0.5 transition-all duration-300 ${wizardData.completedSteps.includes(step.id) ? 'bg-green-600/50' : 'bg-[#333]'
+                    }`}
                 />
               )}
             </div>
@@ -417,7 +429,7 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }:
         <button
           onClick={() => !isProcessing && setShowClearConfirm(true)}
           disabled={isProcessing}
-          className={`bg-[#1A1A1A] border border-[#333] rounded-full px-5 py-2.5 shadow-2xl transition-all group flex items-center gap-2 ${isProcessing ? 'opacity-30 cursor-not-allowed' : 'hover:bg-[#252525] hover:border-[#444]'}`}
+          className={`bg-[#1A1A1A]/90 backdrop-blur-md border border-[#333] rounded-full px-4 py-2 shadow-2xl transition-all group flex items-center gap-2 ${isProcessing ? 'opacity-30 cursor-not-allowed' : 'hover:bg-[#252525] hover:border-[#444]'}`}
           title={isProcessing ? 'Disabled during generation' : 'Clear all progress and start over'}
         >
           <div className="i-ph:trash-bold text-slate-400 group-hover:text-red-400 transition-colors text-base" />
@@ -540,11 +552,10 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }:
               });
             }}
             disabled={isProcessing}
-            className={`p-2.5 rounded-xl transition-all border group ${
-              isProcessing
-                ? 'opacity-30 cursor-not-allowed border-transparent text-slate-500'
-                : 'bg-slate-800/50 hover:bg-slate-700 text-slate-400 hover:text-white border-slate-700/50'
-            }`}
+            className={`p-2.5 rounded-xl transition-all border group ${isProcessing
+              ? 'opacity-30 cursor-not-allowed border-transparent text-slate-500'
+              : 'bg-slate-800/50 hover:bg-slate-700 text-slate-400 hover:text-white border-slate-700/50'
+              }`}
             title={isProcessing ? 'Disabled during generation' : 'Recenter Camera (Focus on Current Step)'}
           >
             <div className="i-ph:crosshair-simple-bold text-xl group-hover:scale-110 transition-transform" />
@@ -556,11 +567,10 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }:
           <button
             onClick={handleBack}
             disabled={currentStep <= 1 || isProcessing}
-            className={`px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all border ${
-              currentStep <= 1 || isProcessing
-                ? 'opacity-30 cursor-not-allowed border-transparent text-slate-500'
-                : 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700'
-            }`}
+            className={`px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all border ${currentStep <= 1 || isProcessing
+              ? 'opacity-30 cursor-not-allowed border-transparent text-slate-500'
+              : 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700'
+              }`}
           >
             <div className="i-ph:caret-left-bold" />
             Back
@@ -581,11 +591,10 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }:
             <button
               onClick={handleNext}
               disabled={!canProceedToNextStep() || isProcessing || (currentStep === 3 && awaitingLogoCompletion)}
-              className={`px-8 py-2.5 rounded-xl font-black flex items-center gap-2 transition-all shadow-lg ${
-                !canProceedToNextStep() || isProcessing || (currentStep === 3 && awaitingLogoCompletion)
-                  ? 'bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-700'
-                  : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/20'
-              }`}
+              className={`px-8 py-2.5 rounded-xl font-black flex items-center gap-2 transition-all shadow-lg ${!canProceedToNextStep() || isProcessing || (currentStep === 3 && awaitingLogoCompletion)
+                ? 'bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-700'
+                : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/20'
+                }`}
             >
               {currentStep === 2 && isExtracting
                 ? 'Analyzing…'
@@ -602,11 +611,10 @@ export function DesignWizardCanvas({ zoom = 1, panX = 0, panY = 0, onRecenter }:
             <button
               onClick={handleFinish}
               disabled={!canProceedToNextStep() || isGenerating || isAnimating}
-              className={`px-8 py-2.5 rounded-xl font-black flex items-center gap-2 transition-all shadow-lg ${
-                !canProceedToNextStep() || isGenerating || isAnimating
-                  ? 'bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-700'
-                  : 'bg-green-600 hover:bg-green-500 text-white shadow-green-500/20'
-              }`}
+              className={`px-8 py-2.5 rounded-xl font-black flex items-center gap-2 transition-all shadow-lg ${!canProceedToNextStep() || isGenerating || isAnimating
+                ? 'bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-700'
+                : 'bg-green-600 hover:bg-green-500 text-white shadow-green-500/20'
+                }`}
             >
               {isGenerating ? (
                 <>

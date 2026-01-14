@@ -1,5 +1,6 @@
 import type { WebContainer } from '@webcontainer/api';
 import { path as nodePath } from '~/utils/path';
+import { toWebContainerRelativePath } from '~/utils/webcontainer-path';
 import { atom, map, type MapStore } from 'nanostores';
 import type { ActionAlert, AfAction, DeployAlert, FileHistory, SupabaseAction, SupabaseAlert, FileAction } from '~/types/actions';
 import { webPreviewReadyAtom, expoUrlAtom } from '~/lib/stores/qrCodeStore';
@@ -16,6 +17,13 @@ const isE2BEnabled = () => import.meta.env.E2B_ON === 'true';
 const isDaytonaEnabled = () => import.meta.env.DAYTONA_ON === 'true';
 
 const logger = createScopedLogger('ActionRunner');
+
+const sanitizeTextContent = (content: string) =>
+  content
+    // Remove BOM, zero-width, soft hyphen, and replacement chars.
+    .replace(/[\uFEFF\u200B-\u200D\u2060\u00AD\uFFFD]/g, '')
+    // Strip ASCII control chars except \n, \r, \t.
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
 
 export type ActionStatus = 'pending' | 'running' | 'complete' | 'aborted' | 'failed';
 
@@ -575,7 +583,7 @@ export class ActionRunner {
 
         // 2. Write to WebContainer
         const webcontainer = await this.#webcontainer;
-        const relativePath = nodePath.relative(webcontainer.workdir, action.filePath);
+        const relativePath = toWebContainerRelativePath(action.filePath, webcontainer.workdir);
         let folder = nodePath.dirname(relativePath).replace(/\/+$/g, '');
 
         if (folder !== '.') {
@@ -593,9 +601,50 @@ export class ActionRunner {
     }
 
     // Normal text file handling (Code generation)
+
+    // HANDLE BASE64 ENCODED FILES (Images, etc.)
+    if (fileAction.encoding === 'base64') {
+      try {
+        const binaryString = atob(fileAction.content);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        // WebContainer requires Uint8Array for binary
+        const webcontainer = await this.#webcontainer;
+        const relativePath = toWebContainerRelativePath(fileAction.filePath, webcontainer.workdir);
+
+        let folder = nodePath.dirname(relativePath).replace(/\/+$/g, '');
+        if (folder !== '.') {
+          await webcontainer.fs.mkdir(folder, { recursive: true }).catch(() => { });
+        }
+        await webcontainer.fs.writeFile(relativePath, bytes);
+
+        // E2B/Daytona support base64 natively
+        if (isE2BEnabled()) {
+          await E2BRunner.writeFile(fileAction.filePath, fileAction.content, 'base64');
+        }
+        if (isDaytonaEnabled()) {
+          await DaytonaRunner.writeFile(fileAction.filePath, fileAction.content, 'base64');
+        }
+
+        return;
+      } catch (e) {
+        logger.error('Failed to write base64 file', e);
+        throw e;
+      }
+    }
+
     // CRITICAL: Validate and fix package.json BEFORE writing to ANY destination
     // This ensures browser and E2B/Daytona see the SAME validated content
-    const validatedContent = validatePackageJson(action.filePath, action.content, isE2BEnabled() || isDaytonaEnabled());
+    const sanitizedContent = sanitizeTextContent(action.content);
+    const validatedContent = validatePackageJson(
+      action.filePath,
+      sanitizedContent,
+      isE2BEnabled() || isDaytonaEnabled(),
+    );
 
     // DAYTONA INTERCEPT
     if (isDaytonaEnabled() && !isStreaming) {
@@ -631,7 +680,7 @@ export class ActionRunner {
     }
 
     const webcontainer = await this.#webcontainer;
-    const relativePath = nodePath.relative(webcontainer.workdir, action.filePath);
+    const relativePath = toWebContainerRelativePath(action.filePath, webcontainer.workdir);
 
     let folder = nodePath.dirname(relativePath);
 

@@ -335,8 +335,12 @@ export const Workbench = memo(
 
     useEffect(() => {
       // If we have a seed prompt waiting, we should be in design view (Information Gathering)
+      // BUT ignore if we are on a specific view (Deep Link) to prevent loops
       if (typeof window !== 'undefined' && localStorage.getItem('bolt_seed_prompt')) {
-        setSelectedView('design');
+        const isDeepLink = /\/chat\/[^/]+\/(?:code|design|plan)/.test(window.location.pathname);
+        if (!isDeepLink) {
+          setSelectedView('design');
+        }
       }
     }, []);
 

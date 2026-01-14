@@ -71,9 +71,19 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
     // Always check for code blocks that should be files, even if artifacts exist
     // This handles "mixed content" where the LLM might output some valid artifacts
     // but also raw code blocks (like CSS or TS) that need to be captured.
-    const enhancedInput = this._detectAndWrapCodeBlocks(messageId, input);
+    let enhancedInput = this._detectAndWrapCodeBlocks(messageId, input);
 
     if (enhancedInput !== input) {
+      // CRITICAL FIX (RECURSIVE):
+      // 1. Wrap any newly detected actions (from code blocks) in artifacts so they show in UI.
+      enhancedInput = this._wrapNakedActions(enhancedInput, messageId);
+
+      // 2. Re-apply strict install guard to the enhanced input.
+      const safeEnhancedInput = this._enforceGuaranteedInstall(enhancedInput);
+      if (safeEnhancedInput !== enhancedInput) {
+        enhancedInput = safeEnhancedInput;
+      }
+
       // Reset and reparse with enhanced input
       this.reset();
       output = super.parse(messageId, enhancedInput);
@@ -89,13 +99,13 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
   }
 
   private _hasDetectedArtifacts(input: string): boolean {
-    return input.includes('<afArtifact') || input.includes('</afArtifact>');
+    return /<(?:af|bolt)Artifact/i.test(input) || /<\/(?:af|bolt)Artifact>/i.test(input);
   }
 
   private _findArtifactRanges(input: string): [number, number][] {
     const ranges: [number, number][] = [];
-    const openTagRegex = /<afArtifact/gi;
-    const closeTagRegex = /<\/afArtifact>/gi;
+    const openTagRegex = /<(?:af|bolt)Artifact/gi;
+    const closeTagRegex = /<\/(?:af|bolt)Artifact>/gi;
 
     let match;
     while ((match = openTagRegex.exec(input)) !== null) {
@@ -118,8 +128,8 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
 
   private _findActionRanges(input: string): [number, number][] {
     const ranges: [number, number][] = [];
-    const openTagRegex = /<afAction/gi;
-    const closeTagRegex = /<\/afAction>/gi;
+    const openTagRegex = /<(?:af|bolt)Action/gi;
+    const closeTagRegex = /<\/(?:af|bolt)Action>/gi;
 
     let match;
     while ((match = openTagRegex.exec(input)) !== null) {
@@ -155,59 +165,68 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
 
     // Optimized regex patterns with better performance
     const patterns = [
-      // Pattern 1: File path followed by code block (most common, check first)
+      // Pattern 1: File path followed by code block
       {
         regex: /(?:^|\n)([\/\w\-\.]+\.\w+):?\s*\n+```(\w*)\n([\s\S]*?)```/gim,
         type: 'file_path',
       },
-
       // Pattern 2: Explicit file creation mentions
       {
         regex:
           /(?:create|update|modify|edit|write|add|generate|here'?s?|file:?)\s+(?:a\s+)?(?:new\s+)?(?:file\s+)?(?:called\s+)?[`'"]*([\/\w\-\.]+\.\w+)[`'"]*:?\s*\n+```(\w*)\n([\s\S]*?)```/gi,
         type: 'explicit_create',
       },
-
       // Pattern 3: Code blocks with filename comments
       {
         regex: /```(\w*)\n(?:\/\/|#|<!--)\s*(?:file:?|filename:?)\s*([\/\w\-\.]+\.\w+).*?\n([\s\S]*?)```/gi,
         type: 'comment_filename',
       },
-
       // Pattern 4: Code block with "in <filename>" context
       {
         regex: /(?:in|for|update)\s+[`'"]*([\/\w\-\.]+\.\w+)[`'"]*:?\s*\n+```(\w*)\n([\s\S]*?)```/gi,
         type: 'in_filename',
       },
-
-      // Pattern 5: Structured files (package.json, components)
+      // Pattern 5: Structured files
       {
         regex:
           /```(?:json|jsx?|tsx?|html?|vue|svelte)\n(\{[\s\S]*?"(?:name|version|scripts|dependencies|devDependencies)"[\s\S]*?\}|<\w+[^>]*>[\s\S]*?<\/\w+>[\s\S]*?)```/gi,
         type: 'structured_file',
       },
-
-      // Pattern 6: Raw package.json (no code block)
+      // Pattern 6: Raw package.json
       {
         regex: /(?:^|\n)(\{\s*"(?:name|private|version)":[\s\S]*?(?:dependencies|devDependencies|scripts)[\s\S]*?\})(?=\n\n|$)/gi,
         type: 'raw_package_json',
       },
-
-      // Pattern 7: Raw CJS Module (module.exports =)
-      {
-        regex: /(?:^|\n)(module\.exports\s*=\s*[\s\S]+?)(?=\n\n(?:I|We|The|Here|Let|This|import)|$)/gi,
-        type: 'raw_cjs_module',
-      },
-
-      // Pattern 8: Raw ESM Module (imports/exports)
-      {
-        regex: /(?:^|\n)((?:import\s+[\s\S]*?from\s+['"][^'"]+['"];?\s*|export\s+(?:default\s+)?(?:class|function|const|let|var|interface|type)\s+)+[\s\S]+?)(?=\n\n(?:I|We|The|Here|Let|This|module\.exports)|$)/gi,
-        type: 'raw_esm_module',
-      },
     ];
 
-    // Process each pattern in order of likelihood
-    for (const pattern of patterns) {
+    // Streaming patterns (match end of string $)
+    // These allow wrapping unclosed blocks in real-time
+    const streamingPatterns = [
+      {
+        regex: /(?:^|\n)([\/\w\-\.]+\.\w+):?\s*\n+```(\w*)\n([\s\S]*?)$/gim,
+        type: 'file_path',
+        isStreaming: true
+      },
+      {
+        regex:
+          /(?:create|update|modify|edit|write|add|generate|here'?s?|file:?)\s+(?:a\s+)?(?:new\s+)?(?:file\s+)?(?:called\s+)?[`'"]*([\/\w\-\.]+\.\w+)[`'"]*:?\s*\n+```(\w*)\n([\s\S]*?)$/gi,
+        type: 'explicit_create',
+        isStreaming: true
+      },
+      {
+        regex: /```(\w*)\n(?:\/\/|#|<!--)\s*(?:file:?|filename:?)\s*([\/\w\-\.]+\.\w+).*?\n([\s\S]*?)$/gi,
+        type: 'comment_filename',
+        isStreaming: true
+      },
+      {
+        regex: /(?:in|for|update)\s+[`'"]*([\/\w\-\.]+\.\w+)[`'"]*:?\s*\n+```(\w*)\n([\s\S]*?)$/gi,
+        type: 'in_filename',
+        isStreaming: true
+      }
+    ];
+
+    // Process complete patterns first, then streaming ones
+    for (const pattern of [...patterns, ...streamingPatterns]) {
       // Re-calculate ranges on each pass because the string changes
       const artifactRanges = this._findArtifactRanges(enhanced);
       const actionRanges = this._findActionRanges(enhanced);
@@ -254,10 +273,15 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
           [filePath, language, content] = args;
         }
 
-        // Check if this should be treated as a shell command instead of a file
         if (this._isShellCommand(content, language)) {
-          processed.add(blockHash);
-          return this._wrapInShellAction(content, messageId);
+          // Shell commands: treat as complete, but return as naked action (to be wrapped/bundled later)
+          // hash is same as blockHash
+          if (!(pattern as any).isStreaming) {
+            processed.add(blockHash);
+          }
+          // Note: Shell commands usually shouldn't stream indefinitely, but if they do, 
+          // we might want to support it. For now, assume shell is atomic or handled by complete patterns.
+          return `<afAction type="shell">\n${content}\n</afAction>`;
         }
 
         // Clean up the file path
@@ -279,14 +303,23 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
           }
         }
 
-        // Mark as processed
-        processed.add(blockHash);
+        // Handle processing status
+        // blockHash is already declared at top of callback
+        if (!(pattern as any).isStreaming) {
+          processed.add(blockHash);
+        }
 
-        // Generate artifact wrapper
-        const artifactId = `artifact-${messageId}-${this._artifactCounter++}`;
-        const wrapped = this._wrapInArtifact(artifactId, filePath, content);
+        // Return NAKED action
+        // If streaming, leave it open (no end tag).
+        // If complete, close it.
+        // The _wrapNakedActions logic will bundle these into artifacts.
 
-        return wrapped;
+        let action = `<afAction type="file" filePath="${filePath}">\n${content}`;
+        if (!(pattern as any).isStreaming) {
+          action += `\n</afAction>`;
+        }
+
+        return action;
       });
     }
 
@@ -323,7 +356,7 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
   }
 
   private _wrapNakedActions(input: string, messageId: string): string {
-    const tokens = input.split(/(<afArtifact[^>]*>|<\/afArtifact>|<afAction[^>]*>|<\/afAction>)/gi);
+    const tokens = input.split(/(<(?:af|bolt)Artifact[^>]*>|<\/(?:af|bolt)Artifact>|<(?:af|bolt)Action[^>]*>|<\/(?:af|bolt)Action>)/gi);
     let output = '';
     let insideArtifact = false;
     let insideHealingArtifact = false;
@@ -333,22 +366,23 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
       const token = tokens[i];
       const lowerToken = token.toLowerCase();
 
-      if (lowerToken.startsWith('<afartifact')) {
+      if (lowerToken.startsWith('<afartifact') || lowerToken.startsWith('<boltartifact')) {
         insideArtifact = true;
         output += token;
-      } else if (lowerToken === '</afartifact>') {
+      } else if (lowerToken === '</afartifact>' || lowerToken === '</boltartifact>') {
         insideArtifact = false;
         output += token;
-      } else if (lowerToken.startsWith('<afaction')) {
+      } else if (lowerToken.startsWith('<afaction') || lowerToken.startsWith('<boltaction')) {
         if (!insideArtifact && lowerToken.endsWith('>')) {
           const artifactId = `artifact-${messageId}-naked-${actionCounter++}`;
+          // Always use canonical afArtifact for wrapping
           output += `<afArtifact id="${artifactId}" title="Generated Action" type="bundled">${token}`;
           insideHealingArtifact = true;
           insideArtifact = true; // logically inside now
         } else {
           output += token;
         }
-      } else if (lowerToken === '</afaction>') {
+      } else if (lowerToken === '</afaction>' || lowerToken === '</boltaction>') {
         output += token;
         if (insideHealingArtifact) {
           // Look ahead to see if we should close the artifact
@@ -363,7 +397,7 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
             shouldClose = false;
           } else if (!nextToken.trim()) {
             // Only whitespace follows. Check the tag after.
-            if (nextTag && nextTag.toLowerCase().startsWith('<afaction')) {
+            if (nextTag && (nextTag.toLowerCase().startsWith('<afaction') || nextTag.toLowerCase().startsWith('<boltaction'))) {
               // Another action follows immediately! Keep open.
               shouldClose = false;
             } else if (nextTag === undefined) {
@@ -397,7 +431,7 @@ export class EnhancedStreamingMessageParser extends StreamingMessageParser {
     // We strictly look for "npm start", "npm run dev", "npm run ios", etc.
 
     return input.replace(
-      /(<afAction\s+[^>]*type="shell"[^>]*>)(\s*)(?:EXPO_NO_TELEMETRY=1\s+)?(?:npx\s+(?:--yes\s+)?expo\s+start|npm\s+(?:run\s+)?(?:start|dev|ios|android|web))/gi,
+      /(<(?:af|bolt)Action\s+[^>]*type="shell"[^>]*>)(\s*)(?:EXPO_NO_TELEMETRY=1\s+)?(?:npx\s+(?:--yes\s+)?expo\s+start|npm\s+(?:run\s+)?(?:start|dev|ios|android|web))/gi,
       (match, openTag, whitespace) => {
         // If the command already has "npm install", ignore it
         if (match.includes('npm install')) return match;
@@ -832,42 +866,129 @@ ${content.trim()}
     // Remove style/theme configuration objects that shouldn't appear in chat
     // These are typically JavaScript objects with CSS-like properties
 
-    // Pattern to detect style objects with properties like borderRadius, fontSize, color, etc.
-    const styleObjectPattern = /^\s*(?:[\w]+:\s*(?:'[^']*'|"[^"]*"|\d+|#[0-9A-Fa-f]{3,6}|'transparent'|{\s*[^}]+\s*}),?\s*)+$/gm;
+    const protectedRanges = [
+      ...this._findArtifactRanges(input),
+      ...this._findActionRanges(input),
+      ...this._findCodeFenceRanges(input),
+    ];
 
-    // Remove lines that look like style definitions
-    const lines = input.split('\n');
-    const filteredLines = lines.filter(line => {
-      const trimmed = line.trim();
+    const sanitizeSegment = (segment: string) => {
+      // Remove lines that look like style definitions
+      const lines = segment.split('\n');
+      const filteredLines = lines.filter((line) => {
+        const trimmed = line.trim();
 
-      // Skip empty lines
-      if (!trimmed) return true;
+        // Skip empty lines
+        if (!trimmed) return true;
 
-      // Check if line looks like a style property definition
-      const isStyleProperty = /^(?:[\w]+:\s*(?:'[^']*'|"[^"]*"|\d+|#[0-9A-Fa-f]{3,6}|'transparent'|{\s*[^}]+\s*}),?\s*)$/.test(trimmed);
+        // Check if line looks like a style property definition
+        const isStyleProperty =
+          /^(?:[\w]+:\s*(?:'[^']*'|"[^"]*"|\d+|#[0-9A-Fa-f]{3,6}|'transparent'|{\s*[^}]+\s*}),?\s*)$/.test(
+            trimmed,
+          );
 
-      // Check for common style property names
-      const commonStyleProps = [
-        'borderRadius', 'fontSize', 'fontWeight', 'color', 'backgroundColor',
-        'padding', 'margin', 'alignItems', 'justifyContent', 'flexDirection',
-        'borderColor', 'borderWidth', 'paddingVertical', 'paddingHorizontal'
-      ];
+        // Check for common style property names
+        const commonStyleProps = [
+          'borderRadius',
+          'fontSize',
+          'fontWeight',
+          'color',
+          'backgroundColor',
+          'padding',
+          'margin',
+          'alignItems',
+          'justifyContent',
+          'flexDirection',
+          'borderColor',
+          'borderWidth',
+          'paddingVertical',
+          'paddingHorizontal',
+        ];
 
-      const hasStyleProp = commonStyleProps.some(prop => trimmed.startsWith(prop + ':'));
+        const hasStyleProp = commonStyleProps.some((prop) => trimmed.startsWith(prop + ':'));
 
-      // Filter out style property lines
-      return !isStyleProperty && !hasStyleProp;
-    });
+        // Filter out style property lines
+        return !isStyleProperty && !hasStyleProp;
+      });
 
-    // If we filtered out more than 3 consecutive lines, it was likely a style object
-    const filtered = filteredLines.join('\n');
+      const filtered = filteredLines.join('\n');
 
-    // Also remove standalone object literals that contain only style properties
-    return filtered.replace(/\{[\s\S]*?(?:borderRadius|fontSize|fontWeight|color|backgroundColor|padding|margin|alignItems)[\s\S]*?\}/g, (match) => {
-      // Only remove if it's a pure style object (contains multiple style properties)
-      const stylePropsCount = (match.match(/(?:borderRadius|fontSize|fontWeight|color|backgroundColor|padding|margin|alignItems|justifyContent)/g) || []).length;
-      return stylePropsCount >= 3 ? '' : match;
-    });
+      // Avoid stripping object literals inside raw JSX/TSX content.
+      // This prevents breaking attributes like style={{ ... }} in unfenced code.
+      if (/<\/?\w+/.test(filtered)) {
+        return filtered;
+      }
+
+      // Also remove standalone object literals that contain only style properties
+      return filtered.replace(
+        /\{[\s\S]*?(?:borderRadius|fontSize|fontWeight|color|backgroundColor|padding|margin|alignItems)[\s\S]*?\}/g,
+        (match) => {
+          // Only remove if it's a pure style object (contains multiple style properties)
+          const stylePropsCount =
+            match.match(
+              /(?:borderRadius|fontSize|fontWeight|color|backgroundColor|padding|margin|alignItems|justifyContent)/g,
+            ) || [];
+          return stylePropsCount.length >= 3 ? '' : match;
+        },
+      );
+    };
+
+    if (protectedRanges.length === 0) {
+      return sanitizeSegment(input);
+    }
+
+    const ranges = protectedRanges
+      .sort((a, b) => a[0] - b[0])
+      .reduce<[number, number][]>((merged, current) => {
+        const last = merged[merged.length - 1];
+        if (!last || current[0] > last[1]) {
+          merged.push([...current]);
+        } else {
+          last[1] = Math.max(last[1], current[1]);
+        }
+        return merged;
+      }, []);
+
+    let output = '';
+    let cursor = 0;
+
+    for (const [start, end] of ranges) {
+      if (cursor < start) {
+        output += sanitizeSegment(input.slice(cursor, start));
+      }
+      output += input.slice(start, end);
+      cursor = end;
+    }
+
+    if (cursor < input.length) {
+      output += sanitizeSegment(input.slice(cursor));
+    }
+
+    return output;
+  }
+
+  private _findCodeFenceRanges(input: string): [number, number][] {
+    const ranges: [number, number][] = [];
+    const fenceRegex = /```/g;
+    const fenceIndices: number[] = [];
+
+    let match;
+    while ((match = fenceRegex.exec(input)) !== null) {
+      fenceIndices.push(match.index);
+    }
+
+    for (let i = 0; i < fenceIndices.length; i += 2) {
+      const start = fenceIndices[i];
+      const end = fenceIndices[i + 1];
+
+      if (end === undefined) {
+        ranges.push([start, input.length]);
+      } else {
+        ranges.push([start, end + 3]);
+      }
+    }
+
+    return ranges;
   }
 
   private _wrapPackageJSON(messageId: string, input: string): string {

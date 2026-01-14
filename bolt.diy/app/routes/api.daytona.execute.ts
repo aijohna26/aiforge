@@ -139,6 +139,19 @@ export async function action({ request }: ActionFunctionArgs) {
                         // Will fall through to create new sandbox below
                     } else {
                         console.log(`[Daytona ${sandboxId}] ✅ Template verified.`);
+
+                        // AUTO-FIX: Force update index.tsx from local template to fix corruption
+                        try {
+                            const localTmpl = path.join(process.cwd(), 'templates/af-expo-template-v9/app/index.tsx');
+                            if (fs.existsSync(localTmpl)) {
+                                await sandbox.fs.uploadFile(fs.readFileSync(localTmpl), '/home/user/app/index.tsx');
+                                console.log(`[Daytona ${sandboxId}] 🩹 Auto-patched app/index.tsx from local template`);
+                            }
+                            // Clean cache to resolve bundling errors
+                            await sandbox.process.executeCommand('rm -rf .expo', '/home/user');
+                        } catch (e) {
+                            console.warn('Template auto-fix failed', e);
+                        }
                     }
 
                     // FINAL VERIFICATION: Execute a simple command to ensure FS and Process are ready
@@ -236,6 +249,18 @@ export async function action({ request }: ActionFunctionArgs) {
             }
             console.log(`[Daytona API] Executing: ${command}`);
 
+            // NPM RELIABILITY FIX: Configure npm to be more robust against network flakes
+            if (command.includes('npm')) {
+                try {
+                    await sandbox.process.executeCommand('npm config set fetch-retries 5', '/home/user');
+                    await sandbox.process.executeCommand('npm config set fetch-retry-factor 2', '/home/user');
+                    await sandbox.process.executeCommand('npm config set fetch-retry-mintimeout 10000', '/home/user');
+                    await sandbox.process.executeCommand('npm config set fetch-retry-maxtimeout 60000', '/home/user');
+                } catch (e) {
+                    console.warn('[Daytona API] Failed to configure npm settings', e);
+                }
+            }
+
             // DETECT LONG RUNNING COMMANDS
             const isLongRunning = command.includes('npm start') || command.includes('npm run dev') || command.includes('npx expo start');
 
@@ -248,6 +273,17 @@ export async function action({ request }: ActionFunctionArgs) {
                     const nmCheck = await sandbox.process.executeCommand('test -d "node_modules" && echo "EXISTS" || echo "MISSING"', '/home/user');
                     if (nmCheck.result?.includes('MISSING')) {
                         console.log('[Daytona API] node_modules missing. Auto-running npm install...');
+
+                        // DEEP CLEAN: Remove potential conflicting lockfiles and cache
+                        try {
+                            await sandbox.process.executeCommand('rm -rf package-lock.json pnpm-lock.yaml yarn.lock .expo', '/home/user');
+                        } catch (e) { }
+
+                        // Apply reliability settings for auto-heal too
+                        try {
+                            await sandbox.process.executeCommand('npm config set fetch-retries 5', '/home/user');
+                            await sandbox.process.executeCommand('npm config set fetch-retry-maxtimeout 60000', '/home/user');
+                        } catch (e) { }
                         await sandbox.process.executeCommand('npm install', '/home/user');
                     }
                 } catch (e) {

@@ -27,6 +27,7 @@ const messageParser = new EnhancedStreamingMessageParser({
        * Shell actions are complete when created by enhanced parser, so we wait for close
        */
       if (data.action.type === 'file') {
+        workbenchStore.showWorkbench.set(true);
         workbenchStore.addAction(data);
       }
     },

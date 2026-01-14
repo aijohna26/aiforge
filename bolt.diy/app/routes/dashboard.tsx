@@ -290,13 +290,25 @@ export default function Dashboard() {
           </motion.button>
         </div>
 
-        {/* Project Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {/* Project Table Header */}
+        <div className="flex items-center justify-between mb-6 px-4">
+          <div className="flex items-center gap-4 text-xs font-bold text-gray-400 dark:text-gray-600 uppercase tracking-widest">
+            <span className="w-8"></span>
+            <span className="w-64">Project Name</span>
+            <span className="w-32 hidden md:block">Category</span>
+            <span className="w-32 hidden md:block">Status</span>
+            <span className="w-40 hidden lg:block">Last Modified</span>
+            <span className="w-40 hidden lg:block">Created</span>
+          </div>
+        </div>
+
+        {/* Project List */}
+        <div className="flex flex-col gap-3">
           {projects.length === 0 ? (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="col-span-full py-32 flex flex-col items-center justify-center text-center bg-white/50 dark:bg-white/[0.02] rounded-[40px] border border-gray-100 dark:border-white/[0.05] border-dashed"
+              className="py-32 flex flex-col items-center justify-center text-center bg-white/50 dark:bg-white/[0.02] rounded-[40px] border border-gray-100 dark:border-white/[0.05] border-dashed"
             >
               <div className="w-20 h-20 bg-gray-100 dark:bg-white/5 rounded-3xl flex items-center justify-center mb-6">
                 <div className="i-ph:cube-duotone text-gray-300 dark:text-gray-700 text-4xl" />
@@ -316,7 +328,7 @@ export default function Dashboard() {
             </motion.div>
           ) : (
             projects.map((project, index) => (
-              <ProjectCard
+              <ProjectRow
                 key={project.id}
                 project={project}
                 index={index}
@@ -331,7 +343,7 @@ export default function Dashboard() {
   );
 }
 
-function ProjectCard({
+function ProjectRow({
   project,
   index,
   navigate,
@@ -351,60 +363,72 @@ function ProjectCard({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay: index * 0.1 }}
-      whileHover={{ y: -8 }}
-      className="group relative bg-white dark:bg-[#111] border border-gray-100 dark:border-white/[0.05] rounded-[40px] p-8 cursor-pointer transition-all duration-300 hover:shadow-[0_32px_80px_rgba(0,0,0,0.1)] dark:hover:shadow-[0_32px_80px_rgba(0,0,0,0.4)] hover:border-accent-500/30 overflow-hidden"
+      transition={{ duration: 0.3, delay: index * 0.05 }}
+      className="group relative flex items-center gap-4 bg-white dark:bg-[#111] border border-gray-100 dark:border-white/[0.05] rounded-[24px] p-4 cursor-pointer transition-all duration-300 hover:shadow-lg dark:hover:shadow-[0_8px_30px_rgba(0,0,0,0.3)] hover:border-accent-500/30 active:scale-[0.99]"
       onClick={() => navigate(`/chat/${project.id}`)}
     >
-      {/* Gloss Overlay */}
-      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+      {/* Icon */}
+      <div className="w-12 h-12 rounded-xl bg-gray-50 dark:bg-white/[0.03] flex items-center justify-center overflow-hidden border border-gray-100 dark:border-white/10 shrink-0">
+        {displayLogoUrl ? (
+          <img src={displayLogoUrl} alt={project.name} className="w-full h-full object-cover" />
+        ) : (
+          <div className="i-ph:cube-duotone text-gray-400 dark:text-gray-500 text-xl" />
+        )}
+      </div>
 
-      <div className="relative z-10 h-full flex flex-col">
-        <div className="flex items-start justify-between mb-8">
-          <div className="w-16 h-16 rounded-[24px] bg-gray-50 dark:bg-white/[0.03] flex items-center justify-center overflow-hidden border border-gray-100 dark:border-white/10 group-hover:scale-110 transition-transform duration-500">
-            {displayLogoUrl ? (
-              <img src={displayLogoUrl} alt={project.name} className="w-full h-full object-cover" />
-            ) : (
-              <div className="i-ph:cube-duotone text-gray-400 dark:text-gray-500 text-3xl" />
-            )}
-          </div>
-          <div className="flex flex-col items-end gap-2">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete();
-              }}
-              className="p-2 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all duration-300 border border-red-500/20"
-              title="Delete Forge"
-            >
-              <div className="i-ph:trash-bold text-sm" />
-            </button>
-            <div className="px-3 py-1 rounded-full bg-green-500/10 text-green-500 text-[10px] font-black uppercase tracking-wider border border-green-500/20">
-              {project.status || 'Active'}
-            </div>
-            <span className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest">
-              {new Date(project.created_at).toLocaleDateString()}
-            </span>
-          </div>
-        </div>
-
-        <h3 className="text-2xl font-black text-gray-900 dark:text-white mb-3 tracking-tighter group-hover:text-accent-500 transition-colors">
+      {/* Name */}
+      <div className="w-64 grow md:grow-0">
+        <h3 className="text-base font-bold text-gray-900 dark:text-white group-hover:text-accent-500 transition-colors truncate pr-4">
           {project.name}
         </h3>
-        <p className="text-sm text-gray-400 dark:text-gray-500 font-bold uppercase text-[9px] tracking-[0.1em] mb-8">
-          {project.data?.step1?.category || 'General App'}
-        </p>
+        <span className="text-[10px] font-bold text-gray-400 dark:text-gray-600 uppercase tracking-widest flex items-center gap-1">
+          <div className="i-ph:git-branch-bold text-[10px]" /> BASE
+        </span>
+      </div>
 
-        <div className="mt-auto flex items-center justify-between pt-6 border-t border-gray-100 dark:border-white/[0.05]">
-          <span className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2">
-            <div className="i-ph:git-branch-bold text-sm" /> main
+      {/* Category */}
+      <div className="w-32 hidden md:block">
+        <span className="px-2 py-1 rounded-lg bg-gray-100 dark:bg-white/5 text-[10px] font-bold text-gray-500 uppercase tracking-wide">
+          {project.data?.step1?.category || 'General'}
+        </span>
+      </div>
+
+      {/* Status */}
+      <div className="w-32 hidden md:block">
+        <div className="flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${project.status === 'finalized' ? 'bg-green-500' : 'bg-blue-500'} animate-pulse`} />
+          <span className="text-xs font-medium text-gray-600 dark:text-gray-400 capitalize">
+            {project.status || 'In Progress'}
           </span>
-          <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-white/5 flex items-center justify-center group-hover:bg-accent-500 group-hover:text-white transition-all transform group-hover:translate-x-1">
-            <div className="i-ph:arrow-right-bold text-sm" />
-          </div>
         </div>
+      </div>
+
+      {/* Last Modified */}
+      <div className="w-40 hidden lg:block text-xs font-medium text-gray-500 dark:text-gray-500">
+        {new Date(project.created_at).toLocaleDateString()}
+      </div>
+
+      {/* Created */}
+      <div className="w-40 hidden lg:block text-xs font-medium text-gray-400 dark:text-gray-600">
+        {new Date(project.created_at).toLocaleDateString()}
+      </div>
+
+      {/* Actions */}
+      <div className="ml-auto flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 dark:bg-white/5 text-gray-500 hover:text-accent-500 transition-colors">
+          <div className="i-ph:arrow-right-bold text-sm" />
+        </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          className="flex items-center justify-center w-8 h-8 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-colors"
+        >
+          <div className="i-ph:trash-bold text-sm" />
+        </button>
       </div>
     </motion.div>
   );

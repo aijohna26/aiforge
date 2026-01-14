@@ -1,9 +1,14 @@
 import { useStore } from '@nanostores/react';
 import { memo } from 'react';
 import { selectedSettingSection } from '~/lib/stores/settings';
+import { AssetsManager } from './AssetsManager';
 
 export const SettingsDetailPanel = memo(() => {
     const section = useStore(selectedSettingSection);
+
+    if (section === 'Assets & Media') {
+        return <AssetsManager />;
+    }
 
     return (
         <div className="h-full w-full bg-bolt-elements-background-depth-1 flex flex-col overflow-hidden">

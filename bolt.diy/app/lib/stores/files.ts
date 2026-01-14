@@ -3,6 +3,7 @@ import { getEncoding } from 'istextorbinary';
 import { map, type MapStore } from 'nanostores';
 import { Buffer } from 'node:buffer';
 import { path } from '~/utils/path';
+import { toWebContainerRelativePath } from '~/utils/webcontainer-path';
 import { bufferWatchEvents } from '~/utils/buffer';
 import { WORK_DIR } from '~/utils/constants';
 import { computeFileModifications } from '~/utils/diff';
@@ -25,6 +26,44 @@ import { getCurrentChatId } from '~/utils/fileLocks';
 const logger = createScopedLogger('FilesStore');
 
 const utf8TextDecoder = new TextDecoder('utf8', { fatal: true });
+
+const REPAIR_EXPO_INDEX_CONTENT = `import * as React from "react";
+import { Image, SafeAreaView, Text, View } from "react-native";
+
+export default function Index() {
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#171717" }}>
+      <View style={{ alignItems: "center", justifyContent: "center", flex: 1 }}>
+        <View style={{ width: 120, height: 120, borderRadius: 28, backgroundColor: '#333', marginBottom: 20 }} />
+        <Text style={{ color: "#f5f5f5", fontSize: 20, fontWeight: "600", marginTop: 16 }}>
+          Welcome to AppForge
+        </Text>
+        <Text style={{ color: "#bdbdbd", fontSize: 14, marginTop: 8 }}>
+          Project initialized. Ready to build.
+        </Text>
+      </View>
+    </SafeAreaView>
+  );
+}
+`;
+
+const REPAIR_BABEL_CONFIG = `module.exports = function (api) {
+  api.cache(true);
+  return {
+    presets: ['babel-preset-expo'],
+  };
+};`;
+
+const REPAIR_TSCONFIG = `{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"]
+}`;
 
 export interface File {
   type: 'file';
@@ -564,7 +603,7 @@ export class FilesStore {
     }
 
     try {
-      const relativePath = path.relative(webcontainer.workdir, filePath);
+      const relativePath = toWebContainerRelativePath(filePath, webcontainer.workdir);
 
       if (!relativePath) {
         throw new Error(`EINVAL: invalid file path, write '${relativePath}'`);
@@ -572,14 +611,14 @@ export class FilesStore {
 
       const oldContent = this.getFile(filePath)?.content;
 
-      if (!oldContent && oldContent !== '') {
-        unreachable('Expected content to be defined');
-      }
+      // if (!oldContent && oldContent !== '') {
+      //   unreachable('Expected content to be defined');
+      // }
 
       await webcontainer.fs.writeFile(relativePath, content);
 
       if (!this.#modifiedFiles.has(filePath)) {
-        this.#modifiedFiles.set(filePath, oldContent);
+        this.#modifiedFiles.set(filePath, oldContent || '');
       }
 
       // Get the current lock state before updating
@@ -600,6 +639,80 @@ export class FilesStore {
 
       throw error;
     }
+  }
+
+  async #repairProjectFiles() {
+    try {
+      const webcontainer = await this.#webcontainer;
+      // 0. Deep Clean Expo Cache (Fixes persistent bundler errors)
+      logger.info('Auto-cleaning .expo cache...');
+      await webcontainer.spawn('rm', ['-rf', '.expo']);
+    } catch (e) {
+      // Ignore errors if spawn fails (e.g. process limit)
+      console.warn('Failed to clean .expo cache', e);
+    }
+
+    // Small delay to ensure files are loaded from buffer/storage
+    // Small delay to ensure files are loaded from buffer/storage
+    setTimeout(async () => {
+      try {
+        const webcontainer = await this.#webcontainer; // Valid since defined in outer scope or accessed via getter
+
+        // 1. Repair app/index.tsx (Direct FS Access)
+        const relativePath = 'app/index.tsx';
+        let content = '';
+        try {
+          const bytes = await webcontainer.fs.readFile(relativePath);
+          content = new TextDecoder().decode(bytes);
+        } catch (readErr) {
+          // File missing or unreadable
+          logger.warn(`Failed to read ${relativePath} from FS`, readErr);
+        }
+
+        const hasSyntaxError = content.includes('style=}');
+
+        let assetExists = false;
+        try {
+          await webcontainer.fs.readFile('assets/images/logo.png');
+          assetExists = true;
+        } catch (e) {
+          // Asset missing
+        }
+
+        const referencesAsset = content.includes('require("../assets/images/logo.png")');
+        const hasMissingAsset = referencesAsset && !assetExists;
+        const isInvalid = !content || content.length < 50 || !content.includes('export default');
+
+        if (hasSyntaxError || isInvalid || hasMissingAsset) {
+          logger.warn(`Detected broken usage in ${relativePath}. Overwriting with template...`);
+          const absolutePath = `${WORK_DIR}/${relativePath}`;
+          await this.saveFile(absolutePath, REPAIR_EXPO_INDEX_CONTENT);
+        }
+
+        const files = this.files.get();
+        const keys = Object.keys(files);
+
+        // 2. Repair babel.config.js (Critical for JSX parsing)
+        const babelKey = keys.find(k => k === 'babel.config.js' || k.endsWith('/babel.config.js'));
+        const babelFile = babelKey ? files[babelKey] : undefined;
+
+        if (!babelKey || !babelFile || !babelFile.content || babelFile.content.trim().length < 20) {
+          logger.warn('Missing or corrupted babel.config.js. Auto-repairing...');
+          await this.saveFile('babel.config.js', REPAIR_BABEL_CONFIG);
+        }
+
+        // 3. Repair tsconfig.json
+        const tsKey = keys.find(k => k === 'tsconfig.json' || k.endsWith('/tsconfig.json'));
+        const tsFile = tsKey ? files[tsKey] : undefined;
+
+        if (!tsKey || !tsFile || !tsFile.content || tsFile.content.trim().length < 20) {
+          logger.warn('Missing or corrupted tsconfig.json. Auto-repairing...');
+          await this.saveFile('tsconfig.json', REPAIR_TSCONFIG);
+        }
+      } catch (err) {
+        logger.error('Auto-repair process failed', err);
+      }
+    }, 2500);
   }
 
   async #init() {
@@ -626,6 +739,9 @@ export class FilesStore {
 
     // Load locked files immediately for the current chat
     this.#loadLockedFiles(currentChatId);
+
+    // Auto-repair critical project files (Index, Babel, TSConfig)
+    this.#repairProjectFiles();
 
     /**
      * Also set up a timer to load locked files again after a delay.
@@ -811,7 +927,7 @@ export class FilesStore {
     }
 
     try {
-      const relativePath = path.relative(webcontainer.workdir, filePath);
+      const relativePath = toWebContainerRelativePath(filePath, webcontainer.workdir);
 
       if (!relativePath) {
         throw new Error(`EINVAL: invalid file path, create '${relativePath}'`);
@@ -864,7 +980,7 @@ export class FilesStore {
     const webcontainer = await this.#webcontainer;
 
     try {
-      const relativePath = path.relative(webcontainer.workdir, folderPath);
+      const relativePath = toWebContainerRelativePath(folderPath, webcontainer.workdir);
 
       if (!relativePath) {
         throw new Error(`EINVAL: invalid folder path, create '${relativePath}'`);
@@ -887,7 +1003,7 @@ export class FilesStore {
     const webcontainer = await this.#webcontainer;
 
     try {
-      const relativePath = path.relative(webcontainer.workdir, filePath);
+      const relativePath = toWebContainerRelativePath(filePath, webcontainer.workdir);
 
       if (!relativePath) {
         throw new Error(`EINVAL: invalid file path, delete '${relativePath}'`);
@@ -919,7 +1035,7 @@ export class FilesStore {
     const webcontainer = await this.#webcontainer;
 
     try {
-      const relativePath = path.relative(webcontainer.workdir, folderPath);
+      const relativePath = toWebContainerRelativePath(folderPath, webcontainer.workdir);
 
       if (!relativePath) {
         throw new Error(`EINVAL: invalid folder path, delete '${relativePath}'`);

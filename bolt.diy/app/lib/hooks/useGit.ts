@@ -1,6 +1,7 @@
 import type { WebContainer } from '@webcontainer/api';
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { webcontainer as webcontainerPromise } from '~/lib/webcontainer';
+import { toWebContainerRelativePath } from '~/utils/webcontainer-path';
 import git, { type GitAuth, type PromiseFsClient } from 'isomorphic-git';
 import http from 'isomorphic-git/http/web';
 import Cookies from 'js-cookie';
@@ -188,7 +189,7 @@ const getFs = (
   promises: {
     readFile: async (path: string, options: any) => {
       const encoding = options?.encoding;
-      const relativePath = pathUtils.relative(webcontainer.workdir, path);
+      const relativePath = toWebContainerRelativePath(path, webcontainer.workdir);
 
       try {
         const result = await webcontainer.fs.readFile(relativePath, encoding);
@@ -199,7 +200,7 @@ const getFs = (
       }
     },
     writeFile: async (path: string, data: any, options: any = {}) => {
-      const relativePath = pathUtils.relative(webcontainer.workdir, path);
+      const relativePath = toWebContainerRelativePath(path, webcontainer.workdir);
 
       if (record.current) {
         record.current[relativePath] = { data, encoding: options?.encoding };
@@ -223,7 +224,7 @@ const getFs = (
       }
     },
     mkdir: async (path: string, options: any) => {
-      const relativePath = pathUtils.relative(webcontainer.workdir, path);
+      const relativePath = toWebContainerRelativePath(path, webcontainer.workdir);
 
       try {
         const result = await webcontainer.fs.mkdir(relativePath, { ...options, recursive: true });
@@ -234,7 +235,7 @@ const getFs = (
       }
     },
     readdir: async (path: string, options: any) => {
-      const relativePath = pathUtils.relative(webcontainer.workdir, path);
+      const relativePath = toWebContainerRelativePath(path, webcontainer.workdir);
 
       try {
         const result = await webcontainer.fs.readdir(relativePath, options);
@@ -245,7 +246,7 @@ const getFs = (
       }
     },
     rm: async (path: string, options: any) => {
-      const relativePath = pathUtils.relative(webcontainer.workdir, path);
+      const relativePath = toWebContainerRelativePath(path, webcontainer.workdir);
 
       try {
         const result = await webcontainer.fs.rm(relativePath, { ...(options || {}) });
@@ -256,7 +257,7 @@ const getFs = (
       }
     },
     rmdir: async (path: string, options: any) => {
-      const relativePath = pathUtils.relative(webcontainer.workdir, path);
+      const relativePath = toWebContainerRelativePath(path, webcontainer.workdir);
 
       try {
         const result = await webcontainer.fs.rm(relativePath, { recursive: true, ...options });
@@ -267,7 +268,7 @@ const getFs = (
       }
     },
     unlink: async (path: string) => {
-      const relativePath = pathUtils.relative(webcontainer.workdir, path);
+      const relativePath = toWebContainerRelativePath(path, webcontainer.workdir);
 
       try {
         return await webcontainer.fs.rm(relativePath, { recursive: false });
@@ -277,7 +278,7 @@ const getFs = (
     },
     stat: async (path: string) => {
       try {
-        const relativePath = pathUtils.relative(webcontainer.workdir, path);
+        const relativePath = toWebContainerRelativePath(path, webcontainer.workdir);
         const dirPath = pathUtils.dirname(relativePath);
         const fileName = pathUtils.basename(relativePath);
 

@@ -4,7 +4,6 @@ import { workbenchStore } from '~/lib/stores/workbench';
 import { themeStore, toggleTheme } from '~/lib/stores/theme';
 import { DeployButton } from '~/components/deploy/DeployButton';
 import { createClient } from '~/lib/supabase/browser';
-import { ChatRecoveryModal } from '~/components/chat/ChatRecoveryModal';
 
 interface HeaderActionButtonsProps {
   chatStarted: boolean;
@@ -12,7 +11,6 @@ interface HeaderActionButtonsProps {
 
 export function HeaderActionButtons({ chatStarted: _chatStarted }: HeaderActionButtonsProps) {
   const [activePreviewIndex] = useState(0);
-  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
   const theme = useStore(themeStore);
   const previews = useStore(workbenchStore.previews);
   const activePreview = previews[activePreviewIndex];
@@ -40,15 +38,6 @@ export function HeaderActionButtons({ chatStarted: _chatStarted }: HeaderActionB
           )}
         </button>
 
-        <button
-          onClick={() => setShowRecoveryModal(true)}
-          className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-md border border-bolt-elements-borderColor bg-transparent text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary hover:bg-bolt-elements-background-depth-2 transition-colors"
-          title="Recover Lost Chats"
-        >
-          <div className="i-ph:clock-counter-clockwise" />
-          <span>Recover Chat</span>
-        </button>
-
         <button className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-md border border-bolt-elements-borderColor bg-transparent text-bolt-elements-textSecondary hover:text-bolt-elements-textPrimary hover:bg-bolt-elements-background-depth-2 transition-colors">
           <div className="i-ph:git-diff" />
           <span>Show Diff</span>
@@ -71,8 +60,6 @@ export function HeaderActionButtons({ chatStarted: _chatStarted }: HeaderActionB
           <span>Sign Out</span>
         </button>
       </div>
-
-      <ChatRecoveryModal isOpen={showRecoveryModal} onClose={() => setShowRecoveryModal(false)} />
     </>
   );
 }

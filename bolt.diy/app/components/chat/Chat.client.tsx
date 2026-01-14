@@ -17,7 +17,7 @@ import Cookies from 'js-cookie';
 import { debounce } from '~/utils/debounce';
 import { useSettings } from '~/lib/hooks/useSettings';
 import type { ProviderInfo } from '~/types/model';
-import { useSearchParams, useParams } from '@remix-run/react';
+import { useSearchParams, useParams, useNavigate, useLocation } from '@remix-run/react';
 import { createSampler } from '~/utils/sampler';
 import { getTemplates, selectStarterTemplate } from '~/utils/selectStarterTemplate';
 import { logStore } from '~/lib/stores/logs';
@@ -32,6 +32,7 @@ import type { LlmErrorAlertType } from '~/types/actions';
 import { updateTicketStatus, getTicketById } from '~/lib/stores/plan';
 import { yoloModeStore } from '~/lib/stores/settings';
 import { loadWizardData, designWizardStore, initializeSession } from '~/lib/stores/designWizard';
+import { saveCurrentFragment, loadLatestFragment } from '~/lib/stores/codePersistence';
 
 const logger = createScopedLogger('Chat');
 
@@ -112,6 +113,11 @@ export const ChatImpl = memo(
     const { activeProviders, promptId, autoSelectTemplate, contextOptimizationEnabled } = useSettings();
     const [seedPrompt] = useState(() => {
       if (typeof window !== 'undefined') {
+        // If we have a project ID (existing chat), ignore any seed prompt from landing page
+        if (projectId) {
+          return null;
+        }
+
         const seed = localStorage.getItem('bolt_seed_prompt');
         return seed || null;
       }
@@ -132,8 +138,17 @@ export const ChatImpl = memo(
     const [animationScope] = useAnimate();
     const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
     const [chatMode, setChatMode] = useState<'discuss' | 'build' | 'design'>(() => {
-      if (typeof window !== 'undefined' && localStorage.getItem('bolt_seed_prompt')) {
-        return 'design';
+      if (typeof window !== 'undefined') {
+        // If we have a project ID, respect the URL deep link or default to build
+        // This prevents the 'design' mode from being forced by a stale seed prompt
+        if (projectId) {
+          if (window.location.pathname.endsWith('/design')) return 'design';
+          return 'build';
+        }
+
+        if (localStorage.getItem('bolt_seed_prompt')) {
+          return 'design';
+        }
       }
 
       return 'build';
@@ -149,6 +164,11 @@ export const ChatImpl = memo(
     // Session Initialization Logic (Separated from Hydration)
     useEffect(() => {
       if (projectId) {
+        // Cleanup stale seed prompts to prevent view conflicts/loops
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('bolt_seed_prompt');
+        }
+
         console.log(`[Chat] 🔄 Project ID changed to: ${projectId}. Initializing session scope.`);
         initializeSession(projectId);
       } else {
@@ -200,6 +220,9 @@ export const ChatImpl = memo(
               if (data.project.status === 'finalized' && workbenchStore.currentView.get() !== 'plan') {
                 // workbenchStore.currentView.set('plan');
               }
+
+              // NEW: Load persisted code state from Supabase
+              await loadLatestFragment(projectId);
             }
           } catch (error) {
             console.error('[Chat] Project hydration failed:', error);
@@ -224,6 +247,57 @@ export const ChatImpl = memo(
         }
       }
     }, [currentView]);
+
+    // Tab Sync: URL -> Store
+    const { tab } = useParams();
+    useEffect(() => {
+      if (tab && ['code', 'design', 'plan'].includes(tab)) {
+        if (workbenchStore.currentView.get() !== tab) {
+          workbenchStore.currentView.set(tab as any);
+        }
+      } else if (!tab) {
+        // Default to design view if no tab is specified
+        workbenchStore.currentView.set('design');
+        setChatMode('design');
+      }
+    }, [tab]);
+
+    // Tab Sync: Store -> URL & DB (Last View Persistence)
+    const navigate = useNavigate();
+    const location = useLocation();
+
+    useEffect(() => {
+      if (projectId && currentView) {
+        // Only specific views are mapped to URLs
+        if (['code', 'design', 'plan'].includes(currentView)) {
+          const targetPath = `/chat/${projectId}/${currentView}`;
+          // Avoid redundant navigation
+          if (!location.pathname.endsWith(`/${currentView}`)) {
+            // FIX: Disabled to prevent redirect loop
+            // navigate(targetPath, { replace: true, preventScrollReset: true });
+          }
+
+
+          // Persist last_view to DB (Debounced via timeout to avoid excessive calls)
+          /*
+          const timer = setTimeout(() => {
+            // Only update if project ID is a valid UUID (database ID), not a temporary session ID
+            const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId);
+            if (!isUUID) return;
+
+            fetch('/api/project/update-view', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ projectId, view: currentView }),
+            }).catch((err) => console.error('Failed to update project view', err));
+          }, 1000); // 1s debounce
+
+          return () => clearTimeout(timer);
+          */
+
+        }
+      }
+    }, [currentView, projectId, navigate, location.pathname]);
 
     // AI SDK 6.0: Input state is managed manually
     const [input, setInput] = useState(Cookies.get(PROMPT_COOKIE_KEY) || '');
@@ -283,6 +357,12 @@ export const ChatImpl = memo(
           const { E2BRunner } = await import('~/lib/runtime/e2b-runner');
           await E2BRunner.waitForAllOperations();
           console.log('[Chat] All Sandbox operations completed, signaling completion');
+
+          // NEW: Save Project State to Supabase
+          if (projectId) {
+            await saveCurrentFragment(message, projectId);
+          }
+
         } catch (err) {
           console.error('[Chat] Error waiting for operations:', err);
         }
@@ -479,6 +559,23 @@ export const ChatImpl = memo(
     const append = sendMessage;
     const reload = regenerate;
 
+    // Auto-Save Manual Edits to Supabase (Debounced)
+    useEffect(() => {
+      // Skip if streaming (we save onFinish instead) or no project ID
+      if (!projectId || isLoading) return;
+
+      const timer = setTimeout(() => {
+        const currentFiles = workbenchStore.files.get();
+        if (currentFiles && Object.keys(currentFiles).length > 0) {
+          saveCurrentFragment(null, projectId).catch((err) =>
+            console.error('[Chat] Auto-save failed', err),
+          );
+        }
+      }, 5000); // 5s debounce
+
+      return () => clearTimeout(timer);
+    }, [files, projectId, isLoading]);
+
     // Placeholder for data/setData (not used in AI SDK 6.0)
     const [chatData, setChatData] = useState<any>(undefined);
     const setData = setChatData;
@@ -489,10 +586,12 @@ export const ChatImpl = memo(
     // Handle initial prompt from landing page (seedPrompt)
     // Split into two effects: one for state setup, one for sending the message
     useEffect(() => {
+      // If we are in a project, ignore any stale seed prompt state
+      if (projectId) return;
+
       if (typeof window === 'undefined' || !seedPrompt || seedPromptProcessed.current) {
         return;
       }
-
 
       // 1. Set both view and mode to design if not already
       if (currentView !== 'design') {
@@ -504,7 +603,7 @@ export const ChatImpl = memo(
         setChatMode('design');
         return;
       }
-    }, [seedPrompt, currentView, chatMode]);
+    }, [seedPrompt, currentView, chatMode, projectId]);
 
     // Second effect: Wait for append to be ready and send the message
     useEffect(() => {

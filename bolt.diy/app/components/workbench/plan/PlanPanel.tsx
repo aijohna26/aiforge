@@ -53,9 +53,6 @@ export function PlanPanel() {
         if (ticket) {
           // Trigger the coding bot with the updated status
           triggerCodingBot({ ...ticket, status: 'in-progress' });
-
-          // Toast is handled by Chat, but redundant feedback is okay or we can skip it. 
-          // Chat component will toast or show message.
         }
       }
 

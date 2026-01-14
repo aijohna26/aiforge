@@ -1121,7 +1121,11 @@ export const Preview = memo(({ setSelectedElement }: PreviewProps) => {
               />
             </>
           ) : (
-            null
+            <div className="flex flex-col items-center justify-center h-full text-bolt-elements-textTertiary">
+              <div className="i-ph:spinner animate-spin text-4xl mb-4" />
+              <p className="font-medium text-lg mb-2">Setting up Preview</p>
+              <p className="text-sm opacity-70">Installing dependencies or starting server...</p>
+            </div>
           )}
 
           {isDeviceModeOn && !showDeviceFrameInPreview && (

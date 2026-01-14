@@ -170,6 +170,7 @@ export async function fetchTicketsFromDb(projectId: string) {
         orderIndex: dbItem.order_index,
         createdAt: dbItem.created_at,
         updatedAt: dbItem.updated_at,
+        metadata: dbItem.metadata,
       }));
 
       planStore.set({
@@ -226,6 +227,7 @@ async function upsertTicketToDb(ticket: PlanTicket) {
       labels: ticket.labels,
       parallel: ticket.parallel,
       order_index: ticket.orderIndex,
+      metadata: ticket.metadata,
       updated_at: new Date().toISOString(),
     };
 
@@ -326,18 +328,8 @@ export function updateTicketStatus(ticketId: string, newStatus: TicketStatus) {
 
   updateTicket(ticketId, { status: newStatus });
 
-  // Triggers
-  const ticket = planStore.get().tickets.find((t) => t.id === ticketId);
-
-  if (!ticket) {
-    return;
-  }
-
-  if (newStatus === 'in-progress') {
-    triggerCodingBot(ticket);
-  } else if (newStatus === 'testing') {
-    triggerQABot(ticket);
-  }
+  // Note: Triggers (Coding/QA Bot) are now handled by the UI (PlanPanel.tsx) 
+  // to avoid auto-firing during syncs or non-user updates.
 }
 
 export function setCurrentTicket(ticketId: string | null) {

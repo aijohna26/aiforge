@@ -365,7 +365,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
         <ActivityBar activeView={activeSidebarView} onViewChange={setActiveSidebarView} />
 
         {/* Left Sidebar: Chat or Panels */}
-        <div className="w-[450px] flex flex-col border-r border-bolt-elements-borderColor bg-bolt-elements-background-depth-1 z-sidebar relative shrink-0">
+        <div className="w-[360px] flex flex-col border-r border-bolt-elements-borderColor bg-bolt-elements-background-depth-2 z-sidebar relative shrink-0">
 
           {activeSidebarView === 'chat' && (
             <>
@@ -417,7 +417,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
               </div>
 
               {/* Input Area */}
-              <div className="px-4 pt-4 pb-6 border-t border-bolt-elements-borderColor bg-bolt-elements-background-depth-1">
+              <div className="px-4 pt-4 pb-6 border-t border-bolt-elements-borderColor bg-bolt-elements-background-depth-2">
                 <div className="relative">
                   {deployAlert && (
                     <div className="mb-2">
